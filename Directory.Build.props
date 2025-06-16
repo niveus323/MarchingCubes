@@ -1,0 +1,37 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ImportGroup Label="PropertySheets" />
+  <PropertyGroup Label="UserMacros">
+    <Version>0.0.0.1</Version>
+    <SolutionRoot>$([System.String]::Copy('$(MSBuildThisFileDirectory)').Replace('\','/').TrimEnd('/'))</SolutionRoot>
+    <ProjectRoot>$([System.String]::Copy('$(MSBuildProjectDirectory)').Replace('\','/').TrimEnd('/'))</ProjectRoot>
+    <AssetsRoot>$(ProjectRoot)/Assets</AssetsRoot>
+    <ShadersRoot>$(AssetsRoot)/Shaders</ShadersRoot>
+    <ThirdPartyRoot>$(SolutionRoot)/ThirdParty/</ThirdPartyRoot>
+  </PropertyGroup>
+  <PropertyGroup>
+    <_PropertySheetDisplayName>Directory.Build</_PropertySheetDisplayName>
+  </PropertyGroup>
+  <ItemDefinitionGroup>
+    <ClCompile>
+      <PreprocessorDefinitions>
+        ASSETS_ROOT=L"$(AssetsRoot)";SHADERS_ROOT=L"$(ShadersRoot)";THIRDPARTY_ROOT=L"$(ThirdPartyRoot)";%(PreprocessorDefinitions)
+      </PreprocessorDefinitions>
+    </ClCompile>
+  </ItemDefinitionGroup>
+  <ItemGroup>
+    <BuildMacro Include="Version">
+      <Value>$(Version)</Value>
+    </BuildMacro>
+    <BuildMacro Include="AssetsRoot">
+      <value>$(AssetsRoot)</value>
+    </BuildMacro>
+    <BuildMacro Include="ShadersRoot">
+      <Value>$(ShadersRoot)</Value>
+    </BuildMacro>
+    <BuildMacro Include="ThirdPartyRoot">
+      <Value>$(ThirdPartyRoot)</Value>
+    </BuildMacro>
+  </ItemGroup>
+
+</Project>
