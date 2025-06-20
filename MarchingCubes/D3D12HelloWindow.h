@@ -33,11 +33,11 @@ private:
     
     // MousePicking
     void CreateIDRenderTarget();
-    void RenderForPicking();
-    uint32_t ReadPickedID(int mouseX, int mouseY);
-    void HandlePickedObject(uint32_t pickedID);
-    XMFLOAT4 EncodeIDColor(uint32_t id);
+    void RenderForIDPass();
+    uint32_t ReadPickedID();
     uint32_t DecodeIDColor(uint8_t r, uint8_t g, uint8_t b, uint8_t a);
+    void HandlePickedObject(uint32_t pickedID);
+    void PrepareReadbackForPicking(int mouseX, int mouseY);
 
 private:
     static const UINT FrameCount = 2;
@@ -72,12 +72,19 @@ private:
     InputState m_inputState;
 
     // Mouse Picking
+    ComPtr<ID3D12RootSignature> m_idRootSignature;
     ComPtr<ID3D12Resource> m_idRenderTarget;
-    ComPtr<ID3D12RootSignature> m_idRootsignature;
-    ComPtr<ID3D12DescriptorHeap> m_idRTVHeap;
     D3D12_CPU_DESCRIPTOR_HANDLE m_idRTVHandle;
-    ComPtr<ID3D12PipelineState> m_idPipelineState;
+    ComPtr<ID3D12DescriptorHeap> m_idRTVHeap;
+    D3D12_RESOURCE_STATES m_idRTState = { D3D12_RESOURCE_STATE_COMMON };
 
+    int m_pendingMouseX = -1;
+    int m_pendingMouseY = -1;
+    bool m_pendingPick = false;
+    ComPtr<ID3D12Resource> m_readbackBuffer;
+    D3D12_PLACED_SUBRESOURCE_FOOTPRINT m_readbackFootprint = {};
+    UINT64 m_readbackBufferSize = 0;
+    
     std::vector<std::unique_ptr<VertexSelector>> m_pickables;
     VertexSelector* m_selectedObject;
 

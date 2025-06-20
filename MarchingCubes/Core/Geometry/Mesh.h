@@ -13,7 +13,7 @@ public:
 	void Draw(ID3D12GraphicsCommandList* cmd) const;
 	UINT GetIndexCount() const override { return m_indexCount; };
 	D3D12_PRIMITIVE_TOPOLOGY GetTopology() const { return m_topology; };
-
+	
 private:
 	// 읽기 전용 버퍼와 쓰기 전용 버퍼를 분리하면 다음의 효과를 얻을 수 있음.
 	// 1. CPU->GPU 업로드 시 Upload Heap을 사용하면 Map과 memcpy 호출로 데이터를 쓸 수 있음.

@@ -1,4 +1,7 @@
-float4 idColor : register(b2);
+cbuffer PickBuffer : register(b2)
+{
+    float4 idColor;
+}
 
 struct PSInput
 {
@@ -8,6 +11,5 @@ struct PSInput
 
 float4 PSMain(PSInput input) : SV_TARGET
 {
-  //  return idColor;
-    return float4(1.0f, 0.0f, 0.0f, 1.0f);
+    return idColor;
 }

@@ -4,6 +4,9 @@
 #include "Core/UI/ImGUIRenderer.h"
 #include <algorithm>
 
+//디버깅용
+#include <wincodec.h>
+#pragma comment(lib, "windowscodecs.lib")
 
 D3D12HelloWindow::D3D12HelloWindow(UINT width, UINT height, std::wstring name)
 	: DXAppBase(width, height, name), 
@@ -66,10 +69,14 @@ void D3D12HelloWindow::OnUpdate(float deltaTime)
 		return;
 	}
 
-	if (m_inputState.IsPressed(ActionKey::ToggleDebugView))
+	static bool prevToggleState = false;
+	bool currentToggleState = m_inputState.IsPressed(ActionKey::ToggleDebugView);
+	if (currentToggleState && !prevToggleState)
 	{
 		m_debugViewEnabled = !m_debugViewEnabled;
+		OutputDebugString(m_debugViewEnabled ? L"ID Render Target ON\n" : L"ID Render Target OFF\n");
 	}
+	prevToggleState = currentToggleState;
 
 	m_camera->Move(m_inputState, deltaTime);
 	if (m_inputState.m_rightBtnState == MouseButtonState::Pressed)
@@ -81,9 +88,9 @@ void D3D12HelloWindow::OnUpdate(float deltaTime)
 
 	if (m_inputState.m_leftBtnState == MouseButtonState::JustReleased)
 	{
-		RenderForPicking();
-		uint32_t pickedID = ReadPickedID(m_inputState.m_mouseX, m_inputState.m_mouseY);
-		HandlePickedObject(pickedID);
+		m_pendingMouseX = m_inputState.m_mouseX;
+		m_pendingMouseY = m_inputState.m_mouseY;
+		m_pendingPick = true;
 	}
 
 	m_cubeMesh.Update();
@@ -102,6 +109,21 @@ void D3D12HelloWindow::OnRender()
 
 	ID3D12CommandList* ppCommandLists[] = { m_commandList.Get() };
 	m_commandQueue->ExecuteCommandLists(_countof(ppCommandLists), ppCommandLists);
+
+	WaitForGpu();
+
+	// GPU 명령 제출 후, 읽기 가능한 시점
+	if (m_pendingPick)
+	{
+		uint32_t id = ReadPickedID();
+
+		wchar_t buf[128];
+		swprintf_s(buf, L"Picked id: %d\n", id);
+		OutputDebugString(buf);
+
+		HandlePickedObject(id);
+	}
+
 
 	ThrowIfFailed(m_swapChain->Present(1, 0));
 
@@ -238,9 +260,9 @@ void D3D12HelloWindow::LoadPipeline()
 		ThrowIfFailed(m_device->CreateCommandAllocator(D3D12_COMMAND_LIST_TYPE_BUNDLE, IID_PPV_ARGS(&m_bundleAllocator)));
 	}	
 
-	ThrowIfFailed(m_device->CreateFence(0, D3D12_FENCE_FLAG_NONE, IID_PPV_ARGS(&m_fence)));
-
 	CreateIDRenderTarget();
+
+	ThrowIfFailed(m_device->CreateFence(0, D3D12_FENCE_FLAG_NONE, IID_PPV_ARGS(&m_fence)));
 }
 
 void D3D12HelloWindow::LoadAssets()
@@ -261,24 +283,6 @@ void D3D12HelloWindow::LoadAssets()
 		ComPtr<ID3DBlob> error;
 		ThrowIfFailed(D3D12SerializeRootSignature(&rootSignatureDesc, D3D_ROOT_SIGNATURE_VERSION_1, &signature, &error));
 		ThrowIfFailed(m_device->CreateRootSignature(0, signature->GetBufferPointer(), signature->GetBufferSize(), IID_PPV_ARGS(&m_rootSignature)));
-	}
-
-	// Create ID Root Signature
-	{
-		CD3DX12_ROOT_PARAMETER rootParams[3];
-		ZeroMemory(rootParams, sizeof(rootParams));
-
-		rootParams[0].InitAsConstantBufferView(0); // CameraBuffer
-		rootParams[1].InitAsConstantBufferView(1); // ObjectBuffer
-		rootParams[2].InitAsConstants(4,2,0); // ObjectIDBuffer
-
-		CD3DX12_ROOT_SIGNATURE_DESC rootSignatureDesc;
-		rootSignatureDesc.Init(_countof(rootParams), rootParams, 0, nullptr, D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT);
-
-		ComPtr<ID3DBlob> signature;
-		ComPtr<ID3DBlob> error;
-		ThrowIfFailed(D3D12SerializeRootSignature(&rootSignatureDesc, D3D_ROOT_SIGNATURE_VERSION_1, &signature, &error));
-		ThrowIfFailed(m_device->CreateRootSignature(0, signature->GetBufferPointer(), signature->GetBufferSize(), IID_PPV_ARGS(&m_idRootsignature)));
 	}
 
 	CreatePipelineStates();
@@ -320,8 +324,8 @@ void D3D12HelloWindow::LoadAssets()
 		meshUploader.Begin();
 
 		meshUploader.UploadMesh(m_cubeMesh, CubeData);
-		m_pickables.push_back(std::make_unique<VertexSelector>(meshUploader, XMFLOAT3{ -1,-1,-1 }));
-		m_pickables.push_back(std::make_unique<VertexSelector>(meshUploader, XMFLOAT3{ 1,1,1 }));
+		m_pickables.push_back(std::make_unique<VertexSelector>(m_device.Get(), meshUploader, XMFLOAT3{ -1,-1,-1 }));
+		m_pickables.push_back(std::make_unique<VertexSelector>(m_device.Get(), meshUploader, XMFLOAT3{1,1,1}));
 
 		meshUploader.End(m_commandQueue.Get());
 		
@@ -334,6 +338,164 @@ void D3D12HelloWindow::LoadAssets()
 		}
 		
 	}
+}
+
+void D3D12HelloWindow::CreateIDRenderTarget()
+{
+	D3D12_DESCRIPTOR_HEAP_DESC rtvHeapDesc = {};
+	rtvHeapDesc.NumDescriptors = 1; // 단일 RT
+	rtvHeapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_RTV;
+	rtvHeapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_NONE;
+	ThrowIfFailed(m_device->CreateDescriptorHeap(&rtvHeapDesc, IID_PPV_ARGS(&m_idRTVHeap)));
+
+	CD3DX12_CPU_DESCRIPTOR_HANDLE handle(m_idRTVHeap->GetCPUDescriptorHandleForHeapStart());
+
+	D3D12_RESOURCE_DESC desc = CD3DX12_RESOURCE_DESC::Tex2D(
+		DXGI_FORMAT_R8G8B8A8_UNORM, m_width, m_height, 1, 1);
+	desc.Flags = D3D12_RESOURCE_FLAG_ALLOW_RENDER_TARGET;
+
+	D3D12_CLEAR_VALUE clearValue = {};
+	clearValue.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
+	clearValue.Color[0] = 0.0f;
+	clearValue.Color[1] = 0.0f;
+	clearValue.Color[2] = 0.0f;
+	clearValue.Color[3] = 0.0f;
+
+	ThrowIfFailed(m_device->CreateCommittedResource(
+		&CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT),
+		D3D12_HEAP_FLAG_NONE,
+		&desc,
+		D3D12_RESOURCE_STATE_RENDER_TARGET,
+		&clearValue,
+		IID_PPV_ARGS(&m_idRenderTarget)
+	));
+
+	m_device->CreateRenderTargetView(m_idRenderTarget.Get(), nullptr, handle);
+	m_idRTVHandle = handle;
+	m_idRTState = D3D12_RESOURCE_STATE_RENDER_TARGET;
+}
+
+void D3D12HelloWindow::RenderForIDPass()
+{
+	m_commandList->SetPipelineState(m_pipelineStates[PipelineMode::PickID].Get());
+	m_commandList->SetGraphicsRootSignature(m_idRootSignature.Get());
+	m_commandList->RSSetViewports(1, &m_viewport);
+	m_commandList->RSSetScissorRects(1, &m_scissorRect);
+
+	// Clear + Bind RTV
+	const float clearColor[] = { 0.0f, 0.0f, 0.0f, 0.0f };
+	m_commandList->OMSetRenderTargets(1, &m_idRTVHandle, FALSE, nullptr);
+	m_commandList->ClearRenderTargetView(m_idRTVHandle, clearColor, 0, nullptr);
+
+	// Camera constant buffer
+	m_camera->BindConstantBuffer(m_commandList.Get(), 0);
+
+	// ID Color 렌더링 대상 오브젝트
+	for (const auto& obj : m_pickables)
+	{
+		obj->RenderForPicking(m_commandList.Get());
+	}
+}
+
+uint32_t D3D12HelloWindow::ReadPickedID()
+{
+	if (!m_pendingPick) return 0;
+
+	m_pendingPick = false;
+
+	uint8_t* mapped = nullptr;
+	D3D12_RANGE range = { 0, sizeof(uint32_t) };
+	//D3D12_RANGE range = { 0, static_cast<SIZE_T>(m_readbackBufferSize) };
+	m_readbackBuffer->Map(0, &range, reinterpret_cast<void**>(&mapped));
+
+	D3D12_RESOURCE_DESC desc = m_idRenderTarget->GetDesc();
+	UINT width = static_cast<UINT>(desc.Width);
+	UINT height = desc.Height;
+	uint32_t rowPitch = m_readbackFootprint.Footprint.RowPitch;
+	uint8_t pixel[4];
+	memcpy(pixel, mapped, 4);
+	uint8_t r = pixel[0], g = pixel[1], b = pixel[2], a = pixel[3];
+
+	m_readbackBuffer->Unmap(0, nullptr);
+
+	return DecodeIDColor(r, g, b, a);
+}
+
+uint32_t D3D12HelloWindow::DecodeIDColor(uint8_t r, uint8_t g, uint8_t b, uint8_t a)
+{
+	uint32_t scrambled = (uint32_t(r) << 16) | (uint32_t(g) << 8) | uint32_t(b);
+	// 모듈러 역원 (3635633u의 역원): 9121617u
+	return (scrambled * 9121617u) & 0xFFFFFF;
+}
+
+void D3D12HelloWindow::HandlePickedObject(uint32_t pickedID)
+{
+	if (pickedID == 0)
+	{
+		m_selectedObject = nullptr;
+		return;
+	}
+
+	for (const auto& obj : m_pickables)
+	{
+		if (obj->GetID() == pickedID)
+		{
+			m_selectedObject = obj.get();
+			return;
+		}
+	}
+}
+
+void D3D12HelloWindow::PrepareReadbackForPicking(int mouseX, int mouseY)
+{
+
+	D3D12_RESOURCE_DESC desc = m_idRenderTarget->GetDesc();
+
+	m_device->GetCopyableFootprints(&desc, 0, 1, 0, &m_readbackFootprint, nullptr, nullptr, &m_readbackBufferSize);
+
+	if (!m_readbackBuffer)
+	{
+		ThrowIfFailed(m_device->CreateCommittedResource(
+			&CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_READBACK),
+			D3D12_HEAP_FLAG_NONE,
+			&CD3DX12_RESOURCE_DESC::Buffer(m_readbackBufferSize),
+			D3D12_RESOURCE_STATE_COPY_DEST,
+			nullptr,
+			IID_PPV_ARGS(&m_readbackBuffer)));
+	}
+
+	D3D12_TEXTURE_COPY_LOCATION src = {};
+	src.pResource = m_idRenderTarget.Get();
+	src.Type = D3D12_TEXTURE_COPY_TYPE_SUBRESOURCE_INDEX;
+	src.SubresourceIndex = 0;
+
+	D3D12_TEXTURE_COPY_LOCATION dst = {};
+	dst.pResource = m_readbackBuffer.Get();
+	dst.Type = D3D12_TEXTURE_COPY_TYPE_PLACED_FOOTPRINT;
+	dst.PlacedFootprint = m_readbackFootprint;
+
+	D3D12_BOX srcBox = {};
+	srcBox.left = mouseX;
+	srcBox.right = mouseX + 1;
+	srcBox.top = mouseY;
+	srcBox.bottom = mouseY + 1;
+	srcBox.front = 0;
+	srcBox.back = 1;
+
+	m_commandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(
+		m_idRenderTarget.Get(),
+		m_idRTState,
+		D3D12_RESOURCE_STATE_COPY_SOURCE));
+
+	m_idRTState = D3D12_RESOURCE_STATE_COPY_SOURCE;
+	
+	m_commandList->CopyTextureRegion(&dst, 0, 0, 0, &src, &srcBox /*nullptr*/);
+
+	m_commandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(
+		m_idRenderTarget.Get(),
+		D3D12_RESOURCE_STATE_COPY_SOURCE,
+		D3D12_RESOURCE_STATE_RENDER_TARGET));
+	m_idRTState = D3D12_RESOURCE_STATE_RENDER_TARGET;
 }
 
 void D3D12HelloWindow::CreatePipelineStates()
@@ -349,9 +511,9 @@ void D3D12HelloWindow::CreatePipelineStates()
 #endif
 	ThrowIfFailed(D3DCompileFromFile(GetShaderFullPath(L"shaders.hlsl").c_str(), nullptr, nullptr, "VSMain", "vs_5_0", compileFlags, 0, &vertexShader, nullptr));
 	ThrowIfFailed(D3DCompileFromFile(GetShaderFullPath(L"shaders.hlsl").c_str(), nullptr, nullptr, "PSMain", "ps_5_0", compileFlags, 0, &pixelShader, nullptr));
-
+	
 	ThrowIfFailed(D3DCompileFromFile(GetShaderFullPath(L"PickID_PS.hlsl").c_str(), nullptr, nullptr, "PSMain", "ps_5_0", compileFlags, 0, &pickIDPS, nullptr));
-
+	
 	ThrowIfFailed(D3DCompileFromFile(GetShaderFullPath(L"HighlightPS.hlsl").c_str(), nullptr, nullptr, "VSMain", "vs_5_0", compileFlags, 0, &highlightVS, nullptr));
 	ThrowIfFailed(D3DCompileFromFile(GetShaderFullPath(L"HighlightPS.hlsl").c_str(), nullptr, nullptr, "PSMain", "ps_5_0", compileFlags, 0, &highlightPS, nullptr));
 
@@ -395,11 +557,26 @@ void D3D12HelloWindow::CreatePipelineStates()
 		m_pipelineStates[mode] = pso;
 	}
 
-	// PickID PSO
+	//Pick ID PSO
 	{
+		// Root Signature 정의: b0 (ViewProj), b1 (World+Color), Root32bitConstants (object ID color)
+		CD3DX12_ROOT_PARAMETER params[3];
+		params[0].InitAsConstantBufferView(0); // b0
+		params[1].InitAsConstantBufferView(1); // b1
+		params[2].InitAsConstants(4, 2, 0); // 4 x 32bit = float4
+		//params[2].InitAsConstantBufferView(2); // b2
+
+		CD3DX12_ROOT_SIGNATURE_DESC rootSigDesc;
+		rootSigDesc.Init(3, params, 0, nullptr, D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT);
+
+		ComPtr<ID3DBlob> sigBlob, errBlob;
+		D3D12SerializeRootSignature(&rootSigDesc, D3D_ROOT_SIGNATURE_VERSION_1, &sigBlob, &errBlob);
+		m_device->CreateRootSignature(0, sigBlob->GetBufferPointer(), sigBlob->GetBufferSize(), IID_PPV_ARGS(&m_idRootSignature));
+
+		// PSO 설정
 		D3D12_GRAPHICS_PIPELINE_STATE_DESC psoDesc = {};
 		psoDesc.InputLayout = { inputElementDescs, _countof(inputElementDescs) };
-		psoDesc.pRootSignature = m_idRootsignature.Get();
+		psoDesc.pRootSignature = m_idRootSignature.Get();
 		psoDesc.VS = CD3DX12_SHADER_BYTECODE(vertexShader.Get());
 		psoDesc.PS = CD3DX12_SHADER_BYTECODE(pickIDPS.Get());
 		psoDesc.RasterizerState = CD3DX12_RASTERIZER_DESC(D3D12_DEFAULT);
@@ -412,7 +589,7 @@ void D3D12HelloWindow::CreatePipelineStates()
 		psoDesc.RTVFormats[0] = DXGI_FORMAT_R8G8B8A8_UNORM;
 		psoDesc.SampleDesc.Count = 1;
 
-		ThrowIfFailed(m_device->CreateGraphicsPipelineState(&psoDesc, IID_PPV_ARGS(&m_pipelineStates[PipelineMode::PickID])));
+		m_device->CreateGraphicsPipelineState(&psoDesc, IID_PPV_ARGS(&m_pipelineStates[PipelineMode::PickID]));
 	}
 
 	// Highlight PSO
@@ -442,6 +619,54 @@ void D3D12HelloWindow::PopulateCommandList()
 	ThrowIfFailed(m_commandAllocators[m_frameIndex]->Reset());
 
 	ThrowIfFailed(m_commandList->Reset(m_commandAllocators[m_frameIndex].Get(), nullptr));
+
+	// ID 렌더 타겟을 항상 RENDER_TARGET으로 만들기
+	if (m_idRTState != D3D12_RESOURCE_STATE_RENDER_TARGET)
+	{
+		m_commandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(
+			m_idRenderTarget.Get(),
+			m_idRTState,
+			D3D12_RESOURCE_STATE_RENDER_TARGET));
+		m_idRTState = D3D12_RESOURCE_STATE_RENDER_TARGET;
+	}
+
+	RenderForIDPass();
+
+	if (m_debugViewEnabled)
+	{
+		// ID 렌더 타겟을 backbuffer로 복사
+		m_commandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(
+			m_idRenderTarget.Get(),
+			D3D12_RESOURCE_STATE_RENDER_TARGET,
+			D3D12_RESOURCE_STATE_COPY_SOURCE));
+		m_idRTState = D3D12_RESOURCE_STATE_COPY_SOURCE;
+
+		m_commandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(
+			m_renderTargets[m_frameIndex].Get(),
+			D3D12_RESOURCE_STATE_PRESENT,
+			D3D12_RESOURCE_STATE_COPY_DEST));
+
+		m_commandList->CopyResource(
+			m_renderTargets[m_frameIndex].Get(),
+			m_idRenderTarget.Get());
+
+		m_commandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(
+			m_renderTargets[m_frameIndex].Get(),
+			D3D12_RESOURCE_STATE_COPY_DEST,
+			D3D12_RESOURCE_STATE_PRESENT));
+
+		ThrowIfFailed(m_commandList->Close());
+		return; // 일반 렌더링 스킵
+	}
+	else if(m_idRTState != D3D12_RESOURCE_STATE_COMMON)
+	{
+		// ID RT 상태 되돌리기
+		m_commandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(
+			m_idRenderTarget.Get(),
+			m_idRTState,
+			D3D12_RESOURCE_STATE_COMMON));
+		m_idRTState = D3D12_RESOURCE_STATE_COMMON;
+	}
 
 	// Set necessary state.
 	m_commandList->SetGraphicsRootSignature(m_rootSignature.Get());
@@ -484,6 +709,12 @@ void D3D12HelloWindow::PopulateCommandList()
 
 	OnRenderUI();
 
+	if (m_pendingPick)
+	{
+		// Copy the pixel under cursor to readback buffer
+		PrepareReadbackForPicking(m_pendingMouseX, m_pendingMouseY); // <-- 새로운 함수
+	}
+
 	// 렌더링 끝났음. Present 상태로 전환
 	m_commandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(m_renderTargets[m_frameIndex].Get(), D3D12_RESOURCE_STATE_RENDER_TARGET, D3D12_RESOURCE_STATE_PRESENT));
 
@@ -523,175 +754,4 @@ void D3D12HelloWindow::MoveToNextFrame()
 	}
 
 	m_fenceValues[m_frameIndex] = currentFenceValue + 1;
-}
-
-void D3D12HelloWindow::CreateIDRenderTarget()
-{
-	D3D12_RESOURCE_DESC idRenderTargetDesc = CD3DX12_RESOURCE_DESC::Tex2D(DXGI_FORMAT_R8G8B8A8_UNORM, m_width, m_height, 1, 1);
-	idRenderTargetDesc.Flags = D3D12_RESOURCE_FLAG_ALLOW_RENDER_TARGET;
-
-	D3D12_CLEAR_VALUE clearValue = {};
-	clearValue.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
-	clearValue.Color[0] = 0.0f;
-	clearValue.Color[1] = 0.0f;
-	clearValue.Color[2] = 0.0f;
-	clearValue.Color[3] = 0.0f;
-
-	ThrowIfFailed(m_device->CreateCommittedResource(&CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT), D3D12_HEAP_FLAG_NONE, &idRenderTargetDesc, D3D12_RESOURCE_STATE_COMMON, &clearValue, IID_PPV_ARGS(&m_idRenderTarget)));
-
-	D3D12_DESCRIPTOR_HEAP_DESC rtvHeapDesc = {};
-	rtvHeapDesc.NumDescriptors = 1;
-	rtvHeapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_RTV;
-	rtvHeapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_NONE;
-
-	ThrowIfFailed(m_device->CreateDescriptorHeap(&rtvHeapDesc, IID_PPV_ARGS(&m_idRTVHeap)));
-
-	m_idRTVHandle = m_idRTVHeap->GetCPUDescriptorHandleForHeapStart();
-	m_device->CreateRenderTargetView(m_idRenderTarget.Get(), nullptr, m_idRTVHandle);
-}
-
-void D3D12HelloWindow::RenderForPicking()
-{
-	ThrowIfFailed(m_commandAllocators[m_frameIndex]->Reset());
-	ThrowIfFailed(m_commandList->Reset(m_commandAllocators[m_frameIndex].Get(), m_idPipelineState.Get()));
-
-	m_commandList->RSSetViewports(1, &m_viewport);
-	m_commandList->RSSetScissorRects(1, &m_scissorRect);
-
-	m_commandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(m_idRenderTarget.Get(), D3D12_RESOURCE_STATE_COMMON, D3D12_RESOURCE_STATE_RENDER_TARGET));
-
-	m_commandList->OMSetRenderTargets(1, &m_idRTVHandle, FALSE, nullptr);
-
-	const float clearColor[] = { 1.0f, 0.0f, 0.0f, 1.0f };
-	m_commandList->ClearRenderTargetView(m_idRTVHandle, clearColor, 0, nullptr);
-
-	m_commandList->SetGraphicsRootSignature(m_idRootsignature.Get());
-
-	m_commandList->SetPipelineState(m_pipelineStates[PipelineMode::PickID].Get());
-
-	m_camera->BindConstantBuffer(m_commandList.Get(), 0);
-
-	for (const auto& obj : m_pickables)
-	{
-		XMFLOAT4 idColor = EncodeIDColor(obj->GetID());
-		m_commandList->SetGraphicsRoot32BitConstants(2, 4, &idColor, 0);
-
-		// Debug log
-		OutputDebugString((L"Rendering ID: " + std::to_wstring(obj->GetID()) + L", Color : " + std::to_wstring(idColor.x) + L", " + std::to_wstring(idColor.y) + L", "+ std::to_wstring(idColor.z) + L", " + std::to_wstring(idColor.w) + L"\n").c_str());
-
-		obj->RenderForPicking(m_commandList.Get());
-	}
-
-	m_commandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(m_idRenderTarget.Get(), D3D12_RESOURCE_STATE_RENDER_TARGET, D3D12_RESOURCE_STATE_COPY_SOURCE));
-
-	ThrowIfFailed(m_commandList->Close());
-	ID3D12CommandList* cmds[] = { m_commandList.Get() };
-	m_commandQueue->ExecuteCommandLists(1, cmds);
-
-	WaitForGpu();
-}
-
-uint32_t D3D12HelloWindow::ReadPickedID(int mouseX, int mouseY)
-{
-	//Windows 마우스 좌표계 -> DirectX 마우스 좌표계로 변경
-	mouseX = std::clamp(mouseX, 0, (int)m_width - 1);
-	mouseY = std::clamp(mouseY, 0, (int)m_height - 1);
-	int flippedY = m_height - mouseY - 1;
-
-	D3D12_TEXTURE_COPY_LOCATION src = {};
-	src.pResource = m_idRenderTarget.Get();
-	src.Type = D3D12_TEXTURE_COPY_TYPE_SUBRESOURCE_INDEX;
-	src.SubresourceIndex = 0;
-
-	D3D12_RESOURCE_DESC desc = m_idRenderTarget->GetDesc();
-	D3D12_PLACED_SUBRESOURCE_FOOTPRINT footprint = {};
-	UINT64 totalBytes = 0;
-
-	m_device->GetCopyableFootprints(&desc, 0, 1, 0, &footprint, nullptr, nullptr, &totalBytes);
-
-	ComPtr<ID3D12Resource> readback;
-	ThrowIfFailed(m_device->CreateCommittedResource(&CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_READBACK), D3D12_HEAP_FLAG_NONE, &CD3DX12_RESOURCE_DESC::Buffer(totalBytes), D3D12_RESOURCE_STATE_COPY_DEST, nullptr, IID_PPV_ARGS(&readback)));
-
-	D3D12_TEXTURE_COPY_LOCATION dst = {};
-	dst.pResource = readback.Get();
-	dst.Type = D3D12_TEXTURE_COPY_TYPE_PLACED_FOOTPRINT;
-	dst.PlacedFootprint = footprint;
-
-	D3D12_BOX srcBox = {};
-	srcBox.left = mouseX;
-	srcBox.right = mouseX + 1;
-	srcBox.top = flippedY;
-	srcBox.bottom = flippedY + 1;
-	srcBox.front = 0;
-	srcBox.back = 1;
-
-	assert(mouseX >= 0 && mouseX < (int)m_width);
-	assert(flippedY >= 0 && flippedY < (int)m_height);
-
-	ThrowIfFailed(m_commandAllocators[m_frameIndex]->Reset());
-	ThrowIfFailed(m_commandList->Reset(m_commandAllocators[m_frameIndex].Get(), nullptr));
-
-	// CopyTextureRegion을 호출하기 위해서는 m_idRenderTarget이 COPY_SOURCE 상태여야 함.
-	m_commandList->CopyTextureRegion(&dst, 0, 0, 0, &src, &srcBox);
-	
-	ThrowIfFailed(m_commandList->Close());
-
-	ID3D12CommandList* cmds[] = { m_commandList.Get() };
-	m_commandQueue->ExecuteCommandLists(1, cmds);
-
-	WaitForGpu();
-
-	uint8_t* mapped = nullptr;
-	D3D12_RANGE range = { 0, sizeof(uint32_t) };
-	readback->Map(0, &range, reinterpret_cast<void**>(&mapped));
-
-	uint32_t rowPitch = footprint.Footprint.RowPitch;
-	uint8_t* pixel = mapped + (flippedY * rowPitch) + (mouseX * 4);
-
-	uint8_t r = pixel[0];
-	uint8_t g = pixel[1];
-	uint8_t b = pixel[2];
-	uint8_t a = pixel[3];
-
-	wchar_t buf[128];
-	swprintf_s(buf, L"Picked pixel: R=%d G=%d B=%d A=%d\n", r, g, b, a);
-	OutputDebugString(buf);
-	
-	readback->Unmap(0, nullptr);
-
-	return DecodeIDColor(r, g, b, a);
-}
-
-void D3D12HelloWindow::HandlePickedObject(uint32_t pickedID)
-{
-	if (pickedID == 0)
-	{
-		m_selectedObject = nullptr;
-		return;
-	}
-
-	for (auto& obj : m_pickables)
-	{
-		if (obj->GetID() == pickedID)
-		{
-			m_selectedObject = obj.get();
-			return;
-		}
-	}
-
-}
-
-XMFLOAT4 D3D12HelloWindow::EncodeIDColor(uint32_t id)
-{
-	return { 
-		float((id >> 0) & 0xFF) / 255.0f, 
-		float((id >> 8) & 0xFF) / 255.0f,
-		float((id >> 16) & 0xFF) / 255.0f,
-		float((id >> 24) & 0xFF) / 255.0f,
-	};
-}
-
-uint32_t D3D12HelloWindow::DecodeIDColor(uint8_t r, uint8_t g, uint8_t b, uint8_t a)
-{
-	return ( a << 24 ) | ( b << 16 ) | ( g << 8 ) | r;
 }

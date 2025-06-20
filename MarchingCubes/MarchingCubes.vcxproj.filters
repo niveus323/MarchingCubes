@@ -125,7 +125,7 @@
   </ItemGroup>
   <ItemGroup>
     <FxCompile Include="Assets\Shaders\shaders.hlsl" />
-    <FxCompile Include="Assets\Shaders\PickID_PS.hlsl" />
     <FxCompile Include="Assets\Shaders\HighlightPS.hlsl" />
+    <FxCompile Include="Assets\Shaders\PickID_PS.hlsl" />
   </ItemGroup>
 </Project>
