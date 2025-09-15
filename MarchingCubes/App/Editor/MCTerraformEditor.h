@@ -1,5 +1,5 @@
 #pragma once
-#include "DXAppBase.h"
+#include "App/Common/DXAppBase.h"
 #include "App/Editor/Interfaces/EditorInterfaces.h"
 #include "Core/Rendering/Camera.h"
 #include "Core/Rendering/LightManager.h"
@@ -11,11 +11,11 @@
 #include <array>
 using Microsoft::WRL::ComPtr;
 
-class D3D12HelloWindow : public DXAppBase
+class MCTerraformEditor : public DXAppBase
 {
 public:
-	D3D12HelloWindow(UINT width, UINT height, std::wstring name);
-    ~D3D12HelloWindow();
+    MCTerraformEditor(UINT width, UINT height, std::wstring name);
+    ~MCTerraformEditor();
 
 	virtual void OnInit() override;
     virtual void OnInitUI() override;
@@ -78,7 +78,6 @@ private:
     std::unique_ptr<Camera> m_camera;
     std::unique_ptr<LightManager> m_lightManager;
 
-    // NOTE : gridMesh를 MeshData로 스위칭하는 방법으로 테스트 중. (2025-07-23 Author : DHLee)
     Mesh m_gridMesh;
 
     // TODO : PBR 테스트를 위해 임시로 Material을 app에서 초기화하여 사용, ResoureManager 및 Wrapper 클래스로 만들어서 .mat 파일 로드하여 인스턴스를 wrapper 클래스에 넘기는 방식으로 수정할 것.
@@ -86,11 +85,6 @@ private:
 
     // Keyboard & Mouse Input Object
     InputState m_inputState;
-
-    // Mouse Picking
-    //int m_pendingMouseX = -1;
-    //int m_pendingMouseY = -1;
-    //bool m_pendingPick = false;
 
     // Marching Cubes
     DirectX::XMFLOAT3 m_gridOrigin = { 0,0,0 };

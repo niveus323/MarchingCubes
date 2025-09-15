@@ -1,5 +1,5 @@
 #include "pch.h"
-#include "D3D12HelloWindow.h"
+#include "App\Editor\MCTerraformEditor.h"
 #include <dxgidebug.h>
 
 
@@ -22,7 +22,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR, int nCmdShow)
 
     int exitCode = 0;
     {
-        D3D12HelloWindow sample(1280, 720, L"D3D12 Hello Window");
+        MCTerraformEditor sample(1280, 720, L"MarchingCubes");
         exitCode = Win32Application::Run(&sample, hInstance, nCmdShow);
     }
 

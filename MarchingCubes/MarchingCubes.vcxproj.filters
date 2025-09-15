@@ -21,10 +21,10 @@
     <ClCompile Include="Win32Application.cpp">
       <Filter>소스 파일</Filter>
     </ClCompile>
-    <ClCompile Include="DXAppBase.cpp">
+    <ClCompile Include="App\Common\DXAppBase.cpp">
       <Filter>소스 파일</Filter>
     </ClCompile>
-    <ClCompile Include="D3D12HelloWindow.cpp">
+    <ClCompile Include="App\Editor\MCTerraformEditor.cpp">
       <Filter>소스 파일</Filter>
     </ClCompile>
     <ClCompile Include="Core\DataStructures\Grid.cpp">
@@ -107,13 +107,13 @@
     <ClInclude Include="Win32Application.h">
       <Filter>헤더 파일</Filter>
     </ClInclude>
-    <ClInclude Include="DXAppBase.h">
+    <ClInclude Include="App\Common\DXAppBase.h">
       <Filter>헤더 파일</Filter>
     </ClInclude>
     <ClInclude Include="Core\Utils\DXHelper.h">
       <Filter>헤더 파일</Filter>
     </ClInclude>
-    <ClInclude Include="D3D12HelloWindow.h">
+    <ClInclude Include="App\Editor\MCTerraformEditor.h">
       <Filter>헤더 파일</Filter>
     </ClInclude>
     <ClInclude Include="Core\DataStructures\Grid.h">
