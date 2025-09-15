@@ -11,6 +11,7 @@ InputState::InputState()
 	m_mouseInitialized(false)
 {
 	m_keyMap[ActionKey::Escape] = VK_ESCAPE;
+	m_keyMap[ActionKey::Ctrl] = VK_CONTROL;
 	m_keyMap[ActionKey::MoveForward] = 'W';
 	m_keyMap[ActionKey::MoveBackward] = 'S';
 	m_keyMap[ActionKey::MoveLeft] = 'A';
@@ -18,6 +19,7 @@ InputState::InputState()
 	m_keyMap[ActionKey::MoveUp] = 'E';
 	m_keyMap[ActionKey::MoveDown] = 'Q';
 	m_keyMap[ActionKey::ToggleDebugView] = VK_F1;
+	m_keyMap[ActionKey::ToggleWireFrame] = VK_F2;
 }
 
 void InputState::OnMouseDown(int x, int y, WPARAM btn)

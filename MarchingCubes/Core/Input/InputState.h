@@ -4,6 +4,7 @@
 enum class ActionKey
 {
 	Escape,
+	Ctrl,
 	MoveForward,
 	MoveBackward,
 	MoveLeft,
@@ -11,6 +12,7 @@ enum class ActionKey
 	MoveUp,
 	MoveDown,
 	ToggleDebugView,
+	ToggleWireFrame,
 	Count
 };
 

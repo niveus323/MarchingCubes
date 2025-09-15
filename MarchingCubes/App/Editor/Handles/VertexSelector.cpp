@@ -1,41 +1,24 @@
 #include "pch.h"
 #include "VertexSelector.h"
 #include "Core/Geometry/MeshGenerator.h"
-#include "Core/Utils/DXHelper.h"
 
-VertexSelector::VertexSelector(ID3D12Device* device, UploadContext& meshUploader, const DirectX::XMFLOAT3& position, float radius) :
+VertexSelector::VertexSelector(ID3D12Device* device, UploadContext& meshUploader, const DirectX::XMFLOAT3& position, int id, float radius, const DirectX::XMFLOAT4& defaultColor, const DirectX::XMFLOAT4& selectedColor) :
 	m_position(position),
-	m_radius(radius)
+	m_id(id),
+	m_radius(radius),
+	m_defaultcolor(defaultColor),
+	m_selectedColor(selectedColor)
 {
-	static UINT s_nextID = 1;
-	m_id = s_nextID++;
-
-	MeshData meshData = CreateSphereMeshData(radius);
-	m_mesh = std::make_shared<Mesh>();
+	MeshData meshData = MeshGenerator::CreateSphereMeshData(radius, defaultColor);
+	m_mesh = std::make_unique<Mesh>();
 	m_mesh->SetPosition(m_position);
 
-	meshUploader.UploadMesh(*m_mesh, meshData);
+	m_renderItem = meshUploader.UploadDynamicMesh(*m_mesh, meshData);
+}
 
-	//Pick ID Constant Buffer »ý¼º
-	PickIDConstants cb{};
-	cb.idColor = EncodeIDColor(m_id);
-	DirectX::XMStoreFloat4(&cb.idColor, DirectX::XMLoadFloat4(&cb.idColor));
-	
-	const UINT pickIDConstantBufferSize = (sizeof(PickIDConstants) + 255) & ~255;
-
-	ThrowIfFailed(device->CreateCommittedResource(
-		&CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD),
-		D3D12_HEAP_FLAG_NONE, 
-		&CD3DX12_RESOURCE_DESC::Buffer(pickIDConstantBufferSize),
-		D3D12_RESOURCE_STATE_GENERIC_READ,
-		nullptr,
-		IID_PPV_ARGS(&m_pickIDConstantBuffer)
-	));
-	m_mappedPickIDCB = nullptr;
-	CD3DX12_RANGE readRange(0, 0);
-	ThrowIfFailed(m_pickIDConstantBuffer->Map(0, &readRange, reinterpret_cast<void**>(&m_mappedPickIDCB)));
-
-	memcpy(m_mappedPickIDCB, &cb, sizeof(PickIDConstants));
+VertexSelector::~VertexSelector()
+{
+	m_mesh.reset();
 }
 
 void VertexSelector::SetHovered(bool bHovered)
@@ -48,14 +31,11 @@ void VertexSelector::SetHovered(bool bHovered)
 
 }
 
-void VertexSelector::RenderForPicking(ID3D12GraphicsCommandList* cmd) const
+void VertexSelector::SetSelected(bool bSelected)
 {
-	//cmd->SetGraphicsRootConstantBufferView(2, m_pickIDConstantBuffer->GetGPUVirtualAddress());
-	XMFLOAT4 color = EncodeIDColor(m_id);
-	cmd->SetGraphicsRoot32BitConstants(2, 4, &color, 0);
-	m_mesh->m_buffer.Draw(cmd);
+	m_selected = bSelected;
+	m_mesh->SetColor(m_selected ? m_selectedColor : m_defaultcolor);
 }
-
 
 DirectX::XMFLOAT4 VertexSelector::EncodeIDColor(uint32_t id) const
 {

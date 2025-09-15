@@ -1,5 +1,4 @@
 #pragma once
-#include "Core/Utils/DXHelper.h"
 #include "Win32Application.h"
 #include "Core/Utils/Timer.h"
 #include "Core/UI/UIRenderer.h"
@@ -37,7 +36,6 @@ public:
 
 protected:
 	std::wstring GetAssetFullPath(LPCWSTR assetName);
-    std::wstring GetShaderFullPath(LPCWSTR shaderName);
 	
 	void GetHawrdwardAdapter(_In_ IDXGIFactory1* pFactory, _Outptr_result_maybenull_ IDXGIAdapter1** ppAdapter, bool requestHightPerformanceAdapter = false);
 

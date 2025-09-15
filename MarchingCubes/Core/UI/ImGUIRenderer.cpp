@@ -83,10 +83,15 @@ void ImGUIRenderer::ShutDown()
     ImGui::DestroyContext();
 }
 
-LRESULT ImGUIRenderer::WndMsgProc(UINT msg, WPARAM wParam, LPARAM lParam)
+LRESULT ImGUIRenderer::WndMsgProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam)
 {
-    if (ImGui_ImplWin32_WndProcHandler(Win32Application::GetHwnd(), msg, wParam, lParam))
+    if (ImGui_ImplWin32_WndProcHandler(hWnd, msg, wParam, lParam))
         return true;
 
     return false;
+}
+
+bool ImGUIRenderer::IsCapturingUI()
+{
+    return ImGui::GetCurrentContext() && ImGui::GetIO().WantCaptureMouse;
 }

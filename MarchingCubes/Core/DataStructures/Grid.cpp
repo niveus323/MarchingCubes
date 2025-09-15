@@ -1,35 +1,12 @@
 #include "pch.h"
 #include "Grid.h"
 
-Grid::Grid(const GridParams& params, std::vector<float>&& density) 
-	: m_params(params), 
-	  m_density(std::move(density))
+Grid::Grid(int sizeX, int sizeY, int sizeZ, float cellSize, DirectX::XMFLOAT3 origin):
+	m_sizeX(sizeX),
+	m_sizeY(sizeY),
+	m_sizeZ(sizeZ),
+	m_cellSize(cellSize),
+	m_origin(origin),
+	m_density((sizeX + 1) * (sizeY + 1) * (sizeZ + 1), 0.0f)
 {
 }
-
-float Grid::Sample(int i, int j, int k) const
-{
-	size_t idx = i + j * m_params.dimX + k * (m_params.dimX * m_params.dimY);
-	return m_density[idx];
-}
-
-DirectX::XMFLOAT3 Grid::Position(int i, int j, int k) const
-{
-	return { m_params.origin.x + i * m_params.cellSize.x,
-			m_params.origin.y + j * m_params.cellSize.y,
-			m_params.origin.z + k * m_params.cellSize.z };
-}
-
-#ifdef _DEBUG
-
-void Grid::CreateDebugGrid(ID3D12Device* device)
-{
-
-}
-
-void Grid::DrawDebugGrid(ID3D12GraphicsCommandList* cmd)
-{
-
-}
-
-#endif

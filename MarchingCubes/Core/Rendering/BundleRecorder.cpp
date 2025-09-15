@@ -1,25 +1,51 @@
 #include "pch.h"
 #include "BundleRecorder.h"
-#include "Core/Utils/DXHelper.h"
 
-BundleRecorder::BundleRecorder(ID3D12Device* device, ID3D12PipelineState* pso, ID3D12RootSignature* rootSignature)
-	: m_device(device), m_pso(pso), m_rootSignature(rootSignature)
+BundleRecorder::BundleRecorder(ID3D12Device* device, ID3D12RootSignature* rootSignature, const std::unordered_map<PipelineMode, ComPtr<ID3D12PipelineState>>& psos, size_t contextsPerPso)
+	: m_device(device), m_rootSignature(rootSignature)
 {
+	for (auto& pso : psos)
+	{
+		ContextPool pool;
+		pool.pso = pso.second;
+		NAME_D3D12_OBJECT_ALIAS(pool.pso, ToLPCWSTR(pso.first));
+		pool.nextIndex = 0;
+		pool.contexts.resize(contextsPerPso);
+
+		for (Context& context : pool.contexts)
+		{
+			ThrowIfFailed(m_device->CreateCommandAllocator(D3D12_COMMAND_LIST_TYPE_BUNDLE, IID_PPV_ARGS(&context.allocator)));
+			NAME_D3D12_OBJECT_ALIAS(context.allocator, ToLPCWSTR(pso.first));
+			ThrowIfFailed(m_device->CreateCommandList(0, D3D12_COMMAND_LIST_TYPE_BUNDLE, context.allocator.Get(), pso.second.Get(), IID_PPV_ARGS(&context.bundle)));
+			NAME_D3D12_OBJECT_ALIAS(context.bundle, ToLPCWSTR(pso.first));
+			context.bundle->SetGraphicsRootSignature(m_rootSignature);
+			context.bundle->Close();
+		}
+		m_pools.push_back(std::move(pool));
+	}
 }
 
-ComPtr<ID3D12GraphicsCommandList> BundleRecorder::CreateBundleFor(const IDrawable* drawable, ID3D12CommandAllocator* allocator)
+StaticRenderItem BundleRecorder::CreateBundleFor(const std::vector<IDrawable*>& drawables, PipelineMode mode)
 {
-	// Create Allocator & CommandList
-	ComPtr<ID3D12GraphicsCommandList> bundle;
-	ThrowIfFailed(m_device->CreateCommandList(0, D3D12_COMMAND_LIST_TYPE_BUNDLE, allocator, m_pso.Get(), IID_PPV_ARGS(&bundle)));
+	StaticRenderItem item;
 
-	// Start Bundle Recording
-	bundle->SetGraphicsRootSignature(m_rootSignature.Get());
+	ContextPool& pool = m_pools[size_t(mode)];
 
-	drawable->Draw(bundle.Get());
+	size_t& idx = pool.nextIndex;
+	Context& context = pool.contexts[idx];
+	idx = (idx + 1) % pool.contexts.size();
 
+	context.allocator->Reset();
+	context.bundle->Reset(context.allocator.Get(), pool.pso.Get());
+	
+	for (IDrawable* drawable : drawables)
+	{
+		drawable->Draw(context.bundle.Get());
+	}
+	
 	// End Bundle Recording
-	bundle->Close();
+	context.bundle->Close();
+	item.bundle = context.bundle.Get();
 
-	return bundle;
+	return item;
 }

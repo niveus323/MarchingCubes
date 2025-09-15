@@ -1,7 +1,6 @@
 #include "pch.h"
 #include "Win32Application.h"
 #include "Core/UI/UIRenderer.h"
-
 HWND Win32Application::m_hwnd = nullptr;
 
 int Win32Application::Run(DXAppBase* pAppBase, HINSTANCE hInstance, int nCmdShow)
@@ -13,7 +12,7 @@ int Win32Application::Run(DXAppBase* pAppBase, HINSTANCE hInstance, int nCmdShow
     //CommandLineToArgvW를 통해 얻은 argv 객체는 LocalFree로 해제해야함. (https://learn.microsoft.com/ko-kr/windows/win32/api/shellapi/nf-shellapi-commandlinetoargvw)
 	LocalFree(argv);
 	
-    // Initialize the window class.
+    // CreateUploadBuffer the window class.
     WNDCLASSEX windowClass = { 0 };
     windowClass.cbSize = sizeof(WNDCLASSEX);
     windowClass.style = CS_HREDRAW | CS_VREDRAW;
@@ -40,7 +39,7 @@ int Win32Application::Run(DXAppBase* pAppBase, HINSTANCE hInstance, int nCmdShow
         hInstance,
         pAppBase);
 
-    // Initialize the sample. OnInit is defined in each child-implementation of DXSample.
+    // CreateUploadBuffer the sample. OnInit is defined in each child-implementation of DXSample.
     pAppBase->OnInit();
     pAppBase->StartTimer();
 
@@ -61,6 +60,7 @@ int Win32Application::Run(DXAppBase* pAppBase, HINSTANCE hInstance, int nCmdShow
             pAppBase->TickAndUpdate();
             pAppBase->OnRender();
         }
+       
     }
 
     pAppBase->OnDestroy();
@@ -71,68 +71,57 @@ int Win32Application::Run(DXAppBase* pAppBase, HINSTANCE hInstance, int nCmdShow
 
 LRESULT Win32Application::WindowProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 {
-    DXAppBase* pAppBase = reinterpret_cast<DXAppBase*>(GetWindowLongPtr(hWnd, GWLP_USERDATA));
-
-    if (pAppBase && pAppBase->GetUIRenderer())
-    {
-        IUIRenderer* uiRenderer = pAppBase->GetUIRenderer();
-        uiRenderer->WndMsgProc(message, wParam, lParam);
-    }
-
-    switch (message)
-    {
-    case WM_CREATE:
+    if (message == WM_CREATE)
     {
         // Save the DXSample* passed in to CreateWindow.
         LPCREATESTRUCT pCreateStruct = reinterpret_cast<LPCREATESTRUCT>(lParam);
         SetWindowLongPtr(hWnd, GWLP_USERDATA, reinterpret_cast<LONG_PTR>(pCreateStruct->lpCreateParams));
         return 0;
     }
-    case WM_KEYDOWN:
+    
+    if(message == WM_DESTROY)
     {
-        if (pAppBase)
-        {
-            pAppBase->OnKeyDown(wParam);
-        }
-        return 0;
-    }
-    case WM_KEYUP:
-    {
-        if (pAppBase)
-        {
-            pAppBase->OnKeyUp(wParam);
-        }
-        return 0;
-    }
-    case WM_MOUSEMOVE:
-    {
-        if (pAppBase)
-        {
-            pAppBase->OnMouseMove(GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam), wParam);
-        }
-        return 0;
-    }
-    case WM_LBUTTONDOWN:
-    case WM_RBUTTONDOWN:
-    {
-        if (pAppBase)
-        {
-            pAppBase->OnMouseBtnDown(GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam), (message == WM_LBUTTONDOWN) ? VK_LBUTTON : VK_RBUTTON);
-        }
-        return 0;
-    }
-    case WM_LBUTTONUP:
-    case WM_RBUTTONUP:
-    {
-        if (pAppBase)
-        {
-            pAppBase->OnMouseBtnUp(GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam), (message == WM_LBUTTONUP) ? VK_LBUTTON : VK_RBUTTON);
-        }
-        return 0;
-    }
-    case WM_DESTROY:
         PostQuitMessage(0);
         return 0;
+    }
+
+    if (auto* pAppBase = reinterpret_cast<DXAppBase*>(GetWindowLongPtr(hWnd, GWLP_USERDATA))) {
+        if (auto* ui = pAppBase->GetUIRenderer()) {
+            if (ui->WndMsgProc(hWnd, message, wParam, lParam))
+                return 0;
+        }
+
+        // 게임용 메시지 처리
+        switch (message)
+        {
+            case WM_KEYDOWN:
+            {
+                pAppBase->OnKeyDown(wParam);
+                return 0;
+            }
+            case WM_KEYUP:
+            {
+                pAppBase->OnKeyUp(wParam);
+                return 0;
+            }
+            case WM_MOUSEMOVE:
+            {
+                pAppBase->OnMouseMove(GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam), wParam);
+                return 0;
+            }
+            case WM_LBUTTONDOWN:
+            case WM_RBUTTONDOWN:
+            {
+                pAppBase->OnMouseBtnDown(GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam), (message == WM_LBUTTONDOWN) ? VK_LBUTTON : VK_RBUTTON);
+                return 0;
+            }
+            case WM_LBUTTONUP:
+            case WM_RBUTTONUP:
+            {
+                pAppBase->OnMouseBtnUp(GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam), (message == WM_LBUTTONUP) ? VK_LBUTTON : VK_RBUTTON);
+                return 0;
+            }
+        }
     }
 
     // Handle any messages the switch statement didn't.

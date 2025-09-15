@@ -36,9 +36,6 @@
     <ClCompile Include="Core\Rendering\BundleRecorder.cpp">
       <Filter>소스 파일</Filter>
     </ClCompile>
-    <ClCompile Include="Core\Geometry\MarchingCubesGenerator.cpp">
-      <Filter>소스 파일</Filter>
-    </ClCompile>
     <ClCompile Include="App\Editor\Handles\VertexSelector.cpp">
       <Filter>소스 파일</Filter>
     </ClCompile>
@@ -55,6 +52,51 @@
       <Filter>소스 파일</Filter>
     </ClCompile>
     <ClCompile Include="Core\UI\ImGUIRenderer.cpp">
+      <Filter>소스 파일</Filter>
+    </ClCompile>
+    <ClCompile Include="Core\Geometry\MarchingCubesTables.cpp">
+      <Filter>소스 파일</Filter>
+    </ClCompile>
+    <ClCompile Include="Core\Geometry\MeshGenerator.cpp">
+      <Filter>소스 파일</Filter>
+    </ClCompile>
+    <ClCompile Include="Core\Rendering\Material.cpp">
+      <Filter>소스 파일</Filter>
+    </ClCompile>
+    <ClCompile Include="Core\Rendering\LightManager.cpp">
+      <Filter>소스 파일</Filter>
+    </ClCompile>
+    <ClCompile Include="Core\Utils\DXHelper.cpp">
+      <Filter>소스 파일</Filter>
+    </ClCompile>
+    <ClCompile Include="Core\Math\PhysicsHelper.cpp">
+      <Filter>소스 파일</Filter>
+    </ClCompile>
+    <ClCompile Include="Core\Geometry\MarchingCubes\TerrainSystem.cpp">
+      <Filter>소스 파일</Filter>
+    </ClCompile>
+    <ClCompile Include="Core\Geometry\MarchingCubes\GPU\SDFVolume3D.cpp">
+      <Filter>소스 파일</Filter>
+    </ClCompile>
+    <ClCompile Include="Core\Geometry\MarchingCubes\GPU\GPUBrushCS.cpp">
+      <Filter>소스 파일</Filter>
+    </ClCompile>
+    <ClCompile Include="Core\Geometry\MarchingCubes\GPU\GPUMarchingCubesCS.cpp">
+      <Filter>소스 파일</Filter>
+    </ClCompile>
+    <ClCompile Include="Core\Geometry\MarchingCubes\GPU\GPUTerrainBackend.cpp">
+      <Filter>소스 파일</Filter>
+    </ClCompile>
+    <ClCompile Include="Core\Geometry\MarchingCubes\TerrainChunkRenderer.cpp">
+      <Filter>소스 파일</Filter>
+    </ClCompile>
+    <ClCompile Include="Core\Geometry\MarchingCubes\CPU\CPUTerrainBackend.cpp">
+      <Filter>소스 파일</Filter>
+    </ClCompile>
+    <ClCompile Include="Core\Geometry\MarchingCubes\CPU\MC33\MC33TerrainBackend.cpp">
+      <Filter>소스 파일</Filter>
+    </ClCompile>
+    <ClCompile Include="ThirdParty\mc33_impl.cpp">
       <Filter>소스 파일</Filter>
     </ClCompile>
   </ItemGroup>
@@ -84,9 +126,6 @@
       <Filter>헤더 파일</Filter>
     </ClInclude>
     <ClInclude Include="Core\Rendering\BundleRecorder.h">
-      <Filter>헤더 파일</Filter>
-    </ClInclude>
-    <ClInclude Include="Core\Geometry\MarchingCubesGenerator.h">
       <Filter>헤더 파일</Filter>
     </ClInclude>
     <ClInclude Include="App\Editor\Handles\VertexSelector.h">
@@ -119,13 +158,66 @@
     <ClInclude Include="Core\UI\ImGUIRenderer.h">
       <Filter>헤더 파일</Filter>
     </ClInclude>
+    <ClInclude Include="Core\Geometry\MarchingCubesTables.h">
+      <Filter>헤더 파일</Filter>
+    </ClInclude>
+    <ClInclude Include="Core\Rendering\RenderUtils.h">
+      <Filter>헤더 파일</Filter>
+    </ClInclude>
+    <ClInclude Include="Core\Rendering\Material.h">
+      <Filter>헤더 파일</Filter>
+    </ClInclude>
+    <ClInclude Include="Core\Rendering\LightManager.h">
+      <Filter>헤더 파일</Filter>
+    </ClInclude>
+    <ClInclude Include="Core\Math\PhysicsHelper.h">
+      <Filter>헤더 파일</Filter>
+    </ClInclude>
+    <ClInclude Include="Core\Geometry\MarchingCubes\TerrainSystem.h">
+      <Filter>헤더 파일</Filter>
+    </ClInclude>
+    <ClInclude Include="Core\Geometry\MarchingCubes\ITerrainBackend.h">
+      <Filter>헤더 파일</Filter>
+    </ClInclude>
+    <ClInclude Include="Core\Geometry\MarchingCubes\GPU\SDFVolume3D.h">
+      <Filter>헤더 파일</Filter>
+    </ClInclude>
+    <ClInclude Include="Core\Geometry\MarchingCubes\GPU\GPUBrushCS.h">
+      <Filter>헤더 파일</Filter>
+    </ClInclude>
+    <ClInclude Include="Core\Geometry\MarchingCubes\GPU\GPUMarchingCubesCS.h">
+      <Filter>헤더 파일</Filter>
+    </ClInclude>
+    <ClInclude Include="Core\Geometry\MarchingCubes\GPU\GPUTerrainBackend.h">
+      <Filter>헤더 파일</Filter>
+    </ClInclude>
+    <ClInclude Include="Core\Geometry\MarchingCubes\GPU\GPUMarchingCubesShared.h">
+      <Filter>헤더 파일</Filter>
+    </ClInclude>
+    <ClInclude Include="Core\Geometry\MarchingCubes\TerrainChunkRenderer.h">
+      <Filter>헤더 파일</Filter>
+    </ClInclude>
+    <ClInclude Include="Core\Geometry\MarchingCubes\CPU\CPUTerrainBackend.h">
+      <Filter>헤더 파일</Filter>
+    </ClInclude>
+    <ClInclude Include="Core\Geometry\MarchingCubes\CPU\MC33\MC33TerrainBackend.h">
+      <Filter>헤더 파일</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <None Include="..\Directory.Builds.targets" />
+    <None Include="Assets\Shaders\Common.hlsli" />
+    <None Include="Assets\Shaders\PBR.hlsli" />
+    <None Include="packages.config" />
   </ItemGroup>
   <ItemGroup>
     <FxCompile Include="Assets\Shaders\shaders.hlsl" />
     <FxCompile Include="Assets\Shaders\HighlightPS.hlsl" />
-    <FxCompile Include="Assets\Shaders\PickID_PS.hlsl" />
+    <FxCompile Include="Assets\Shaders\LineShaders.hlsl" />
+    <FxCompile Include="Assets\Shaders\MainPS.hlsl" />
+    <FxCompile Include="Assets\Shaders\MarchingCubesCS.hlsl" />
+    <FxCompile Include="Assets\Shaders\BrushCS.hlsl" />
+    <FxCompile Include="Assets\Shaders\PickCS.hlsl" />
+    <FxCompile Include="Assets\Shaders\BrushRegionCS.hlsl" />
   </ItemGroup>
 </Project>

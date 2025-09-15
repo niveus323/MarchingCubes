@@ -21,7 +21,8 @@ public:
 	virtual void BeginFrame() = 0;
 	virtual void EndFrame(ID3D12GraphicsCommandList* commandList) = 0;
 	virtual void ShutDown() = 0;
-	virtual LRESULT WndMsgProc(UINT msg, WPARAM wParam, LPARAM lParam) = 0;
+	virtual LRESULT WndMsgProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) = 0;
+	virtual bool IsCapturingUI() = 0;
 	std::wstring GetLastErrorMsg() const { return m_lastErrorMessage; };
 protected:
 	std::wstring m_lastErrorMessage;

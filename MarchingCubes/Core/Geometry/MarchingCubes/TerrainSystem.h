@@ -1,0 +1,37 @@
+#pragma once
+#include "Core/Geometry/MarchingCubes/TerrainChunkRenderer.h"
+
+class TerrainSystem
+{
+public:
+	explicit TerrainSystem(ID3D12Device* device, std::shared_ptr<_GRD> grd, const GridDesc& desc, TerrainMode mode);
+	~TerrainSystem() = default;
+
+	void setMode(ID3D12Device* device, TerrainMode mode);
+	void setGridDesc(ID3D12Device* deivce, const GridDesc& d);
+	
+	void initializeField(ID3D12Device* device, std::shared_ptr<_GRD> grid, const GridDesc& desc);
+	void initializeField(ID3D12Device* device, const _GRD& grid, const GridDesc& desc);
+
+	void requestRemesh(const RemeshRequest& r);
+	void requestBrush(const BrushRequest& r);
+
+	// GPU-Only ÀÛ¾÷
+	void encode(ID3D12GraphicsCommandList* cmd);
+	void tryFetch(ID3D12Device* device, ID3D12GraphicsCommandList* cmd);
+	void drainKeepAlive(std::vector<ComPtr<ID3D12Resource>>& dst);
+
+	// ChunkRenderer
+	TerrainChunkRenderer* GetRenderer() { return m_chunkRenderer.get(); }
+	void ResetRenderer() { m_chunkRenderer->Clear(); }
+
+private:
+	TerrainMode				m_mode{ TerrainMode::GPU_ORIGINAL };
+	std::shared_ptr<_GRD>	m_lastGRD;
+	GridDesc				m_grid{};
+
+	std::unique_ptr<ITerrainBackend> m_backend;
+
+	std::unique_ptr<TerrainChunkRenderer> m_chunkRenderer;
+};
+
