@@ -1,46 +1,74 @@
 #include "pch.h"
 #include "UploadContext.h"
-#include "Core/Utils/DXHelper.h"
-
-UploadContext::UploadContext(ID3D12Device* device) :
-	m_device(device),
-	m_fenceEvent(nullptr),
-	m_fenceValue(1)
-{
-	ThrowIfFailed(m_device->CreateCommandAllocator(D3D12_COMMAND_LIST_TYPE_DIRECT, IID_PPV_ARGS(&m_allocator)));
-	ThrowIfFailed(m_device->CreateCommandList(0, D3D12_COMMAND_LIST_TYPE_DIRECT, m_allocator.Get(), nullptr, IID_PPV_ARGS(&m_cmdList)));
-	ThrowIfFailed(m_device->CreateFence(0, D3D12_FENCE_FLAG_NONE, IID_PPV_ARGS(&m_fence)));
-	m_fenceEvent = CreateEvent(nullptr, FALSE, FALSE, nullptr);
-}
 
 UploadContext::~UploadContext()
 {
-	CloseHandle(m_fenceEvent);
+	m_device.Reset();
 }
 
-void UploadContext::Begin()
+void UploadContext::Initailize(ID3D12Device* device)
 {
-	m_allocator->Reset();
-	m_cmdList->Reset(m_allocator.Get(), nullptr);
+	m_device = device;
 }
 
-void UploadContext::UploadMesh(Mesh& mesh, const MeshData& data)
+void UploadContext::Execute(ID3D12GraphicsCommandList* cmdList)
 {
-	mesh.Upload(m_device.Get(), m_cmdList.Get(), data);
-}
+#ifdef _DEBUG
+	assert(m_device.Get() && "Init() must be called before Execute()");
+#endif
 
-void UploadContext::End(ID3D12CommandQueue* queue)
-{
-	m_cmdList->Close();
-	ID3D12CommandList* lists[] = { m_cmdList.Get() };
-	queue->ExecuteCommandLists(1, lists);
-
-	queue->Signal(m_fence.Get(), m_fenceValue);
-	if (m_fenceEvent == nullptr)
+	for (Mesh* mesh : m_meshToCommit)
 	{
-		ThrowIfFailed(HRESULT_FROM_WIN32(GetLastError()));
+		if (m_deletionSink) mesh->SetDeletionSink(m_deletionSink);
+
+		mesh->CommitBuffers(m_device.Get(), cmdList);
 	}
-	m_fence->SetEventOnCompletion(m_fenceValue, m_fenceEvent);
-	WaitForSingleObjectEx(m_fenceEvent, INFINITE, FALSE);
-	m_fenceValue++;
+	m_meshToCommit.clear();
+}
+
+DynamicRenderItem UploadContext::UploadDynamicMesh(Mesh& mesh, const MeshData& data)
+{
+	mesh.Initialize(m_device.Get(), data);
+	mesh.StageBuffers();
+	if (std::find(m_meshToCommit.begin(), m_meshToCommit.end(), &mesh) == m_meshToCommit.end())
+	{
+		m_meshToCommit.push_back(&mesh);
+	}
+
+	DynamicRenderItem item;
+	item.object = &mesh;
+
+	return item;
+}
+
+void UploadContext::UploadStaticMesh(ID3D12GraphicsCommandList* cmdList, Mesh& mesh, const MeshData& data)
+{
+	mesh.Initialize(m_device.Get(), data);
+	mesh.StageBuffers();
+	mesh.CommitBuffers(m_device.Get(), cmdList);
+}
+
+void UploadContext::UpdateMesh(Mesh& mesh)
+{
+	//mesh.StageBuffers();
+	mesh.BuildTriBounds();
+	if (std::find(m_meshToCommit.begin(), m_meshToCommit.end(), &mesh) == m_meshToCommit.end())
+	{
+		m_meshToCommit.push_back(&mesh);
+	}
+}
+
+void UploadContext::UpdateMesh(Mesh& mesh, const MeshData& data)
+{
+	mesh.UpdateData(data);
+	if (std::find(m_meshToCommit.begin(), m_meshToCommit.end(), &mesh) == m_meshToCommit.end())
+	{
+		m_meshToCommit.push_back(&mesh);
+	}
+
+}
+
+void UploadContext::SetDeletionSink(std::vector<ComPtr<ID3D12Resource>>* sink)
+{
+	m_deletionSink = sink;
 }

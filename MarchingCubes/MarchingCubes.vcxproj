@@ -72,6 +72,17 @@
   <PropertyGroup Label="UserMacros" />
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
     <IncludePath>C:\Program Files (x86)\Visual Leak Detector\lib\Win64;$(SolutionDir)ThirdParty;$(IncludePath)</IncludePath>
+    <LibraryPath>C:\Program Files (x86)\Visual Leak Detector\lib\Win64;$(SolutionDir)ThirdParty\lib;$(LibraryPath)</LibraryPath>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
+    <IncludePath>C:\Program Files (x86)\Visual Leak Detector\lib\Win64;$(SolutionDir)ThirdParty;$(IncludePath)</IncludePath>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
+    <IncludePath>C:\Program Files (x86)\Visual Leak Detector\lib\Win64;$(SolutionDir)ThirdParty;$(IncludePath)</IncludePath>
+    <LibraryPath>C:\Program Files (x86)\Visual Leak Detector\lib\Win64;$(LibraryPath)</LibraryPath>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
+    <IncludePath>C:\Program Files (x86)\Visual Leak Detector\lib\Win64;$(SolutionDir)ThirdParty;$(IncludePath)</IncludePath>
     <LibraryPath>C:\Program Files (x86)\Visual Leak Detector\lib\Win64;$(LibraryPath)</LibraryPath>
   </PropertyGroup>
   <PropertyGroup Label="Vcpkg">
@@ -81,8 +92,9 @@
     <ClCompile>
       <WarningLevel>Level3</WarningLevel>
       <SDLCheck>true</SDLCheck>
-      <PreprocessorDefinitions>WIN32;_DEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <PreprocessorDefinitions>compiling_libMC33;WIN32;_DEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
+      <AdditionalIncludeDirectories>$(ProjectDir);%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
     </ClCompile>
     <Link>
       <SubSystem>Console</SubSystem>
@@ -95,8 +107,9 @@
       <FunctionLevelLinking>true</FunctionLevelLinking>
       <IntrinsicFunctions>true</IntrinsicFunctions>
       <SDLCheck>true</SDLCheck>
-      <PreprocessorDefinitions>WIN32;NDEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <PreprocessorDefinitions>compiling_libMC33;WIN32;NDEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
+      <AdditionalIncludeDirectories>$(ProjectDir);%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
     </ClCompile>
     <Link>
       <SubSystem>Console</SubSystem>
@@ -109,7 +122,7 @@
     <ClCompile>
       <WarningLevel>Level3</WarningLevel>
       <SDLCheck>true</SDLCheck>
-      <PreprocessorDefinitions>_DEBUG;_CONSOLE;WIN32_LEAN_AND_MEAN;NOMINMAX;_WIN32_WINNT=0x0A00;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <PreprocessorDefinitions>compiling_libMC33;_DEBUG;_CONSOLE;WIN32_LEAN_AND_MEAN;NOMINMAX;_WIN32_WINNT=0x0A00;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>false</ConformanceMode>
       <PrecompiledHeader>Create</PrecompiledHeader>
       <PrecompiledHeaderFile>pch.h</PrecompiledHeaderFile>
@@ -119,7 +132,7 @@
     <Link>
       <SubSystem>Windows</SubSystem>
       <GenerateDebugInformation>true</GenerateDebugInformation>
-      <AdditionalDependencies>d3d12.lib;dxgi.lib;dxguid.lib;d3dcompiler.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalDependencies>d3d12.lib;dxgi.lib;dxguid.lib;d3dcompiler.lib;MC33.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
@@ -128,8 +141,9 @@
       <FunctionLevelLinking>true</FunctionLevelLinking>
       <IntrinsicFunctions>true</IntrinsicFunctions>
       <SDLCheck>true</SDLCheck>
-      <PreprocessorDefinitions>NDEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <PreprocessorDefinitions>compiling_libMC33;NDEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
+      <AdditionalIncludeDirectories>$(ProjectDir);%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
     </ClCompile>
     <Link>
       <SubSystem>Console</SubSystem>
@@ -139,45 +153,115 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
+    <ClCompile Include="Core\Geometry\MarchingCubes\CPU\CPUTerrainBackend.cpp" />
+    <ClCompile Include="Core\Geometry\MeshGenerator.cpp" />
+    <ClCompile Include="Core\Math\PhysicsHelper.cpp" />
     <ClCompile Include="Core\Rendering\Camera.cpp" />
     <ClCompile Include="Core\Rendering\BundleRecorder.cpp" />
+    <ClCompile Include="Core\Utils\DXHelper.cpp" />
     <ClCompile Include="D3D12HelloWindow.cpp" />
     <ClCompile Include="DXAppBase.cpp" />
     <ClCompile Include="Core\DataStructures\Grid.cpp" />
     <ClCompile Include="Core\Input\InputState.cpp" />
     <ClCompile Include="Core\UI\ImGUIRenderer.cpp" />
+    <ClCompile Include="Core\Rendering\LightManager.cpp" />
+    <ClCompile Include="Core\Geometry\MarchingCubes\GPU\GPUBrushCS.cpp" />
+    <ClCompile Include="Core\Geometry\MarchingCubes\GPU\GPUMarchingCubesCS.cpp" />
+    <ClCompile Include="Core\Geometry\MarchingCubes\GPU\GPUTerrainBackend.cpp" />
     <ClCompile Include="main.cpp" />
     <ClCompile Include="Core\Geometry\Mesh.cpp" />
-    <ClCompile Include="Core\Geometry\MarchingCubesGenerator.cpp" />
     <ClCompile Include="App\Editor\Handles\VertexSelector.cpp" />
     <ClCompile Include="Core\Utils\Timer.cpp" />
     <ClCompile Include="Core\Rendering\UploadContext.cpp" />
+    <ClCompile Include="Core\Geometry\MarchingCubesTables.cpp" />
+    <ClCompile Include="Core\Rendering\Material.cpp" />
+    <ClCompile Include="Core\Geometry\MarchingCubes\TerrainSystem.cpp" />
+    <ClCompile Include="Core\Geometry\MarchingCubes\GPU\SDFVolume3D.cpp" />
+    <ClCompile Include="Core\Geometry\MarchingCubes\TerrainChunkRenderer.cpp" />
+    <ClCompile Include="Core\Geometry\MarchingCubes\CPU\MC33\MC33TerrainBackend.cpp" />
+    <ClCompile Include="ThirdParty\mc33_impl.cpp" />
     <ClCompile Include="Win32Application.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="App\Editor\Interfaces\EditorInterfaces.h" />
     <ClInclude Include="Core\DataStructures\ShaderTypes.h" />
+    <ClInclude Include="Core\Geometry\MarchingCubes\GPU\GPUMarchingCubesShared.h" />
+    <ClInclude Include="Core\Geometry\MarchingCubes\ITerrainBackend.h" />
     <ClInclude Include="Core\Geometry\MeshGenerator.h" />
+    <ClInclude Include="Core\Math\PhysicsHelper.h" />
     <ClInclude Include="Core\Rendering\Camera.h" />
     <ClInclude Include="Core\Rendering\BundleRecorder.h" />
     <ClInclude Include="Core\DataStructures\Data.h" />
+    <ClInclude Include="Core\Rendering\RenderUtils.h" />
+    <ClInclude Include="Core\Geometry\MarchingCubes\CPU\CPUTerrainBackend.h" />
     <ClInclude Include="D3D12HelloWindow.h" />
     <ClInclude Include="DXAppBase.h" />
     <ClInclude Include="Core\Utils\DXHelper.h" />
     <ClInclude Include="Core\DataStructures\Grid.h" />
     <ClInclude Include="Core\Geometry\Mesh.h" />
-    <ClInclude Include="Core\Geometry\MarchingCubesGenerator.h" />
     <ClInclude Include="Core\Input\InputState.h" />
     <ClInclude Include="Core\UI\ImGUIRenderer.h" />
+    <ClInclude Include="Core\Geometry\MarchingCubesTables.h" />
+    <ClInclude Include="Core\Rendering\Material.h" />
+    <ClInclude Include="Core\Rendering\LightManager.h" />
+    <ClInclude Include="Core\Geometry\MarchingCubes\GPU\GPUBrushCS.h" />
+    <ClInclude Include="Core\Geometry\MarchingCubes\GPU\GPUMarchingCubesCS.h" />
+    <ClInclude Include="Core\Geometry\MarchingCubes\GPU\GPUTerrainBackend.h" />
+    <ClInclude Include="Core\Geometry\MarchingCubes\CPU\MC33\MC33TerrainBackend.h" />
     <ClInclude Include="pch.h" />
     <ClInclude Include="App\Editor\Handles\VertexSelector.h" />
     <ClInclude Include="Core\Utils\Timer.h" />
     <ClInclude Include="Core\Rendering\UploadContext.h" />
     <ClInclude Include="Core\UI\UIRenderer.h" />
+    <ClInclude Include="Core\Geometry\MarchingCubes\TerrainSystem.h" />
+    <ClInclude Include="Core\Geometry\MarchingCubes\GPU\SDFVolume3D.h" />
+    <ClInclude Include="Core\Geometry\MarchingCubes\TerrainChunkRenderer.h" />
     <ClInclude Include="Win32Application.h" />
   </ItemGroup>
   <ItemGroup>
     <None Include="..\Directory.Builds.targets" />
+    <None Include="Assets\Shaders\Common.hlsli">
+      <FileType>Document</FileType>
+      <EntryPointName Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
+      </EntryPointName>
+      <ShaderModel Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">5.0</ShaderModel>
+    </None>
+    <FxCompile Include="Assets\Shaders\BrushCS.hlsl">
+      <ShaderType Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">Compute</ShaderType>
+      <ShaderModel Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">5.0</ShaderModel>
+      <ShaderType Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">Compute</ShaderType>
+      <ShaderModel Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">4.0</ShaderModel>
+      <ShaderType Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">Compute</ShaderType>
+      <ShaderModel Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">4.0</ShaderModel>
+      <ShaderType Condition="'$(Configuration)|$(Platform)'=='Release|x64'">Compute</ShaderType>
+      <ShaderModel Condition="'$(Configuration)|$(Platform)'=='Release|x64'">4.0</ShaderModel>
+      <EntryPointName Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">BrushCS</EntryPointName>
+    </FxCompile>
+    <FxCompile Include="Assets\Shaders\BrushRegionCS.hlsl">
+      <ShaderType Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">Compute</ShaderType>
+      <ShaderModel Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">5.0</ShaderModel>
+      <ShaderType Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">Compute</ShaderType>
+      <ShaderModel Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">4.0</ShaderModel>
+      <ShaderType Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">Compute</ShaderType>
+      <ShaderModel Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">4.0</ShaderModel>
+      <ShaderType Condition="'$(Configuration)|$(Platform)'=='Release|x64'">Compute</ShaderType>
+      <ShaderModel Condition="'$(Configuration)|$(Platform)'=='Release|x64'">4.0</ShaderModel>
+    </FxCompile>
+    <FxCompile Include="Assets\Shaders\LineShaders.hlsl">
+      <ShaderType Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">Pixel</ShaderType>
+      <ShaderType Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">Pixel</ShaderType>
+      <ShaderType Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">Pixel</ShaderType>
+      <ShaderType Condition="'$(Configuration)|$(Platform)'=='Release|x64'">Pixel</ShaderType>
+      <EntryPointName Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">PSMain</EntryPointName>
+      <ShaderModel Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">5.0</ShaderModel>
+    </FxCompile>
+    <None Include="Assets\Shaders\PBR.hlsli">
+      <FileType>Document</FileType>
+      <EntryPointName Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
+      </EntryPointName>
+      <ShaderModel Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">5.0</ShaderModel>
+    </None>
+    <None Include="packages.config" />
   </ItemGroup>
   <ItemGroup>
     <FxCompile Include="Assets\Shaders\HighlightPS.hlsl">
@@ -189,20 +273,50 @@
       <ShaderModel Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">5.0</ShaderModel>
       <EntryPointName Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">VSMain</EntryPointName>
     </FxCompile>
-    <FxCompile Include="Assets\Shaders\PickID_PS.hlsl">
+    <FxCompile Include="Assets\Shaders\MarchingCubesCS.hlsl">
+      <ShaderType Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">Compute</ShaderType>
+      <ShaderModel Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">5.0</ShaderModel>
+      <ShaderType Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">Compute</ShaderType>
+      <ShaderModel Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">4.0</ShaderModel>
+      <ShaderType Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">Compute</ShaderType>
+      <ShaderModel Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">4.0</ShaderModel>
+      <ShaderType Condition="'$(Configuration)|$(Platform)'=='Release|x64'">Compute</ShaderType>
+      <ShaderModel Condition="'$(Configuration)|$(Platform)'=='Release|x64'">4.0</ShaderModel>
+      <EntryPointName Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">MCMainCS</EntryPointName>
+    </FxCompile>
+    <FxCompile Include="Assets\Shaders\MainPS.hlsl">
       <ShaderType Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">Pixel</ShaderType>
       <ShaderType Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">Pixel</ShaderType>
       <ShaderType Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">Pixel</ShaderType>
       <ShaderType Condition="'$(Configuration)|$(Platform)'=='Release|x64'">Pixel</ShaderType>
-      <ShaderModel Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">5.0</ShaderModel>
       <EntryPointName Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">PSMain</EntryPointName>
+      <ShaderModel Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">5.0</ShaderModel>
+    </FxCompile>
+    <FxCompile Include="Assets\Shaders\PickCS.hlsl">
+      <ShaderType Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">Compute</ShaderType>
+      <ShaderModel Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">5.0</ShaderModel>
+      <ShaderType Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">Compute</ShaderType>
+      <ShaderModel Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">4.0</ShaderModel>
+      <ShaderType Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">Compute</ShaderType>
+      <ShaderModel Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">4.0</ShaderModel>
+      <ShaderType Condition="'$(Configuration)|$(Platform)'=='Release|x64'">Compute</ShaderType>
+      <ShaderModel Condition="'$(Configuration)|$(Platform)'=='Release|x64'">4.0</ShaderModel>
+      <EntryPointName Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">PickCS</EntryPointName>
     </FxCompile>
     <FxCompile Include="Assets\Shaders\shaders.hlsl">
       <ShaderModel Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">5.0</ShaderModel>
       <EntryPointName Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">VSMain</EntryPointName>
+      <ShaderType Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">Vertex</ShaderType>
     </FxCompile>
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">
+    <Import Project="..\packages\WinPixEventRuntime.1.0.240308001\build\WinPixEventRuntime.targets" Condition="Exists('..\packages\WinPixEventRuntime.1.0.240308001\build\WinPixEventRuntime.targets')" />
   </ImportGroup>
+  <Target Name="EnsureNuGetPackageBuildImports" BeforeTargets="PrepareForBuild">
+    <PropertyGroup>
+      <ErrorText>이 프로젝트는 이 컴퓨터에 없는 NuGet 패키지를 참조합니다. 해당 패키지를 다운로드하려면 NuGet 패키지 복원을 사용하십시오. 자세한 내용은 http://go.microsoft.com/fwlink/?LinkID=322105를 참조하십시오. 누락된 파일은 {0}입니다.</ErrorText>
+    </PropertyGroup>
+    <Error Condition="!Exists('..\packages\WinPixEventRuntime.1.0.240308001\build\WinPixEventRuntime.targets')" Text="$([System.String]::Format('$(ErrorText)', '..\packages\WinPixEventRuntime.1.0.240308001\build\WinPixEventRuntime.targets'))" />
+  </Target>
 </Project>

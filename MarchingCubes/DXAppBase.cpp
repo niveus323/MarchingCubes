@@ -39,17 +39,13 @@ void DXAppBase::StartTimer()
 void DXAppBase::TickAndUpdate()
 {
 	float deltaTime = m_timer.Tick();
+	m_uiRenderer->BeginFrame();
 	OnUpdate(deltaTime);
 }
 
 std::wstring DXAppBase::GetAssetFullPath(LPCWSTR assetName)
 {
 	return GetFullPath(AssetType::Default, assetName);
-}
-
-std::wstring DXAppBase::GetShaderFullPath(LPCWSTR shaderName)
-{
-	return GetFullPath(AssetType::Shader, shaderName);
 }
 
 _Use_decl_annotations_

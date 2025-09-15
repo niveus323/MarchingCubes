@@ -22,7 +22,8 @@ public:
 	void BeginFrame() override;
 	void EndFrame(ID3D12GraphicsCommandList* commandList) override;
 	void ShutDown() override;
-	LRESULT WndMsgProc(UINT msg, WPARAM wParam, LPARAM lParam) override;
+	LRESULT WndMsgProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) override;
+	bool IsCapturingUI();
 
 private:
 	ComPtr<ID3D12DescriptorHeap> m_srvHeap;

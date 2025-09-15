@@ -1,29 +1,21 @@
-// BasicCameraShaders.hlsl
-
-// Camera constant buffer: register b0
-cbuffer CameraBuffer : register(b0)
-{
-    matrix gViewProj; // View-Projection matrix
-};
-
-cbuffer ObjectBuffer : register(b1)
-{
-    matrix gWorld;
-    float4 gObjectColor;
-};
+// shaders.hlsl
+#include "Common.hlsli"
 
 // Vertex input structure
 struct VSInput
 {
     float3 Position : POSITION;
-    float4 Color : COLOR;
+    float3 Normal : NORMAL;
+    float4 Color : COLOR;       // For Debugging
 };
 
 // Vertex-to-pixel output structure
 struct PSInput
 {
-    float4 Position : SV_POSITION;
-    float4 Color : COLOR;
+    float4 Position : SV_POSITION0;
+    float3 WorldPos : TEXCOORD0;
+    float3 WorldNormal : TEXCOORD1;
+    float4 Color : COLOR0;
 };
 
 // Vertex Shader: transform position by view-projection
@@ -33,12 +25,9 @@ PSInput VSMain(VSInput input)
     float4 modelPos = float4(input.Position, 1.0f);
     float4 worldPos = mul(modelPos, gWorld);
     output.Position = mul(worldPos, gViewProj);
+    output.WorldPos = worldPos.xyz;
+    float3x3 worldInvT = transpose((float3x3) gWorldInv);
+    output.WorldNormal = normalize(mul(input.Normal, worldInvT));
     output.Color = input.Color;
     return output;
-}
-
-// Pixel Shader: output interpolated color
-float4 PSMain(PSInput input) : SV_TARGET
-{
-    return input.Color * gObjectColor;
 }

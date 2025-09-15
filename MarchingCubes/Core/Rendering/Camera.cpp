@@ -1,24 +1,36 @@
 #include "pch.h"
 #include "Camera.h"
 #include <algorithm>
-#include "Core/Utils/DXHelper.h"
 #include "Core/DataStructures/Data.h"
 #include "Core/Input/InputState.h"
 #include "Core/DataStructures/ShaderTypes.h"
+#include "Material.h"
 
-Camera::Camera(float aspect, float fov, float zNear, float zFar)
-	: m_position(0.0f, 0.0f, -5.0f),
-	m_targetPos(0.0f, 0.0f, 0.0f),
-	m_upDir(0.0f, 1.0f, 0.0f),
+Camera::Camera(float viewportWidth, float viewportHeight, float fov, float zNear, float zFar)
+	: m_position(0.0f, 0.0f, -100.0f),
 	m_rightDir(1.0f, 0.0f, 0.0f),
+	m_upDir(0.0f, 1.0f, 0.0f),
+	m_targetPos(0.0f, 0.0f, 0.0f),
+	m_viewportWidth(viewportWidth),
+	m_viewportHeight(viewportHeight),
 	m_nearZ(zNear),
 	m_farZ(zFar),
-	m_aspect(aspect),
+	m_aspect(viewportWidth / viewportHeight),
 	m_fov(fov),
 	m_mappedDataCB(nullptr)
 {
 	UpdateViewMatrix();
 	UpdateProjMatrix();
+}
+
+Camera::~Camera()
+{
+	if (m_mappedDataCB)
+	{
+		m_cameraBuffer->Unmap(0, nullptr);
+		m_mappedDataCB = nullptr;
+	}
+	m_cameraBuffer.Reset();
 }
 
 void Camera::SetPosition(float x, float y, float z)
@@ -52,6 +64,13 @@ void Camera::UpdateViewMatrix()
 	XMVECTOR target = XMLoadFloat3(&m_targetPos);
 	XMVECTOR forward = XMVector3Normalize(XMVectorSubtract(target, pos));
 	XMVECTOR worldUp = XMVectorSet(0, 1, 0, 0);
+
+	float dot = XMVectorGetX(XMVector3Dot(worldUp, forward));
+	if (fabs(dot) > 0.999f)
+	{
+		worldUp = XMVectorSet(0.0f, 0.0f, 1.0f, 0.0f);
+	}
+
 	XMVECTOR right = XMVector3Normalize(XMVector3Cross(worldUp, forward));
 	XMVECTOR up = XMVector3Cross(forward, right);
 
@@ -69,7 +88,7 @@ void Camera::UpdateProjMatrix()
 
 void Camera::CreateConstantBuffer(ID3D12Device* device)
 {
-	const UINT cameraBufferSize = (sizeof(m_cameraBuffer) + 255) & ~255;
+	static const UINT cameraBufferSize = AlignUp(sizeof(CameraConstants), D3D12_CONSTANT_BUFFER_DATA_PLACEMENT_ALIGNMENT);
 
 	ThrowIfFailed(device->CreateCommittedResource(
 		&CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD),
@@ -79,8 +98,9 @@ void Camera::CreateConstantBuffer(ID3D12Device* device)
 		nullptr,
 		IID_PPV_ARGS(&m_cameraBuffer)
 	));
+	NAME_D3D12_OBJECT(m_cameraBuffer);
 
-	// Map & Initialize Constant Buffer
+	// Map & CreateUploadBuffer Constant Buffer
 	CD3DX12_RANGE readRAnge(0, 0);
 	ThrowIfFailed(m_cameraBuffer->Map(0, &readRAnge, reinterpret_cast<void**>(&m_mappedDataCB)));
 }
@@ -88,15 +108,15 @@ void Camera::CreateConstantBuffer(ID3D12Device* device)
 void Camera::UpdateConstantBuffer()
 {
 	CameraConstants cb{};
-	XMMATRIX vp = XMMatrixTranspose(GetViewProjMatrix());
-	XMStoreFloat4x4(&cb.viewProjMatrix, vp);
+	XMMATRIX vp = GetViewProjMatrix();
+	XMStoreFloat4x4(&cb.viewProjMatrix, XMMatrixTranspose(vp));
+	cb.cameraPosition = m_position;
 	memcpy(m_mappedDataCB, &cb, sizeof(cb));
 }
 
 void Camera::BindConstantBuffer(ID3D12GraphicsCommandList* cmdList, UINT rootIndex)
 {
 	cmdList->SetGraphicsRootConstantBufferView(rootIndex, m_cameraBuffer->GetGPUVirtualAddress());
-
 }
 
 void Camera::Rotate(float deltaX, float deltaY)

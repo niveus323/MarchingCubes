@@ -1,16 +1,21 @@
 #pragma once
 #include "DXAppBase.h"
+#include "App/Editor/Interfaces/EditorInterfaces.h"
 #include "Core/Rendering/Camera.h"
+#include "Core/Rendering/LightManager.h"
 #include "Core/Geometry/Mesh.h"
 #include "Core/Input/InputState.h"
-#include "App/Editor/Handles/VertexSelector.h"
+#include "Core/Rendering/UploadContext.h"
+#include "Core/Geometry/MarchingCubes/TerrainSystem.h"
 #include <unordered_map>
+#include <array>
 using Microsoft::WRL::ComPtr;
 
 class D3D12HelloWindow : public DXAppBase
 {
 public:
 	D3D12HelloWindow(UINT width, UINT height, std::wstring name);
+    ~D3D12HelloWindow();
 
 	virtual void OnInit() override;
     virtual void OnInitUI() override;
@@ -31,13 +36,8 @@ private:
     void MoveToNextFrame();
     void WaitForGpu();
     
-    // MousePicking
-    void CreateIDRenderTarget();
-    void RenderForPicking();
-    uint32_t ReadPickedID(int mouseX, int mouseY);
-    void HandlePickedObject(uint32_t pickedID);
-    XMFLOAT4 EncodeIDColor(uint32_t id);
-    uint32_t DecodeIDColor(uint8_t r, uint8_t g, uint8_t b, uint8_t a);
+    //Marching Cubes
+    std::shared_ptr<_GRD> MakeSphereGrid(int N, float cell, float radius, XMFLOAT3 origin);
 
 private:
     static const UINT FrameCount = 2;
@@ -49,14 +49,24 @@ private:
     ComPtr<ID3D12Device> m_device;
     ComPtr<ID3D12Resource> m_renderTargets[FrameCount];
     ComPtr<ID3D12CommandAllocator> m_commandAllocators[FrameCount];
-    ComPtr<ID3D12CommandAllocator> m_bundleAllocator;
     ComPtr<ID3D12CommandQueue> m_commandQueue;
     ComPtr<ID3D12RootSignature> m_rootSignature;
     ComPtr<ID3D12DescriptorHeap> m_rtvHeap;
+    ComPtr<ID3D12DescriptorHeap> m_dsvHeap;
+    ComPtr<ID3D12Resource> m_depthStencil;
     std::unordered_map<PipelineMode, ComPtr<ID3D12PipelineState>> m_pipelineStates;
     ComPtr<ID3D12GraphicsCommandList> m_commandList;
-    std::unordered_map < PipelineMode, std::vector<ComPtr<ID3D12GraphicsCommandList>>> m_bundles;
+    std::unique_ptr<BundleRecorder> m_bundleRecorder;
+    std::unordered_map < PipelineMode, std::vector<StaticRenderItem>> m_staticRenderItems;
+    std::unordered_map < PipelineMode, std::vector<DynamicRenderItem>> m_dynamicRenderItems;
+    std::vector<PendingDeleteItem> m_pendingDeletes;
+    std::vector<ComPtr<ID3D12Resource>> m_toDeletesContainer;
     UINT m_rtvDescriptorSize;
+
+    UploadContext m_uploadContext;
+
+    // StaticSampler용 Heap
+    ComPtr<ID3D12DescriptorHeap> m_srvHeap;
 
     // Synchronization objects.
     UINT m_frameIndex;
@@ -65,23 +75,44 @@ private:
     UINT64 m_fenceValues[FrameCount];
 
     // Scene Objects
-    Camera* m_camera;
-    Mesh m_cubeMesh;
+    std::unique_ptr<Camera> m_camera;
+    std::unique_ptr<LightManager> m_lightManager;
+
+    // NOTE : gridMesh를 MeshData로 스위칭하는 방법으로 테스트 중. (2025-07-23 Author : DHLee)
+    Mesh m_gridMesh;
+
+    // TODO : PBR 테스트를 위해 임시로 Material을 app에서 초기화하여 사용, ResoureManager 및 Wrapper 클래스로 만들어서 .mat 파일 로드하여 인스턴스를 wrapper 클래스에 넘기는 방식으로 수정할 것.
+    std::shared_ptr<Material> m_defaultMat;
 
     // Keyboard & Mouse Input Object
     InputState m_inputState;
 
     // Mouse Picking
-    ComPtr<ID3D12Resource> m_idRenderTarget;
-    ComPtr<ID3D12RootSignature> m_idRootsignature;
-    ComPtr<ID3D12DescriptorHeap> m_idRTVHeap;
-    D3D12_CPU_DESCRIPTOR_HANDLE m_idRTVHandle;
-    ComPtr<ID3D12PipelineState> m_idPipelineState;
+    //int m_pendingMouseX = -1;
+    //int m_pendingMouseY = -1;
+    //bool m_pendingPick = false;
 
-    std::vector<std::unique_ptr<VertexSelector>> m_pickables;
-    VertexSelector* m_selectedObject;
+    // Marching Cubes
+    DirectX::XMFLOAT3 m_gridOrigin = { 0,0,0 };
+    std::array<int, 3> m_gridSize = { 1,1,1 };
+    int m_cellSize = 1;
+    std::vector<std::array<UINT, 8>> m_cells;
+    float m_brushRadius = 1.0f;
+    float m_brushStrength = 5.0f;
+    std::array<float, 3> m_lightDir = { -1.0f, -1.0f, -1.0f };
 
-    //debug
+    // UI
+    bool m_gridRenewRequested = false;
+
+    // debug
     bool m_debugViewEnabled = false;
+    ComPtr<ID3D12PipelineState> m_wireFramePSO;
+
+   // MC(GPU)
+    float m_mcIso = 0.0f;
+
+    std::unique_ptr<TerrainSystem> m_terrain;
+
+    UINT64 m_lastSubmitFenceValue = 0;
 };
 
