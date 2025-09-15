@@ -5,7 +5,6 @@ GPUBrushCS::GPUBrushCS(ID3D12Device* device)
 {
     ensureSignatures(device);
     ensurePipelines(device);
-    //ensurePickBuffer(device);
     ensureRegionBuffer(device);
     ensureDispatchBuffer(device);
     ensureReadbacks(device);

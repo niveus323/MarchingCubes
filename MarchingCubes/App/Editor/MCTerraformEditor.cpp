@@ -1,5 +1,5 @@
 #include "pch.h"
-#include "D3D12HelloWindow.h"
+#include "MCTerraformEditor.h"
 #include "Core/Rendering/UploadContext.h"
 #include "Core/UI/ImGUIRenderer.h"
 #include "Core/Geometry/MeshGenerator.h"
@@ -9,7 +9,7 @@
 #include <typeinfo>
 #include <iostream>
 
-D3D12HelloWindow::D3D12HelloWindow(UINT width, UINT height, std::wstring name)
+MCTerraformEditor::MCTerraformEditor(UINT width, UINT height, std::wstring name)
 	: DXAppBase(width, height, name), 
 	m_frameIndex(0), 
 	m_viewport(0.0f, 0.0f, static_cast<float>(width), static_cast<float>(height)), 
@@ -20,19 +20,19 @@ D3D12HelloWindow::D3D12HelloWindow(UINT width, UINT height, std::wstring name)
 {
 }
 
-D3D12HelloWindow::~D3D12HelloWindow()
+MCTerraformEditor::~MCTerraformEditor()
 {
 	
 }
 
-void D3D12HelloWindow::OnInit()
+void MCTerraformEditor::OnInit()
 {
 	LoadPipeline();
 	LoadAssets();
 	OnInitUI();
 }
 
-void D3D12HelloWindow::OnInitUI()
+void MCTerraformEditor::OnInitUI()
 {
 	// SRV Heap 초기화
 	D3D12_DESCRIPTOR_HEAP_DESC srvHeapDesc = {};
@@ -68,7 +68,7 @@ void D3D12HelloWindow::OnInitUI()
 	m_uiRenderer = std::move(imguiRenderer);
 }
 
-void D3D12HelloWindow::OnUpdate(float deltaTime)
+void MCTerraformEditor::OnUpdate(float deltaTime)
 {
 	m_inputState.Update();
 
@@ -150,7 +150,7 @@ void D3D12HelloWindow::OnUpdate(float deltaTime)
 	m_lightManager->Update();
 }
 
-void D3D12HelloWindow::OnRender()
+void MCTerraformEditor::OnRender()
 {
 	PopulateCommandList();
 
@@ -162,7 +162,7 @@ void D3D12HelloWindow::OnRender()
 	MoveToNextFrame();
 }
 
-void D3D12HelloWindow::OnRenderUI()
+void MCTerraformEditor::OnRenderUI()
 {
 	// UI 렌더링 코드
 	ImGui::Text("FPS : %.1f", ImGui::GetIO().Framerate);
@@ -219,40 +219,40 @@ void D3D12HelloWindow::OnRenderUI()
 	m_uiRenderer->EndFrame(m_commandList.Get());
 }
 
-void D3D12HelloWindow::OnDestroy()
+void MCTerraformEditor::OnDestroy()
 {
 	WaitForGpu();
 	CloseHandle(m_fenceEvent);
 }
 
-void D3D12HelloWindow::OnKeyDown(WPARAM key)
+void MCTerraformEditor::OnKeyDown(WPARAM key)
 {
 	m_inputState.OnKeyDown(key);
 }
 
-void D3D12HelloWindow::OnKeyUp(WPARAM key)
+void MCTerraformEditor::OnKeyUp(WPARAM key)
 {
 	m_inputState.OnKeyUp(key);
 }
 
-void D3D12HelloWindow::OnMouseMove(int xPos, int yPos, WPARAM buttonState)
+void MCTerraformEditor::OnMouseMove(int xPos, int yPos, WPARAM buttonState)
 {
 	//TODO : Drag 구현
 	m_inputState.OnMouseMove(xPos, yPos);
 }
 
-void D3D12HelloWindow::OnMouseBtnDown(int x, int y, WPARAM button)
+void MCTerraformEditor::OnMouseBtnDown(int x, int y, WPARAM button)
 {
 	//TODO : Drag 구현
 	m_inputState.OnMouseDown(x, y, button);
 }
 
-void D3D12HelloWindow::OnMouseBtnUp(int x, int y, WPARAM button)
+void MCTerraformEditor::OnMouseBtnUp(int x, int y, WPARAM button)
 {
 	m_inputState.OnMouseUp(x, y, button);
 }
 
-void D3D12HelloWindow::LoadPipeline()
+void MCTerraformEditor::LoadPipeline()
 {
 	UINT dxgiFactoryFlags = 0;
 
@@ -398,7 +398,7 @@ void D3D12HelloWindow::LoadPipeline()
 	m_uploadContext.Initailize(m_device.Get());
 }
 
-void D3D12HelloWindow::LoadAssets()
+void MCTerraformEditor::LoadAssets()
 {
 	CreatePipelineStates();
 
@@ -501,7 +501,7 @@ void D3D12HelloWindow::LoadAssets()
 }
 
 
-void D3D12HelloWindow::CreatePipelineStates()
+void MCTerraformEditor::CreatePipelineStates()
 {
 	ComPtr<ID3DBlob> vertexShader, pixelShader;
 	ComPtr<ID3DBlob> linePS;
@@ -630,7 +630,7 @@ void D3D12HelloWindow::CreatePipelineStates()
 	}
 }
 
-void D3D12HelloWindow::PopulateCommandList()
+void MCTerraformEditor::PopulateCommandList()
 {
 	ThrowIfFailed(m_commandAllocators[m_frameIndex]->Reset());
 	ThrowIfFailed(m_commandList->Reset(m_commandAllocators[m_frameIndex].Get(), nullptr));
@@ -711,7 +711,7 @@ void D3D12HelloWindow::PopulateCommandList()
 	ThrowIfFailed(m_commandList->Close());
 }
 
-void D3D12HelloWindow::WaitForGpu()
+void MCTerraformEditor::WaitForGpu()
 {
 #ifdef _DEBUG
 	assert(m_fence);
@@ -730,7 +730,7 @@ void D3D12HelloWindow::WaitForGpu()
 	m_fenceValues[m_frameIndex]++;
 }
 
-void D3D12HelloWindow::MoveToNextFrame()
+void MCTerraformEditor::MoveToNextFrame()
 {
 	const UINT64 currentFenceValue = m_fenceValues[m_frameIndex];
 	ThrowIfFailed(m_commandQueue->Signal(m_fence.Get(), currentFenceValue));
@@ -769,7 +769,7 @@ void D3D12HelloWindow::MoveToNextFrame()
 	m_fenceValues[m_frameIndex] = currentFenceValue + 1;
 }
 
-std::shared_ptr<_GRD> D3D12HelloWindow::MakeSphereGrid(int N, float cellSize, float radius, XMFLOAT3 center = { 0.0f, 0.0f, 0.0f })
+std::shared_ptr<_GRD> MCTerraformEditor::MakeSphereGrid(int N, float cellSize, float radius, XMFLOAT3 center = { 0.0f, 0.0f, 0.0f })
 {
 	const float half = 0.5f * (float)N;
 	XMFLOAT3 origin = { center.x - half * cellSize, center.y - half * cellSize, center.z - half * cellSize };
@@ -807,19 +807,3 @@ std::shared_ptr<_GRD> D3D12HelloWindow::MakeSphereGrid(int N, float cellSize, fl
 
 	return std::shared_ptr<_GRD>(gridData);
 }
-//
-//// 3중 포인터 메모리 정리
-//void D3D12HelloWindow::FreeSphereGrid()
-//{
-//	if (!m_mcF) return;
-//	const int SZ = m_mcGrid.N[2] + 1;
-//	const int SY = m_mcGrid.N[1] + 1;
-//	for (int z = 0; z < SZ; ++z)
-//	{
-//		for (int y = 0; y < SY; ++y) delete[] m_mcF[z][y];
-//		delete[] m_mcF[z];
-//	}
-//	delete[] m_mcF;
-//	m_mcF = nullptr;
-//	m_mcGrid = {};
-//}

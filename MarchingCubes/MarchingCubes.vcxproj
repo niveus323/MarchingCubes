@@ -159,8 +159,8 @@
     <ClCompile Include="Core\Rendering\Camera.cpp" />
     <ClCompile Include="Core\Rendering\BundleRecorder.cpp" />
     <ClCompile Include="Core\Utils\DXHelper.cpp" />
-    <ClCompile Include="D3D12HelloWindow.cpp" />
-    <ClCompile Include="DXAppBase.cpp" />
+    <ClCompile Include="App\Editor\MCTerraformEditor.cpp" />
+    <ClCompile Include="App\Common\DXAppBase.cpp" />
     <ClCompile Include="Core\DataStructures\Grid.cpp" />
     <ClCompile Include="Core\Input\InputState.cpp" />
     <ClCompile Include="Core\UI\ImGUIRenderer.cpp" />
@@ -194,8 +194,8 @@
     <ClInclude Include="Core\DataStructures\Data.h" />
     <ClInclude Include="Core\Rendering\RenderUtils.h" />
     <ClInclude Include="Core\Geometry\MarchingCubes\CPU\CPUTerrainBackend.h" />
-    <ClInclude Include="D3D12HelloWindow.h" />
-    <ClInclude Include="DXAppBase.h" />
+    <ClInclude Include="App\Editor\MCTerraformEditor.h" />
+    <ClInclude Include="App\Common\DXAppBase.h" />
     <ClInclude Include="Core\Utils\DXHelper.h" />
     <ClInclude Include="Core\DataStructures\Grid.h" />
     <ClInclude Include="Core\Geometry\Mesh.h" />
