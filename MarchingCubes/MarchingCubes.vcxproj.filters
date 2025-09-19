@@ -217,7 +217,5 @@
     <FxCompile Include="Assets\Shaders\MainPS.hlsl" />
     <FxCompile Include="Assets\Shaders\MarchingCubesCS.hlsl" />
     <FxCompile Include="Assets\Shaders\BrushCS.hlsl" />
-    <FxCompile Include="Assets\Shaders\PickCS.hlsl" />
-    <FxCompile Include="Assets\Shaders\BrushRegionCS.hlsl" />
   </ItemGroup>
 </Project>

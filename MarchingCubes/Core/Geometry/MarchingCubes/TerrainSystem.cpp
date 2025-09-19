@@ -68,9 +68,9 @@ void TerrainSystem::requestBrush(const BrushRequest& r)
 	m_backend->requestBrush(r);
 }
 
-void TerrainSystem::encode(ID3D12GraphicsCommandList* cmd)
+void TerrainSystem::encode()
 {
-	m_backend->encode(cmd);
+	m_backend->encode();
 }
 
 void TerrainSystem::tryFetch(ID3D12Device* device, ID3D12GraphicsCommandList* cmd)

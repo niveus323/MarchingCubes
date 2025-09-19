@@ -8,8 +8,10 @@ struct alignas(16) GridCBData {
 	float isoValue;
 	XMUINT3 numChunkAxis;
 	UINT chunkCubes;
-	XMUINT3 groupsPerChunk;
-	UINT chunkCapacity;
+	XMUINT3 regionMin;
+	int _padding0;
+	XMUINT3 regionMax;
+	int _padding1;
 };
 
 struct GPUMCEncodingContext
@@ -19,11 +21,10 @@ struct GPUMCEncodingContext
 	const SDFVolumeView& vol;
 	const FrameAlloc& fa;
 	const RemeshRequest& req;
-	XMUINT3 numChunkAxis;
-	uint32_t chunkCubes = 16;
-	uint32_t chunkCapacity = 4096;
+	XMUINT3 regionMin;
+	XMUINT3 regionMax;
 
-	GPUMCEncodingContext(ID3D12Device* device, ID3D12GraphicsCommandList* cmd, const SDFVolumeView& vol, const FrameAlloc& fa, const RemeshRequest& req, const DirectX::XMUINT3& numChunkAxis, UINT chunkCubes, UINT chunkCapacity): device(device), cmd(cmd), vol(vol), fa(fa), req(req), numChunkAxis(numChunkAxis), chunkCubes(chunkCubes), chunkCapacity(chunkCapacity){}
+	GPUMCEncodingContext(ID3D12Device* device, ID3D12GraphicsCommandList* cmd, const SDFVolumeView& vol, const FrameAlloc& fa, const RemeshRequest& req, XMUINT3 regionMin, XMUINT3 regionMax): device(device), cmd(cmd), vol(vol), fa(fa), req(req), regionMin(regionMin), regionMax(regionMax) {}
 	GPUMCEncodingContext(const GPUMCEncodingContext&) = delete;
 	GPUMCEncodingContext& operator=(const GPUMCEncodingContext&) = delete;
 };
@@ -46,8 +47,6 @@ private:
 private:
 	ComPtr<ID3D12RootSignature>    m_mcRootSig;
 	ComPtr<ID3D12PipelineState>    m_mcPso;
-
-	ComPtr<ID3D12CommandSignature> m_mcCmdSig;
 
 	// Resources
 	ComPtr<ID3D12Resource> m_triDefault;

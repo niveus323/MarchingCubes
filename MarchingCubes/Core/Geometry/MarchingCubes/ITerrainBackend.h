@@ -58,6 +58,6 @@ struct ITerrainBackend
 	virtual bool tryFetch(std::vector<ChunkUpdate>&) = 0;  // GPU : readback / CPU : MeshData -> MeshBuffer Commit
 
 	// GPU Only
-	virtual void encode(ID3D12GraphicsCommandList*) {};					
+	virtual void encode() {};					
 	virtual void drainKeepAlive(std::vector<ComPtr<ID3D12Resource>>&) {}
 };

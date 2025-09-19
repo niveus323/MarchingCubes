@@ -95,7 +95,7 @@ void MeshBuffer::CommitBuffers(ID3D12GraphicsCommandList* cmdList, const MeshDat
 	{
 		const UINT vertexBufferSize = m_vertexCount * UINT(sizeof(Vertex));
 		
-		auto before = (m_justInitailized) ? D3D12_RESOURCE_STATE_COMMON : D3D12_RESOURCE_STATE_VERTEX_AND_CONSTANT_BUFFER;
+		auto before = m_justInitailized ? D3D12_RESOURCE_STATE_COMMON : D3D12_RESOURCE_STATE_VERTEX_AND_CONSTANT_BUFFER;
 		cmdList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(m_vertexBuffer.Get(), before, D3D12_RESOURCE_STATE_COPY_DEST));
 		
 		cmdList->CopyBufferRegion(m_vertexBuffer.Get(), 0, m_vertexUploadBuffer.Get(), 0, vertexBufferSize);
@@ -108,7 +108,7 @@ void MeshBuffer::CommitBuffers(ID3D12GraphicsCommandList* cmdList, const MeshDat
 	{
 		const UINT indexBufferSize = m_indexCount * UINT(sizeof(uint32_t));
 
-		auto before = (m_justInitailized) ? D3D12_RESOURCE_STATE_COMMON : D3D12_RESOURCE_STATE_INDEX_BUFFER;
+		auto before = m_justInitailized ? D3D12_RESOURCE_STATE_COMMON : D3D12_RESOURCE_STATE_INDEX_BUFFER;
 		cmdList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(m_indexBuffer.Get(), before, D3D12_RESOURCE_STATE_COPY_DEST));
 		
 		cmdList->CopyBufferRegion(m_indexBuffer.Get(), 0, m_indexUploadBuffer.Get(), 0, indexBufferSize);
@@ -116,7 +116,7 @@ void MeshBuffer::CommitBuffers(ID3D12GraphicsCommandList* cmdList, const MeshDat
 		cmdList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(m_indexBuffer.Get(), D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_INDEX_BUFFER));
 	}
 
-	m_justInitailized = true;
+	m_justInitailized = false;
 }
 
 void MeshBuffer::ResizeIfNeededAndCommit(ID3D12Device* device, ID3D12GraphicsCommandList* cmdList, const MeshData& data)

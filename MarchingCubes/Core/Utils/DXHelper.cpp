@@ -460,9 +460,6 @@ namespace DescriptorHelper
 
     void DescriptorHelper::SetTable(ID3D12GraphicsCommandList* cmd, DescriptorRing& ring, UINT frameIdx, std::initializer_list<std::pair<UINT,UINT>> paramAndSlots)
     {
-        ID3D12DescriptorHeap* heaps[] = { ring.GetHeap() };
-        cmd->SetDescriptorHeaps(1, heaps);
-
         for (const auto& item : paramAndSlots)
         {
             UINT paramIdx = item.first;

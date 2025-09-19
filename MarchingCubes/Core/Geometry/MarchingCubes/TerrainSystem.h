@@ -17,7 +17,7 @@ public:
 	void requestBrush(const BrushRequest& r);
 
 	// GPU-Only ÀÛ¾÷
-	void encode(ID3D12GraphicsCommandList* cmd);
+	void encode();
 	void tryFetch(ID3D12Device* device, ID3D12GraphicsCommandList* cmd);
 	void drainKeepAlive(std::vector<ComPtr<ID3D12Resource>>& dst);
 

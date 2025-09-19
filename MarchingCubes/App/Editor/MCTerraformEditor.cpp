@@ -645,9 +645,7 @@ void MCTerraformEditor::PopulateCommandList()
 	{
 		// 이전 프레임에서 작업한 결과를 우선 적용
 		m_terrain->tryFetch(m_device.Get(), m_commandList.Get());
-
-		m_terrain->encode(m_commandList.Get());
-		m_terrain->drainKeepAlive(m_toDeletesContainer);
+		m_terrain->encode();
 	}
 	
 	// Set necessary state.
