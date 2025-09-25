@@ -4,7 +4,6 @@
 #include "Core/UI/ImGUIRenderer.h"
 #include "Core/Geometry/MeshGenerator.h"
 #include "Core/Math/PhysicsHelper.h"
-#include "App/Editor/Handles/VertexSelector.h"
 #include <algorithm>
 #include <typeinfo>
 #include <iostream>
@@ -160,7 +159,7 @@ void MCTerraformEditor::OnUpdate(float deltaTime)
 	{
 		GridDesc gridDesc;
 		gridDesc.cells = { (UINT)m_gridSize[0], (UINT)m_gridSize[1], (UINT)m_gridSize[2] };
-		gridDesc.cellsize = m_cellSize;
+		gridDesc.cellsize = static_cast<float>(m_cellSize);
 		gridDesc.origin = m_gridOrigin;
 		m_terrain->setGridDesc(m_device.Get(), gridDesc);
 		m_gridRenewRequested = false;
@@ -169,9 +168,7 @@ void MCTerraformEditor::OnUpdate(float deltaTime)
 	m_camera->UpdateViewMatrix();
 	m_camera->UpdateConstantBuffer();
 	m_lightManager->Update();
-
-	m_terrain->encode();
-	m_terrain->tryFetch(m_device.Get());
+	m_terrain->tryFetch(m_device.Get(), m_swapChainFence.Get(), &m_toDeletesContainer);
 }
 
 void MCTerraformEditor::OnRender()
@@ -423,6 +420,10 @@ void MCTerraformEditor::LoadPipeline()
 	
 
 	m_uploadContext.Initailize(m_device.Get());
+
+	const UINT64 uploadRingSize = 16ull * 1024 * 1024;
+	m_uploadRing.Initialize(m_device.Get(), uploadRingSize);
+	g_uploadRing = &m_uploadRing;
 }
 
 void MCTerraformEditor::LoadAssets()
@@ -616,6 +617,11 @@ void MCTerraformEditor::CreatePipelineStates()
 
 void MCTerraformEditor::PopulateCommandList()
 {
+	if (m_swapChainFence)
+	{
+		m_uploadRing.ReclaimCompleted(m_swapChainFence->GetCompletedValue());
+	}
+	
 	ThrowIfFailed(m_commandAllocators[m_frameIndex]->Reset());
 	ThrowIfFailed(m_commandList->Reset(m_commandAllocators[m_frameIndex].Get(), nullptr));
 
@@ -627,22 +633,7 @@ void MCTerraformEditor::PopulateCommandList()
 
 	if (m_terrain)
 	{
-		m_terrain->UploadRendererData(m_device.Get(), m_commandList.Get());
-	}
-
-	// mesh 데이터 Upload 완료할 때까지 대기
-	{
-		ThrowIfFailed(m_commandList->Close());
-		ID3D12CommandList* ppCommandLists[] = { m_commandList.Get() };
-		m_graphicsQueue->ExecuteCommandLists(_countof(ppCommandLists), ppCommandLists);
-
-		ThrowIfFailed(m_graphicsQueue->Signal(m_uploadFence.Get(), m_fenceValues[m_frameIndex]));
-
-		ThrowIfFailed(m_uploadFence->SetEventOnCompletion(m_fenceValues[m_frameIndex], m_fenceEvent));
-		WaitForSingleObjectEx(m_fenceEvent, INFINITE, FALSE);
-
-		ThrowIfFailed(m_commandAllocators[m_frameIndex]->Reset());
-		ThrowIfFailed(m_commandList->Reset(m_commandAllocators[m_frameIndex].Get(), nullptr));
+		m_terrain->UploadRendererData(m_device.Get(), m_commandList.Get(), m_allocationsThisSubmit);
 	}
 	
 	// Set necessary state.
@@ -729,6 +720,12 @@ void MCTerraformEditor::MoveToNextFrame()
 {
 	const UINT64 currentFenceValue = m_fenceValues[m_frameIndex];
 	ThrowIfFailed(m_graphicsQueue->Signal(m_swapChainFence.Get(), currentFenceValue));
+
+	// 이번 프레임에 할당했던 요소들에 대해 완료 대기를 걸어둔다 
+    for (auto &a : m_allocationsThisSubmit) {
+        m_uploadRing.TrackAllocation(a.first, a.second, currentFenceValue);
+    }
+    m_allocationsThisSubmit.clear();
 
 	if (!m_toDeletesContainer.empty())
 	{

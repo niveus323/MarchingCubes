@@ -56,8 +56,4 @@ struct ITerrainBackend
 	virtual void requestBrush(const BrushRequest&) = 0;
 	virtual void requestRemesh(const RemeshRequest&) = 0;
 	virtual bool tryFetch(std::vector<ChunkUpdate>& OutChunkUpdates) = 0;  // GPU : readback / CPU : MeshData -> MeshBuffer Commit
-
-	// GPU Only
-	virtual void encode() {};					
-	virtual void drainKeepAlive(std::vector<ComPtr<ID3D12Resource>>&) {}
 };

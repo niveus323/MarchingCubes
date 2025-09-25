@@ -26,8 +26,8 @@ GPUTerrainBackend::GPUTerrainBackend(ID3D12Device* device, const GridDesc& gridD
     m_mc = std::make_unique<GPUMarchingCubesCS>(device);
 
     UINT totalBytesPerFrame = ConstantBufferHelper::CalcBytesPerFrame({
-            { sizeof(BrushCBData), 1},
-            { sizeof(GridCBData), 1}
+        { sizeof(BrushCBData), 1 },
+        { sizeof(GridCBData), 1 }
         });
 
     m_cbRing = std::make_unique<ConstantBufferHelper::CBRing>(m_device, m_ring, totalBytesPerFrame);
@@ -102,6 +102,8 @@ void GPUTerrainBackend::requestRemesh(const RemeshRequest& r)
 {
     m_requestedRemesh = r;
     m_needsRemesh = true;
+
+    encode();
 }
 
 void GPUTerrainBackend::encode()
@@ -246,10 +248,22 @@ void GPUTerrainBackend::encode()
         ID3D12CommandList* ppCommandLists[] = { m_commandList.Get() };
         m_commandQueue->ExecuteCommandLists(_countof(ppCommandLists), ppCommandLists);
 
+        // Compute 큐의 작업을 최대한 병렬로 처리하기 위해 Signal만 걸어두고 tryFetch에서 대기
         ThrowIfFailed(m_commandQueue->Signal(m_fence.Get(), m_fenceValues));
-        ThrowIfFailed(m_fence->SetEventOnCompletion(m_fenceValues, m_fenceEvent));
+        m_lastSubmitFenceValues = m_fenceValues++;
+        m_needsFetch = true;
+    }
+}
+
+bool GPUTerrainBackend::tryFetch(std::vector<ChunkUpdate>& OutChunkUpdates)
+{
+    if (!m_needsFetch) return false;
+    m_needsFetch = false;
+    
+    if(m_fence->GetCompletedValue() < m_lastSubmitFenceValues)
+    {
+        ThrowIfFailed(m_fence->SetEventOnCompletion(m_lastSubmitFenceValues, m_fenceEvent));
         WaitForSingleObjectEx(m_fenceEvent, INFINITE, false);
-        ++m_fenceValues;
     }
 
     auto& r = m_rb[m_rbCursor];
@@ -260,15 +274,15 @@ void GPUTerrainBackend::encode()
     r.rbCount->Unmap(0, nullptr);
     if (r.count == 0)
     {
-        return;
+        return false;
     }
 
-    m_commandAllocator[m_rbCursor]->Reset();
-    m_commandList->Reset(m_commandAllocator[m_rbCursor].Get(), nullptr);
-
-    m_commandList->CopyBufferRegion(r.rbTriangles.Get(), 0, m_outBuffer.Get(), 0, r.count * sizeof(OutTriangle));
-
     {
+        m_commandAllocator[m_rbCursor]->Reset();
+        m_commandList->Reset(m_commandAllocator[m_rbCursor].Get(), nullptr);
+
+        m_commandList->CopyBufferRegion(r.rbTriangles.Get(), 0, m_outBuffer.Get(), 0, r.count * sizeof(OutTriangle));
+
         m_commandList->Close();
         ID3D12CommandList* cmdList[] = { m_commandList.Get() };
         m_commandQueue->ExecuteCommandLists(_countof(cmdList), cmdList);
@@ -276,32 +290,14 @@ void GPUTerrainBackend::encode()
         m_commandQueue->Signal(m_fence.Get(), m_fenceValues);
         m_fence->SetEventOnCompletion(m_fenceValues, m_fenceEvent);
         WaitForSingleObjectEx(m_fenceEvent, INFINITE, false);
-        m_lastSubmitFenceValues = m_fenceValues;
         ++m_fenceValues;
     }
 
-
-    {
-        // 다음 프레임을 위한 링 advance (주의: frames-in-flight 이상이 되지 않도록 m_ring 조정)
-        m_rbCursor = (m_rbCursor + 1) % kRBFrameCount;
-        m_ringCursor = (m_ringCursor + 1) % m_ring;
-
-        m_needsFetch = true;
-    }
-}
-
-bool GPUTerrainBackend::tryFetch(std::vector<ChunkUpdate>& OutChunkUpdates)
-{
-    if (!m_needsFetch) return false;
-    m_needsFetch = false;
-    
-    UINT fetchslot = (m_rbCursor + kRBFrameCount - 1) % kRBFrameCount;
-
-    UINT triCount = m_rb[fetchslot].count;
+    UINT triCount = r.count;
     // OutTriangle
     void* pTris = nullptr;
     D3D12_RANGE rrTri{ 0, (SIZE_T)triCount * sizeof(OutTriangle)};
-    m_rb[fetchslot].rbTriangles->Map(0, &rrTri, &pTris);
+    r.rbTriangles->Map(0, &rrTri, &pTris);
     const OutTriangle* OutTriangles = reinterpret_cast<const OutTriangle*>(pTris);
     
     std::vector<uint32_t> triPerChunk(m_numChunks, 0);
@@ -343,15 +339,15 @@ bool GPUTerrainBackend::tryFetch(std::vector<ChunkUpdate>& OutChunkUpdates)
         md.indices.push_back(baseIndex + 2);
         baseIndex += 3;
     }
-    m_rb[fetchslot].rbTriangles->Unmap(0, nullptr);
+    r.rbTriangles->Unmap(0, nullptr);
+
+    // 다음 프레임을 위한 링 advance
+    m_rbCursor = (m_rbCursor + 1) % kRBFrameCount;
+    m_ringCursor = (m_ringCursor + 1) % m_ring;
+    // 이번 프레임에서 삭제 대기를 걸었던 리소스들 해제
+    m_pendingDeletes.clear();
 
     return !OutChunkUpdates.empty();
-}
-
-void GPUTerrainBackend::drainKeepAlive(std::vector<ComPtr<ID3D12Resource>>& dst)
-{
-    dst.insert(dst.end(), std::make_move_iterator(m_pendingDeletes.begin()), std::make_move_iterator(m_pendingDeletes.end()));
-    m_pendingDeletes.clear();
 }
 
 void GPUTerrainBackend::ensureTriangleBuffer()

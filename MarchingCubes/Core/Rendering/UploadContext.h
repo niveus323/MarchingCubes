@@ -9,10 +9,10 @@ public:
 
 	void Initailize(ID3D12Device* device);
 	void Execute(ID3D12GraphicsCommandList* cmdList);
-	DynamicRenderItem UploadDynamicMesh(Mesh& mesh, const MeshData& data);
-	void UploadStaticMesh(ID3D12GraphicsCommandList* cmdList, Mesh& mesh, const MeshData& data);
+	DynamicRenderItem UploadDynamicMesh(Mesh& mesh, ID3D12Fence* graphicsFence, const MeshData& data);
+	void UploadStaticMesh(ID3D12Fence * graphicsFence, ID3D12GraphicsCommandList* cmdList, Mesh& mesh, const MeshData& data);
 	void UpdateMesh(Mesh& mesh);
-	void UpdateMesh(Mesh& mesh, const MeshData& data);
+	void UpdateMesh(ID3D12Fence * graphicsFence, Mesh& mesh, const MeshData& data);
 	void SetDeletionSink(std::vector<ComPtr<ID3D12Resource>>* sink);
 
 private:

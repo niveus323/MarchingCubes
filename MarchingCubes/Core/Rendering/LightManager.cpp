@@ -9,7 +9,6 @@ LightManager::LightManager(ID3D12Device* device, UINT maxLights, UINT rootParamI
 {
 	m_lights.reserve(maxLights);
 
-	//UINT headerSize = AlignUp(static_cast<UINT>(offsetof(LightConstants, lights)), D3D12_CONSTANT_BUFFER_DATA_PLACEMENT_ALIGNMENT);
 	m_headerSizeAligned = static_cast<UINT>(sizeof(LightConstantsHeader));
 
 	UINT lightsSize = sizeof(Light) * maxLights;

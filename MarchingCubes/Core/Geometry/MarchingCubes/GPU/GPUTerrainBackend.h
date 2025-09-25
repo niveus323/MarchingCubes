@@ -34,10 +34,9 @@ public:
 	void setFieldPtr(std::shared_ptr<_GRD> grid) override;
 	void requestBrush(const BrushRequest& r) override;
 	void requestRemesh(const RemeshRequest& r) override;
-	void encode() override;
 	bool tryFetch(std::vector<ChunkUpdate>& OutChunkUpdates) override;
-	void drainKeepAlive(std::vector<ComPtr<ID3D12Resource>>&) override;
 
+	void encode();
 	DescriptorHelper::DescriptorRing& descriptorRing() { return *m_descriptorRing; }
 	ConstantBufferHelper::CBRing& cbRing() { return *m_cbRing; }
 

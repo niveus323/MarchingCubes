@@ -1,6 +1,7 @@
 #include "pch.h"
 #include "DXHelper.h"
 
+UploadRing* g_uploadRing = nullptr;
 
 std::wstring GetShaderFullPath(LPCWSTR shaderName)
 {

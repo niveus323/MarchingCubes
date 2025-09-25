@@ -9,6 +9,8 @@
 #include "Core/Geometry/MarchingCubes/TerrainSystem.h"
 #include <unordered_map>
 #include <array>
+
+#include "Core/Geometry/UploadRing.h"
 using Microsoft::WRL::ComPtr;
 
 class MCTerraformEditor : public DXAppBase
@@ -105,6 +107,9 @@ private:
     float m_mcIso = 0.0f;
 
     std::unique_ptr<TerrainSystem> m_terrain;
+
+    UploadRing m_uploadRing;
+    std::vector<std::pair<UINT64, UINT64>> m_allocationsThisSubmit;
 
     ComPtr<ID3D12Fence> m_uploadFence;
 };
