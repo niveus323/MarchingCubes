@@ -16,14 +16,12 @@ public:
 	void requestRemesh(const RemeshRequest& r);
 	void requestBrush(const BrushRequest& r);
 
-	// GPU-Only ÀÛ¾÷
-	void encode(ID3D12GraphicsCommandList* cmd);
-	void tryFetch(ID3D12Device* device, ID3D12GraphicsCommandList* cmd);
-	void drainKeepAlive(std::vector<ComPtr<ID3D12Resource>>& dst);
+	void tryFetch(ID3D12Device* device, ID3D12Fence* graphicsFence, std::vector<ComPtr<ID3D12Resource>>* sink);
 
 	// ChunkRenderer
 	TerrainChunkRenderer* GetRenderer() { return m_chunkRenderer.get(); }
 	void ResetRenderer() { m_chunkRenderer->Clear(); }
+	void UploadRendererData(ID3D12Device* device, ID3D12GraphicsCommandList* cmd, std::vector<std::pair<UINT64, UINT64>>& outAllocations);
 
 private:
 	TerrainMode				m_mode{ TerrainMode::GPU_ORIGINAL };

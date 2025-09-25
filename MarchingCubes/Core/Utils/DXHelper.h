@@ -2,6 +2,7 @@
 #include <stdexcept>
 #include <DirectXMath.h>
 #include <span>
+#include <Core/Geometry/UploadRing.h>
 
 // Note that while ComPtr is used to manage the lifetime of resources on the CPU,
 // it has no understanding of the lifetime of resources on the GPU. Apps must account
@@ -9,6 +10,9 @@
 // referenced by the GPU.
 using Microsoft::WRL::ComPtr;
 using namespace DirectX;
+
+
+extern UploadRing* g_uploadRing;
 
 inline std::string HrToString(HRESULT hr)
 {
@@ -237,6 +241,11 @@ static UINT AlignUp(UINT size, UINT align)
     return (size + align - 1) & ~(align - 1);
 }
 
+static UINT64 AlignUp64(UINT64 size, UINT64 align)
+{
+    return (size + align - 1) & ~(align - 1);
+}
+
 namespace MCUtil {
     inline UINT AlignCBSize(UINT size)
     {
@@ -351,7 +360,7 @@ namespace ConstantBufferHelper
         cmd->SetComputeRootConstantBufferView(rootParamIdx, gpuCB);
     }
 
-    UINT CalcBytesPerFrame(const std::initializer_list<std::pair<UINT, UINT>> cbSizeAndCounts, float margin = 1.5f, UINT minFloor = 64 * 1024);
+    UINT CalcBytesPerFrame(const std::initializer_list<std::pair<UINT, UINT>> cbSizeAndCounts, float margin = 1.5f, UINT minFloor = 64*1024);
 
     // 용량 초과 시 임시 업로드 방식을 사용
     D3D12_GPU_VIRTUAL_ADDRESS PushOrSpill(ID3D12Device* device, CBRing& ring, UINT frameIdx, const void* src, UINT sizeBytes, std::vector<ComPtr<ID3D12Resource>>& pendingDeleteContainer);

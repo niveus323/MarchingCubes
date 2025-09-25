@@ -7,9 +7,9 @@ class TerrainChunkRenderer final : public IDrawable
 {
 public:
 	TerrainChunkRenderer(ID3D12Device* device);
-	void ApplyUpdates(ID3D12Device* device, ID3D12GraphicsCommandList* cmd, const std::vector<ChunkUpdate>& ups);
+	void ApplyUpdates(ID3D12Device* device, ID3D12Fence* graphicsFence, std::vector<ComPtr<ID3D12Resource>>* sink,const std::vector<ChunkUpdate>& ups);
+	void UploadData(ID3D12Device* device, ID3D12GraphicsCommandList* cmd, std::vector<std::pair<UINT64, UINT64>>& outAllocations);
 	void Clear();
-	void DrainKeepAlive(std::vector<ComPtr<ID3D12Resource>>& dst);
 
 	// IDrawable을(를) 통해 상속됨
 	void Draw(ID3D12GraphicsCommandList* cmdList) const override;
@@ -39,9 +39,7 @@ private:
 		MeshBuffer meshBuffer;
 		DirectX::BoundingBox triBound;
 		bool active = false;
-		//uint32_t idleFrames = 0;
-		//uint32_t holdFrames = 0;
-		//uint64_t lastTouchedFrame = 0;
+		bool bNeedsUpload = false;
 	};
 
 	// Mesh
@@ -55,7 +53,5 @@ private:
 
 	// Material
 	std::shared_ptr<Material> m_material; // Material은 App 클래스에서 공유받아 bind만 해준다.
-
-	std::vector<ComPtr<ID3D12Resource>> m_pendingDeletes;
 };
 

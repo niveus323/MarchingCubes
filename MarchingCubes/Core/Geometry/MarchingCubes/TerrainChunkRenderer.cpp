@@ -13,7 +13,7 @@ TerrainChunkRenderer::TerrainChunkRenderer(ID3D12Device* device) :
 	CreateObjectConstantsBuffer(device);
 }
 
-void TerrainChunkRenderer::ApplyUpdates(ID3D12Device* device, ID3D12GraphicsCommandList* cmd, const std::vector<ChunkUpdate>& ups)
+void TerrainChunkRenderer::ApplyUpdates(ID3D12Device* device, ID3D12Fence* graphicsFence, std::vector<ComPtr<ID3D12Resource>>* sink, const std::vector<ChunkUpdate>& ups)
 {
 	auto buildTriBounds = [](const MeshData& meshdata, BoundingBox& OutBounds){
 		const auto& vertices = meshdata.vertices;
@@ -47,23 +47,44 @@ void TerrainChunkRenderer::ApplyUpdates(ID3D12Device* device, ID3D12GraphicsComm
 			{
 				ChunkSlot& chunkSlot = iter->second;
 				chunkSlot.active = true;
+				chunkSlot.bNeedsUpload = true;
 				chunkSlot.meshData = u.md;
 				buildTriBounds(chunkSlot.meshData, chunkSlot.triBound);
-				chunkSlot.meshBuffer.StageBuffers(u.md);
-				chunkSlot.meshBuffer.ResizeIfNeededAndCommit(device, cmd, u.md);
+				chunkSlot.meshBuffer.StageBuffers(device, graphicsFence, u.md);
 			}
 			else
 			{
 				ChunkSlot chunkSlot;
 				chunkSlot.active = true;
-				chunkSlot.meshBuffer.SetDeletionSink(&m_pendingDeletes);
+				chunkSlot.bNeedsUpload = true;
+				chunkSlot.meshBuffer.SetDeletionSink(sink);
 				chunkSlot.meshData = u.md;
 				buildTriBounds(chunkSlot.meshData, chunkSlot.triBound);
 				chunkSlot.meshBuffer.CreateBuffers(device, u.md);
-				chunkSlot.meshBuffer.StageBuffers(u.md);
-				chunkSlot.meshBuffer.CommitBuffers(cmd, u.md);
+				chunkSlot.meshBuffer.StageBuffers(device, graphicsFence, u.md);
 				m_chunks.insert_or_assign(u.key, chunkSlot);
 			}
+		}
+	}
+}
+
+void TerrainChunkRenderer::UploadData(ID3D12Device* device, ID3D12GraphicsCommandList* cmd, std::vector<std::pair<UINT64, UINT64>>& outAllocations)
+{
+	for (auto& [key, slot] : m_chunks)
+	{
+		if (slot.bNeedsUpload)
+		{
+			slot.meshBuffer.ResizeIfNeededAndCommit(device, cmd, slot.meshData);
+
+			UINT64 vbOffset = slot.meshBuffer.GetVertexUploadOffset();
+			UINT64 ibOffset = slot.meshBuffer.GetIndexUploadOffset();
+			if (vbOffset != UINT64_MAX && ibOffset != UINT64_MAX) {
+				const UINT64 vbSize = UINT64(slot.meshData.vertices.size()) * sizeof(Vertex);
+				const UINT64 ibSize = UINT64(slot.meshData.indices.size()) * sizeof(uint32_t);
+				const UINT64 allocSize = AlignUp64(vbSize, 256) + AlignUp64(ibSize, 256);
+				outAllocations.emplace_back(vbOffset, allocSize);
+			}
+			slot.bNeedsUpload = false;
 		}
 	}
 }
@@ -71,12 +92,6 @@ void TerrainChunkRenderer::ApplyUpdates(ID3D12Device* device, ID3D12GraphicsComm
 void TerrainChunkRenderer::Clear()
 {
 	m_chunks.clear();
-}
-
-void TerrainChunkRenderer::DrainKeepAlive(std::vector<ComPtr<ID3D12Resource>>& dst)
-{
-	dst.insert(dst.end(), std::make_move_iterator(m_pendingDeletes.begin()), std::make_move_iterator(m_pendingDeletes.end()));
-	m_pendingDeletes.clear();
 }
 
 void TerrainChunkRenderer::Draw(ID3D12GraphicsCommandList* cmdList) const

@@ -4,10 +4,11 @@
 #include "Core/UI/ImGUIRenderer.h"
 #include "Core/Geometry/MeshGenerator.h"
 #include "Core/Math/PhysicsHelper.h"
-#include "App/Editor/Handles/VertexSelector.h"
 #include <algorithm>
 #include <typeinfo>
 #include <iostream>
+
+int sDebugFrame = 0;
 
 MCTerraformEditor::MCTerraformEditor(UINT width, UINT height, std::wstring name)
 	: DXAppBase(width, height, name), 
@@ -22,7 +23,12 @@ MCTerraformEditor::MCTerraformEditor(UINT width, UINT height, std::wstring name)
 
 MCTerraformEditor::~MCTerraformEditor()
 {
-	
+#if PIX_DEBUGMODE
+	if (PIXGetCaptureState() == PIX_CAPTURE_GPU)
+	{
+		PIXEndCapture(FALSE);
+	}
+#endif
 }
 
 void MCTerraformEditor::OnInit()
@@ -85,8 +91,7 @@ void MCTerraformEditor::OnUpdate(float deltaTime)
 	{
 		if (m_inputState.IsPressed(ActionKey::ToggleDebugView))
 		{
-			m_debugViewEnabled = !m_debugViewEnabled;
-			OutputDebugString(m_debugViewEnabled ? L"ID Render Target ON\n" : L"ID Render Target OFF\n");
+			m_debugViewEnabled = true;
 		}
 		else if (m_inputState.IsPressed(ActionKey::ToggleWireFrame))
 		{
@@ -123,6 +128,21 @@ void MCTerraformEditor::OnUpdate(float deltaTime)
 			XMFLOAT3 hitPosLS;
 			if (PhysicsUtil::IsHit(rayOriginls, rayDirls, terrainRenderer->GetMeshData(), terrainRenderer->GetBoundingBox(), hitPosLS))
 			{
+#if PIX_DEBUGMODE
+				if (m_debugViewEnabled && sDebugFrame == 0 && PIXGetCaptureState() == 0)
+				{
+					std::cout << "BeginCapture" << std::endl;
+					PIXCaptureParameters param = {};
+					/*param.TimingCaptureParameters.FileName = L"Brush.wpix";
+					param.TimingCaptureParameters.CaptureCallstacks = true;
+					param.TimingCaptureParameters.CaptureCpuSamples = true;
+					param.TimingCaptureParameters.CaptureGpuTiming = true;
+					param.TimingCaptureParameters.CpuSamplesPerSecond = 4000;*/
+					param.GpuCaptureParameters.FileName = L"Brush.wpix";
+					PIXBeginCapture(PIX_CAPTURE_GPU, &param);
+				}
+#endif
+
 				BrushRequest req_brush{};
 				req_brush.hitpos = hitPosLS;
 				req_brush.radius = m_brushRadius;
@@ -139,7 +159,7 @@ void MCTerraformEditor::OnUpdate(float deltaTime)
 	{
 		GridDesc gridDesc;
 		gridDesc.cells = { (UINT)m_gridSize[0], (UINT)m_gridSize[1], (UINT)m_gridSize[2] };
-		gridDesc.cellsize = m_cellSize;
+		gridDesc.cellsize = static_cast<float>(m_cellSize);
 		gridDesc.origin = m_gridOrigin;
 		m_terrain->setGridDesc(m_device.Get(), gridDesc);
 		m_gridRenewRequested = false;
@@ -148,6 +168,7 @@ void MCTerraformEditor::OnUpdate(float deltaTime)
 	m_camera->UpdateViewMatrix();
 	m_camera->UpdateConstantBuffer();
 	m_lightManager->Update();
+	m_terrain->tryFetch(m_device.Get(), m_swapChainFence.Get(), &m_toDeletesContainer);
 }
 
 void MCTerraformEditor::OnRender()
@@ -155,7 +176,7 @@ void MCTerraformEditor::OnRender()
 	PopulateCommandList();
 
 	ID3D12CommandList* ppCommandLists[] = { m_commandList.Get() };
-	m_commandQueue->ExecuteCommandLists(_countof(ppCommandLists), ppCommandLists);
+	m_graphicsQueue->ExecuteCommandLists(_countof(ppCommandLists), ppCommandLists);
 
 	ThrowIfFailed(m_swapChain->Present(1, 0));
 
@@ -290,8 +311,8 @@ void MCTerraformEditor::LoadPipeline()
 	queueDesc.Flags = D3D12_COMMAND_QUEUE_FLAG_NONE;
 	queueDesc.Type = D3D12_COMMAND_LIST_TYPE_DIRECT;
 
-	ThrowIfFailed(m_device->CreateCommandQueue(&queueDesc, IID_PPV_ARGS(&m_commandQueue)));
-	NAME_D3D12_OBJECT(m_commandQueue);
+	ThrowIfFailed(m_device->CreateCommandQueue(&queueDesc, IID_PPV_ARGS(&m_graphicsQueue)));
+	NAME_D3D12_OBJECT(m_graphicsQueue);
 
 	DXGI_SWAP_CHAIN_DESC1 swapChainDesc = {};
 	swapChainDesc.BufferCount = FrameCount;
@@ -303,7 +324,7 @@ void MCTerraformEditor::LoadPipeline()
 	swapChainDesc.SampleDesc.Count = 1;
 
 	ComPtr<IDXGISwapChain1> swapChain;
-	ThrowIfFailed(factory->CreateSwapChainForHwnd(m_commandQueue.Get(), Win32Application::GetHwnd(), &swapChainDesc, nullptr, nullptr, &swapChain));
+	ThrowIfFailed(factory->CreateSwapChainForHwnd(m_graphicsQueue.Get(), Win32Application::GetHwnd(), &swapChainDesc, nullptr, nullptr, &swapChain));
 
 	//FullScreen Support Setting
 	ThrowIfFailed(factory->MakeWindowAssociation(Win32Application::GetHwnd(), DXGI_MWA_NO_ALT_ENTER));
@@ -389,13 +410,20 @@ void MCTerraformEditor::LoadPipeline()
 
 	// fence 생성
 	{
-		ThrowIfFailed(m_device->CreateFence(0, D3D12_FENCE_FLAG_NONE, IID_PPV_ARGS(&m_fence)));
-		NAME_D3D12_OBJECT(m_fence);
+		ThrowIfFailed(m_device->CreateFence(0, D3D12_FENCE_FLAG_NONE, IID_PPV_ARGS(&m_swapChainFence)));
+		NAME_D3D12_OBJECT(m_swapChainFence);
 		for (UINT i = 0; i < FrameCount; ++i) m_fenceValues[i] = 1;
+
+		ThrowIfFailed(m_device->CreateFence(0, D3D12_FENCE_FLAG_NONE, IID_PPV_ARGS(&m_uploadFence)));
+		NAME_D3D12_OBJECT(m_uploadFence);
 	}
 	
 
 	m_uploadContext.Initailize(m_device.Get());
+
+	const UINT64 uploadRingSize = 16ull * 1024 * 1024;
+	m_uploadRing.Initialize(m_device.Get(), uploadRingSize);
+	g_uploadRing = &m_uploadRing;
 }
 
 void MCTerraformEditor::LoadAssets()
@@ -439,17 +467,11 @@ void MCTerraformEditor::LoadAssets()
 		m_defaultMat->SetOpacity(1.0f);
 		m_defaultMat->CreateConstantBuffer(m_device.Get());
 	}
-
-	// Set Default Instance MCGenerator
-	//MarchingCubesGenerator::SetInstance(std::make_unique<OriginalMC>());
 	
 	// TerrainSystem 초기화
 	{
 		GridDesc gridDesc{};
-		gridDesc.cells = { 100, 100, 100 };
-		gridDesc.cellsize = 1.0f;
-		gridDesc.origin = { m_gridOrigin.x - 50.0f, m_gridOrigin.y - 50.0f, m_gridOrigin.z - 50.0f };
-		auto initialSphereField = MakeSphereGrid(100, 1.0f, 25.0f, m_gridOrigin);
+		auto initialSphereField = MakeSphereGrid(100U, 1.0f, 25.0f, m_gridOrigin, gridDesc);
 		m_terrain = std::make_unique<TerrainSystem>(m_device.Get(), initialSphereField, gridDesc, TerrainMode::GPU_ORIGINAL);
 		RemeshRequest req(m_mcIso);
 		m_terrain->requestRemesh(req);
@@ -460,43 +482,6 @@ void MCTerraformEditor::LoadAssets()
 		DynamicRenderItem terrainMeshItem;
 		terrainMeshItem.object = terrainMesh;
 		m_dynamicRenderItems[PipelineMode::Filled].push_back(terrainMeshItem);
-	}
-
-	// CreateUploadBuffer Cube Mesh
-	{
-		/*MeshData cubeData = MeshGenerator::GenerateCubeGrid(1, 1, 1);
-		m_gridMesh.SetMaterial(m_defaultMat);
-		DynamicRenderItem cubeMeshItem = m_uploadContext.UploadDynamicMesh(m_gridMesh, cubeData);
-		m_dynamicRenderItems[PipelineMode::Line].push_back(cubeMeshItem);
-		*/
-		/*for (int i = 0; i < cubeData.vertices.size(); ++i)
-		{
-			auto& vertex = cubeData.vertices[i];
-			auto vertexSelector = std::make_unique<VertexSelector>(m_device.Get(), m_uploadContext, vertex.pos, i+1);
-			m_dynamicRenderItems[PipelineMode::Filled].push_back(vertexSelector->GetRenderItem());
-			m_pickables.push_back(std::move(vertexSelector));
-		}*/
-		
-		// TODO : MC33 라이브러리로 수정하였으므로 큐브 정점 순서 상관없어짐.
-		static constexpr int ofs[8][3] = {
-			{0,0,0},{1,0,0},{1,1,0},{0,1,0},
-			{0,0,1},{1,0,1},{1,1,1},{0,1,1}
-		};
-		auto Flat = [](int x, int y, int z, int VY, int VZ) { return x * (VY * VZ) + y * VZ + z; };
-
-		std::array<UINT, 8> corner;
-		for (int v = 0; v < 8; ++v)
-		{
-			corner[v] = Flat(ofs[v][0], ofs[v][1], ofs[v][2], 2, 2);
-		}
-		m_cells.push_back(corner);
-		 
-		//MeshData reservedMesh;
-		//reservedMesh.vertices.reserve(15);
-		//reservedMesh.indices.reserve(15);
-		//m_generatedMesh.SetMaterial(m_defaultMat);
-		//DynamicRenderItem generatedMeshitem = m_uploadContext.UploadDynamicMesh(m_generatedMesh, reservedMesh);
-		//m_dynamicRenderItems[PipelineMode::Filled].push_back(generatedMeshitem);
 	}
 }
 
@@ -632,6 +617,11 @@ void MCTerraformEditor::CreatePipelineStates()
 
 void MCTerraformEditor::PopulateCommandList()
 {
+	if (m_swapChainFence)
+	{
+		m_uploadRing.ReclaimCompleted(m_swapChainFence->GetCompletedValue());
+	}
+	
 	ThrowIfFailed(m_commandAllocators[m_frameIndex]->Reset());
 	ThrowIfFailed(m_commandList->Reset(m_commandAllocators[m_frameIndex].Get(), nullptr));
 
@@ -643,11 +633,7 @@ void MCTerraformEditor::PopulateCommandList()
 
 	if (m_terrain)
 	{
-		// 이전 프레임에서 작업한 결과를 우선 적용
-		m_terrain->tryFetch(m_device.Get(), m_commandList.Get());
-
-		m_terrain->encode(m_commandList.Get());
-		m_terrain->drainKeepAlive(m_toDeletesContainer);
+		m_terrain->UploadRendererData(m_device.Get(), m_commandList.Get(), m_allocationsThisSubmit);
 	}
 	
 	// Set necessary state.
@@ -714,14 +700,14 @@ void MCTerraformEditor::PopulateCommandList()
 void MCTerraformEditor::WaitForGpu()
 {
 #ifdef _DEBUG
-	assert(m_fence);
+	assert(m_swapChainFence);
 #endif // _DEBUG
 
 	// Signal 명령을 queue에 추가.
-	ThrowIfFailed(m_commandQueue->Signal(m_fence.Get(), m_fenceValues[m_frameIndex]));
+	ThrowIfFailed(m_graphicsQueue->Signal(m_swapChainFence.Get(), m_fenceValues[m_frameIndex]));
 
 	// fence가 완료되는 시점까지 대기(시점 동기화).
-	ThrowIfFailed(m_fence->SetEventOnCompletion(m_fenceValues[m_frameIndex], m_fenceEvent));
+	ThrowIfFailed(m_swapChainFence->SetEventOnCompletion(m_fenceValues[m_frameIndex], m_fenceEvent));
 
 	// 이벤트 던져놓고 대기.
 	WaitForSingleObjectEx(m_fenceEvent, INFINITE, FALSE);
@@ -733,7 +719,13 @@ void MCTerraformEditor::WaitForGpu()
 void MCTerraformEditor::MoveToNextFrame()
 {
 	const UINT64 currentFenceValue = m_fenceValues[m_frameIndex];
-	ThrowIfFailed(m_commandQueue->Signal(m_fence.Get(), currentFenceValue));
+	ThrowIfFailed(m_graphicsQueue->Signal(m_swapChainFence.Get(), currentFenceValue));
+
+	// 이번 프레임에 할당했던 요소들에 대해 완료 대기를 걸어둔다 
+    for (auto &a : m_allocationsThisSubmit) {
+        m_uploadRing.TrackAllocation(a.first, a.second, currentFenceValue);
+    }
+    m_allocationsThisSubmit.clear();
 
 	if (!m_toDeletesContainer.empty())
 	{
@@ -743,16 +735,18 @@ void MCTerraformEditor::MoveToNextFrame()
 		m_pendingDeletes.emplace_back(std::move(pd));
 	}
 
+	// 체인 스왑
 	m_frameIndex = m_swapChain->GetCurrentBackBufferIndex();
 
-	if (m_fence->GetCompletedValue() < m_fenceValues[m_frameIndex])
+	// 체인 스왑 전에 완료하지 못한 작업은 대기
+	if (m_swapChainFence->GetCompletedValue() < m_fenceValues[m_frameIndex]) 
 	{
-		ThrowIfFailed(m_fence->SetEventOnCompletion(m_fenceValues[m_frameIndex], m_fenceEvent));
+		ThrowIfFailed(m_swapChainFence->SetEventOnCompletion(m_fenceValues[m_frameIndex], m_fenceEvent));
 		WaitForSingleObjectEx(m_fenceEvent, INFINITE, FALSE);
 	}
 
 	// 삭제 요청 이행.
-	const UINT64 completed = m_fence->GetCompletedValue();
+	const UINT64 completed = m_swapChainFence->GetCompletedValue();
 	auto iter = m_pendingDeletes.begin();
 	while (iter != m_pendingDeletes.end())
 	{
@@ -769,10 +763,14 @@ void MCTerraformEditor::MoveToNextFrame()
 	m_fenceValues[m_frameIndex] = currentFenceValue + 1;
 }
 
-std::shared_ptr<_GRD> MCTerraformEditor::MakeSphereGrid(int N, float cellSize, float radius, XMFLOAT3 center = { 0.0f, 0.0f, 0.0f })
+std::shared_ptr<_GRD> MCTerraformEditor::MakeSphereGrid(unsigned int N, float cellSize, float radius, XMFLOAT3 center, GridDesc& OutGridDesc)
 {
 	const float half = 0.5f * (float)N;
 	XMFLOAT3 origin = { center.x - half * cellSize, center.y - half * cellSize, center.z - half * cellSize };
+
+	OutGridDesc.cells = { N, N, N };
+	OutGridDesc.cellsize = cellSize;
+	OutGridDesc.origin = origin;
 
 	auto gridData = new _GRD{};
 	gridData->N[0] = N;			 gridData->N[1] = N;		  gridData->N[2] = N;           // 셀 개수

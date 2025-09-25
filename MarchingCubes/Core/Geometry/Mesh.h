@@ -17,8 +17,10 @@ public:
 	~MeshBuffer();
 	void CreateBuffers(ID3D12Device* device, size_t maxVertices, size_t maxIndices);
 	void CreateBuffers(ID3D12Device* device, const MeshData& data);
+
+	int FindOrCreateFallbackSlot(ID3D12Device* device, ID3D12Fence* graphicsFence, UINT64 neededSize);
 	
-	void StageBuffers(const MeshData& data); // CPU->Upload Heap 복사
+	void StageBuffers(ID3D12Device* device, ID3D12Fence* graphicsFence, const MeshData& data); // CPU->Upload Heap 복사
 	void CommitBuffers(ID3D12GraphicsCommandList* cmdList, const MeshData& data); // Upload Heap -> Default Heap 복사
 	void ResizeIfNeededAndCommit(ID3D12Device* device, ID3D12GraphicsCommandList* cmdList, const MeshData& data);
 	
@@ -36,17 +38,15 @@ public:
 	void SetTopology(D3D12_PRIMITIVE_TOPOLOGY topology) { m_topology = topology; };
 	void ClearCounts() { m_indexCount = 0; }; // 자주 갱신되는 MeshBuffer에 대해 바로 버퍼를 해제하지 않는 것이 효율적이라고 판단된다면 count만 clear하도록 한다.
 
+	void CommitBuffers(ID3D12GraphicsCommandList* cmdList, const MeshData& data, ID3D12Resource* uploadResource, UINT64 uploadOffset);
+	UINT64 GetVertexUploadOffset() const { return m_vertexUploadOffset; }
+	UINT64 GetIndexUploadOffset() const { return m_indexUploadOffset; }
+
 private:
 	void Initialize(ID3D12Device* device, UINT vertexBufferSize, UINT indexBufferSize);
 	
 private:
-	// 읽기 전용 버퍼와 쓰기 전용 버퍼를 분리하면 다음의 효과를 얻을 수 있음.
-	// 1. CPU->GPU 업로드 시 Upload Heap을 사용하면 Map과 memcpy 호출로 데이터를 쓸 수 있음.
-	// 2. GPU 렌더링 시 GPU는 Default Heap을 가장 빨리 읽음.
-	// 3. CPU가 데이터를 쓰는 동안 GPU가 사용 중인 리소스에 접근 대기하는 대기 시간(파이프라인 동기화 시간)을 없앨 수 있음.
-	
-	// CPU Upload Only Buffer
-	ComPtr<ID3D12Resource> m_vertexUploadBuffer, m_indexUploadBuffer;
+	static constexpr int kFallbackBuffers = 2;
 	
 	// GPU Read Only Buffer
 	ComPtr<ID3D12Resource> m_vertexBuffer, m_indexBuffer;
@@ -55,6 +55,13 @@ private:
 	D3D12_INDEX_BUFFER_VIEW m_indexBufferView{};
 
 	D3D12_PRIMITIVE_TOPOLOGY m_topology;
+
+	ComPtr<ID3D12Resource> m_fallbackUploadBuffers[kFallbackBuffers];
+	uint8_t* m_fallbackMappedPtr[kFallbackBuffers] = {};
+	UINT64 m_fallbackBufferSize[kFallbackBuffers] = {};
+	UINT64 m_fallbackFenceValues[kFallbackBuffers] = { 0 };
+	int m_activeFallbackIndex = -1;
+
 	// Real Count
 	UINT  m_vertexCount, m_indexCount;
 	// Reserved Count
@@ -69,6 +76,9 @@ private:
 
 	// Deletion Sink
 	std::vector<ComPtr<ID3D12Resource>>* m_deletionSink = nullptr;
+
+	UINT64 m_vertexUploadOffset = UINT64_MAX;
+	UINT64 m_indexUploadOffset = UINT64_MAX;
 };
 
 class Mesh :public IDrawable
@@ -85,11 +95,11 @@ public:
 	void Upload(ID3D12Device* device);
 	void UpdateConstants();
 
-	void StageBuffers();
+	void StageBuffers(ID3D12Device* device, ID3D12Fence* graphicsFence);
 	void CommitBuffers(ID3D12Device* device, ID3D12GraphicsCommandList* cmdList);
 
 	// NOTE : cmdList가 open-for-recording 상태여야 함.
-	void UpdateData(const MeshData& meshData);
+	void UpdateData(ID3D12Device* device, ID3D12Fence* graphicsFence, const MeshData& meshData);
 	
 	// Deliver Deletion Sink
 	void SetDeletionSink(std::vector<ComPtr<ID3D12Resource>>* sink) { m_buffer.SetDeletionSink(sink); }

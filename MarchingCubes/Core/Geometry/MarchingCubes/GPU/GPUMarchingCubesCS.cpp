@@ -12,27 +12,47 @@ GPUMarchingCubesCS::GPUMarchingCubesCS(ID3D12Device* device)
 
 void GPUMarchingCubesCS::encode(const GPUMCEncodingContext& context)
 {
-#if PIX_DEBUGMODE
-    PIXScopedEvent(PIX_COLOR(0, 128, 255), "CPU MC encode");
-#endif
-
     ID3D12Device* device = context.device;
     ID3D12GraphicsCommandList* cmd = context.cmd;
     const SDFVolumeView& vol = context.vol;
     const FrameAlloc& fa = context.fa;
     const RemeshRequest& req = context.req;
+    
+    XMUINT3 rmin = context.regionMin;
+    XMUINT3 rmax = context.regionMax;
+    XMUINT3 gridDim = vol.grid.cells;
+
+    const UINT chunkCubes = vol.chunkCubes; // 16
+    uint32_t groupsPerChunk = (chunkCubes + 7) / 8; // chunkcubes = 16이므로 2의 값이 들어갈 예정
+    XMUINT3 gpc(groupsPerChunk, groupsPerChunk, groupsPerChunk);
+
+    XMUINT3 cmin = { 
+        rmin.x / chunkCubes, 
+        rmin.y / chunkCubes, 
+        rmin.z / chunkCubes 
+    };
+    XMUINT3 cmax = {
+        (rmax.x + chunkCubes - 1) / chunkCubes,
+        (rmax.y + chunkCubes - 1) / chunkCubes,
+        (rmax.z + chunkCubes - 1) / chunkCubes
+    };
+    XMUINT3 expandedMin = { 
+        cmin.x * chunkCubes, 
+        cmin.y * chunkCubes, 
+        cmin.z * chunkCubes 
+    };
+    XMUINT3 expandedMax = {
+        std::min(cmax.x * chunkCubes, gridDim.x),
+        std::min(cmax.y * chunkCubes, gridDim.y),
+        std::min(cmax.z * chunkCubes, gridDim.z)
+    };
 
     // t0 준비
     if (!m_tableUploaded)
     {
         // TriTable업로드를 위해 상태 전환
-        {
-            D3D12_RESOURCE_BARRIER toCopy[2] = {
-                CD3DX12_RESOURCE_BARRIER::Transition(m_triDefault.Get(), D3D12_RESOURCE_STATE_COMMON, D3D12_RESOURCE_STATE_COPY_DEST),
-                CD3DX12_RESOURCE_BARRIER::Transition(m_triUpload.Get(), D3D12_RESOURCE_STATE_COMMON, D3D12_RESOURCE_STATE_GENERIC_READ)
-            };
-            cmd->ResourceBarrier(2, toCopy);
-        }
+        D3D12_RESOURCE_BARRIER toCopy = CD3DX12_RESOURCE_BARRIER::Transition(m_triDefault.Get(), D3D12_RESOURCE_STATE_COMMON, D3D12_RESOURCE_STATE_COPY_DEST);
+        cmd->ResourceBarrier(1, &toCopy);
 
         // 업로드
         cmd->CopyBufferRegion(m_triDefault.Get(), 0, m_triUpload.Get(), 0, tableSize);
@@ -55,50 +75,55 @@ void GPUMarchingCubesCS::encode(const GPUMCEncodingContext& context)
     cb.scale = grid.cellsize; // 동일하다고 가정.
     cb.chunkOrigin = grid.origin;
     cb.isoValue = req.isoValue;
-    cb.numChunkAxis = context.numChunkAxis;
-    cb.chunkCubes = context.chunkCubes;
-    uint32_t groupsPerChunk = (context.chunkCubes + 7) / 8;
-    XMUINT3 gpc(groupsPerChunk, groupsPerChunk, groupsPerChunk);
-    cb.groupsPerChunk = gpc;
-    cb.chunkCapacity = context.chunkCapacity;
-    
+    cb.numChunkAxis = vol.numChunkAxis;
+    cb.chunkCubes = chunkCubes;
+    cb.regionMin = expandedMin;
+    cb.regionMax = expandedMax;
+
     ConstantBufferHelper::SetRootCBV(device, cmd, 0, *fa.cbRing, fa.ringCursor, cb);
-    // SRV(t1, t3), UAV(u0, u6)
-    DescriptorHelper::SetTable(cmd, *fa.descRing, fa.ringCursor, { { 2, kSlot_t1 }, {3, kSlot_t3}, { 4, kSlot_u0 } , {5, kSlot_u6} });
+    ID3D12DescriptorHeap* heaps[] = { fa.descRing->GetHeap() };
+    cmd->SetDescriptorHeaps(1, heaps);
     // SRV(t0)
     cmd->SetComputeRootDescriptorTable(1, fa.descRing->StaticGpuAt(0));
+    // SRV(t1), UAV(u0)
+    DescriptorHelper::SetTable(cmd, *fa.descRing, fa.ringCursor, { { 2, kSlot_t1 }, { 3, kSlot_u0 } });
 
 #if PIX_DEBUGMODE
+    PIXScopedEvent(PIX_COLOR(0, 128, 255), "CPU MC encode");
     PIXBeginEvent(cmd, PIX_COLOR(255, 64, 64), "MarchingCubesCS Dispatch");
-    cmd->Dispatch(context.numChunkAxis.x * gpc.x, context.numChunkAxis.y * gpc.y, context.numChunkAxis.z * gpc.z);
+#endif
+
+    //cmd->Dispatch(context.numChunkAxis.x * gpc.x, context.numChunkAxis.y * gpc.y, context.numChunkAxis.z * gpc.z);
+
+    const UINT gx = (cmax.x - cmin.x) * gpc.x;
+    const UINT gy = (cmax.y - cmin.y) * gpc.y;
+    const UINT gz = (cmax.z - cmin.z) * gpc.z;
+
+    if (gx > 0 && gy > 0 && gz > 0)
+    {
+        cmd->Dispatch((cmax.x - cmin.x) * gpc.x, (cmax.y - cmin.y) * gpc.y, (cmax.z - cmin.z) * gpc.z);
+    }
+    
+#if PIX_DEBUGMODE
     PIXEndEvent(cmd);
-#else
-    cmd->Dispatch(context.numChunkAxis.x * gpc.x, context.numChunkAxis.y * gpc.y, context.numChunkAxis.z * gpc.z);
 #endif
 }
 
 void GPUMarchingCubesCS::ensurePipeline(ID3D12Device* device)
 {
-    // MarchingCubesCS 시그니쳐 : b0, t0, t1, t4, u0, u6
+    // MarchingCubesCS 시그니쳐 : b0, t0, t1, u0
     if (!m_mcRootSig)
     {
-        CD3DX12_DESCRIPTOR_RANGE1 sSRV[3]{}, sUav[2]{};
+        CD3DX12_DESCRIPTOR_RANGE1 sSRV[2]{}, sUav{};
         sSRV[0].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 0); // t0 (static)
         sSRV[1].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 1, 0, D3D12_DESCRIPTOR_RANGE_FLAG_DESCRIPTORS_VOLATILE); // t1
-        sSRV[2].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 3, 0, D3D12_DESCRIPTOR_RANGE_FLAG_DESCRIPTORS_VOLATILE); // t3
-        sUav[0].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 0, 0, D3D12_DESCRIPTOR_RANGE_FLAG_DESCRIPTORS_VOLATILE); // u0
-        sUav[1].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 6, 0, D3D12_DESCRIPTOR_RANGE_FLAG_DESCRIPTORS_VOLATILE); // u6
+        sUav.Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 0, 0, D3D12_DESCRIPTOR_RANGE_FLAG_DESCRIPTORS_VOLATILE); // u0
 
-        CD3DX12_ROOT_PARAMETER1 params[6]{};
+        CD3DX12_ROOT_PARAMETER1 params[4]{};
         params[0].InitAsConstantBufferView(0);          // b0 : GridCB
-        for (size_t i = 0; i < _countof(sSRV); ++i)
-        {
-            params[i + 1].InitAsDescriptorTable(1, &sSRV[i]);
-        }
-        for (size_t i = 0; i < _countof(sUav); ++i)
-        {
-            params[i + 1 + _countof(sSRV)].InitAsDescriptorTable(1, &sUav[i]);
-        }
+        params[1].InitAsDescriptorTable(1, &sSRV[0]);   // t0 : triTable
+        params[2].InitAsDescriptorTable(1, &sSRV[1]);   // t1 : Density3D
+        params[3].InitAsDescriptorTable(1, &sUav);      // u0 : OutBuffer
         
         CD3DX12_VERSIONED_ROOT_SIGNATURE_DESC rsDesc{};
 
@@ -132,19 +157,6 @@ void GPUMarchingCubesCS::ensurePipeline(ID3D12Device* device)
         pso.CS = { csBlob->GetBufferPointer(), csBlob->GetBufferSize() };
         ThrowIfFailed(device->CreateComputePipelineState(&pso, IID_PPV_ARGS(&m_mcPso)));
     }
-
-    if (!m_mcCmdSig)
-    {
-        D3D12_INDIRECT_ARGUMENT_DESC arg{};
-        arg.Type = D3D12_INDIRECT_ARGUMENT_TYPE_DISPATCH;
-
-        D3D12_COMMAND_SIGNATURE_DESC sig{};
-        sig.ByteStride = sizeof(D3D12_DISPATCH_ARGUMENTS);
-        sig.NumArgumentDescs = 1;
-        sig.pArgumentDescs = &arg;
-
-        ThrowIfFailed(device->CreateCommandSignature(&sig, nullptr, IID_PPV_ARGS(&m_mcCmdSig)));
-    }
 }
 
 // 정적 데이터인 Tritable은 초기화 단계에서 미리 생성해둔다
@@ -158,7 +170,7 @@ void GPUMarchingCubesCS::ensureTable(ID3D12Device* device)
 
     device->CreateCommittedResource(&defaultHeap, D3D12_HEAP_FLAG_NONE, &bufDesc, D3D12_RESOURCE_STATE_COMMON, nullptr, IID_PPV_ARGS(&m_triDefault));
     NAME_D3D12_OBJECT(m_triDefault);
-    device->CreateCommittedResource(&uploadHeap, D3D12_HEAP_FLAG_NONE, &bufDesc, D3D12_RESOURCE_STATE_COMMON, nullptr, IID_PPV_ARGS(&m_triUpload));
+    device->CreateCommittedResource(&uploadHeap, D3D12_HEAP_FLAG_NONE, &bufDesc, D3D12_RESOURCE_STATE_GENERIC_READ, nullptr, IID_PPV_ARGS(&m_triUpload));
     NAME_D3D12_OBJECT(m_triUpload);
 
     void* p = nullptr;

@@ -12,22 +12,22 @@ cbuffer BrushCB : register(b0)
     
     uint3 brushcenter;
     int _padding1;
+    
+    uint3 regionMin;
+    int _padding2;
+    uint3 regionMax;
+    int _padding3;
 }
-
-StructuredBuffer<uint4> RegionBuffer : register(t2);
 
 RWTexture3D<float> editTexture : register(u1);
 
 [numthreads(8,8,8)]
 void BrushCS(uint3 gid : SV_DispatchThreadID)
 {   
-    uint3 regionMin = RegionBuffer[0].xyz;
-    uint3 regionMax = RegionBuffer[1].xyz;
     int3 center = brushcenter;
-    
     uint3 p = regionMin + gid;
     
-    if (any(p < uint3(0, 0, 0)) || any(p >= regionMax) || any(p >= gridDim))
+    if (any(p >= regionMax) || any(p >= gridDim))
         return;
 
     float d = distance(float3(p), float3(center));

@@ -161,7 +161,6 @@
     <ClCompile Include="Core\Utils\DXHelper.cpp" />
     <ClCompile Include="App\Editor\MCTerraformEditor.cpp" />
     <ClCompile Include="App\Common\DXAppBase.cpp" />
-    <ClCompile Include="Core\DataStructures\Grid.cpp" />
     <ClCompile Include="Core\Input\InputState.cpp" />
     <ClCompile Include="Core\UI\ImGUIRenderer.cpp" />
     <ClCompile Include="Core\Rendering\LightManager.cpp" />
@@ -170,7 +169,6 @@
     <ClCompile Include="Core\Geometry\MarchingCubes\GPU\GPUTerrainBackend.cpp" />
     <ClCompile Include="main.cpp" />
     <ClCompile Include="Core\Geometry\Mesh.cpp" />
-    <ClCompile Include="App\Editor\Handles\VertexSelector.cpp" />
     <ClCompile Include="Core\Utils\Timer.cpp" />
     <ClCompile Include="Core\Rendering\UploadContext.cpp" />
     <ClCompile Include="Core\Geometry\MarchingCubesTables.cpp" />
@@ -180,6 +178,7 @@
     <ClCompile Include="Core\Geometry\MarchingCubes\TerrainChunkRenderer.cpp" />
     <ClCompile Include="Core\Geometry\MarchingCubes\CPU\MC33\MC33TerrainBackend.cpp" />
     <ClCompile Include="ThirdParty\mc33_impl.cpp" />
+    <ClCompile Include="Core\Geometry\UploadRing.cpp" />
     <ClCompile Include="Win32Application.cpp" />
   </ItemGroup>
   <ItemGroup>
@@ -197,7 +196,6 @@
     <ClInclude Include="App\Editor\MCTerraformEditor.h" />
     <ClInclude Include="App\Common\DXAppBase.h" />
     <ClInclude Include="Core\Utils\DXHelper.h" />
-    <ClInclude Include="Core\DataStructures\Grid.h" />
     <ClInclude Include="Core\Geometry\Mesh.h" />
     <ClInclude Include="Core\Input\InputState.h" />
     <ClInclude Include="Core\UI\ImGUIRenderer.h" />
@@ -209,13 +207,13 @@
     <ClInclude Include="Core\Geometry\MarchingCubes\GPU\GPUTerrainBackend.h" />
     <ClInclude Include="Core\Geometry\MarchingCubes\CPU\MC33\MC33TerrainBackend.h" />
     <ClInclude Include="pch.h" />
-    <ClInclude Include="App\Editor\Handles\VertexSelector.h" />
     <ClInclude Include="Core\Utils\Timer.h" />
     <ClInclude Include="Core\Rendering\UploadContext.h" />
     <ClInclude Include="Core\UI\UIRenderer.h" />
     <ClInclude Include="Core\Geometry\MarchingCubes\TerrainSystem.h" />
     <ClInclude Include="Core\Geometry\MarchingCubes\GPU\SDFVolume3D.h" />
     <ClInclude Include="Core\Geometry\MarchingCubes\TerrainChunkRenderer.h" />
+    <ClInclude Include="Core\Geometry\UploadRing.h" />
     <ClInclude Include="Win32Application.h" />
   </ItemGroup>
   <ItemGroup>
@@ -236,16 +234,6 @@
       <ShaderType Condition="'$(Configuration)|$(Platform)'=='Release|x64'">Compute</ShaderType>
       <ShaderModel Condition="'$(Configuration)|$(Platform)'=='Release|x64'">4.0</ShaderModel>
       <EntryPointName Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">BrushCS</EntryPointName>
-    </FxCompile>
-    <FxCompile Include="Assets\Shaders\BrushRegionCS.hlsl">
-      <ShaderType Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">Compute</ShaderType>
-      <ShaderModel Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">5.0</ShaderModel>
-      <ShaderType Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">Compute</ShaderType>
-      <ShaderModel Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">4.0</ShaderModel>
-      <ShaderType Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">Compute</ShaderType>
-      <ShaderModel Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">4.0</ShaderModel>
-      <ShaderType Condition="'$(Configuration)|$(Platform)'=='Release|x64'">Compute</ShaderType>
-      <ShaderModel Condition="'$(Configuration)|$(Platform)'=='Release|x64'">4.0</ShaderModel>
     </FxCompile>
     <FxCompile Include="Assets\Shaders\LineShaders.hlsl">
       <ShaderType Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">Pixel</ShaderType>
@@ -291,17 +279,6 @@
       <ShaderType Condition="'$(Configuration)|$(Platform)'=='Release|x64'">Pixel</ShaderType>
       <EntryPointName Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">PSMain</EntryPointName>
       <ShaderModel Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">5.0</ShaderModel>
-    </FxCompile>
-    <FxCompile Include="Assets\Shaders\PickCS.hlsl">
-      <ShaderType Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">Compute</ShaderType>
-      <ShaderModel Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">5.0</ShaderModel>
-      <ShaderType Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">Compute</ShaderType>
-      <ShaderModel Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">4.0</ShaderModel>
-      <ShaderType Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">Compute</ShaderType>
-      <ShaderModel Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">4.0</ShaderModel>
-      <ShaderType Condition="'$(Configuration)|$(Platform)'=='Release|x64'">Compute</ShaderType>
-      <ShaderModel Condition="'$(Configuration)|$(Platform)'=='Release|x64'">4.0</ShaderModel>
-      <EntryPointName Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">PickCS</EntryPointName>
     </FxCompile>
     <FxCompile Include="Assets\Shaders\shaders.hlsl">
       <ShaderModel Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">5.0</ShaderModel>

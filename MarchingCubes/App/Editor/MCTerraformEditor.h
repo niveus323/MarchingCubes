@@ -9,6 +9,8 @@
 #include "Core/Geometry/MarchingCubes/TerrainSystem.h"
 #include <unordered_map>
 #include <array>
+
+#include "Core/Geometry/UploadRing.h"
 using Microsoft::WRL::ComPtr;
 
 class MCTerraformEditor : public DXAppBase
@@ -37,7 +39,7 @@ private:
     void WaitForGpu();
     
     //Marching Cubes
-    std::shared_ptr<_GRD> MakeSphereGrid(int N, float cell, float radius, XMFLOAT3 origin);
+    std::shared_ptr<_GRD> MakeSphereGrid(unsigned int N, float cell, float radius, XMFLOAT3 origin, GridDesc& OutGridDesc);
 
 private:
     static const UINT FrameCount = 2;
@@ -49,7 +51,7 @@ private:
     ComPtr<ID3D12Device> m_device;
     ComPtr<ID3D12Resource> m_renderTargets[FrameCount];
     ComPtr<ID3D12CommandAllocator> m_commandAllocators[FrameCount];
-    ComPtr<ID3D12CommandQueue> m_commandQueue;
+    ComPtr<ID3D12CommandQueue> m_graphicsQueue;
     ComPtr<ID3D12RootSignature> m_rootSignature;
     ComPtr<ID3D12DescriptorHeap> m_rtvHeap;
     ComPtr<ID3D12DescriptorHeap> m_dsvHeap;
@@ -71,7 +73,7 @@ private:
     // Synchronization objects.
     UINT m_frameIndex;
     HANDLE m_fenceEvent;
-    ComPtr<ID3D12Fence> m_fence;
+    ComPtr<ID3D12Fence> m_swapChainFence;
     UINT64 m_fenceValues[FrameCount];
 
     // Scene Objects
@@ -90,7 +92,6 @@ private:
     DirectX::XMFLOAT3 m_gridOrigin = { 0,0,0 };
     std::array<int, 3> m_gridSize = { 1,1,1 };
     int m_cellSize = 1;
-    std::vector<std::array<UINT, 8>> m_cells;
     float m_brushRadius = 1.0f;
     float m_brushStrength = 5.0f;
     std::array<float, 3> m_lightDir = { -1.0f, -1.0f, -1.0f };
@@ -107,6 +108,9 @@ private:
 
     std::unique_ptr<TerrainSystem> m_terrain;
 
-    UINT64 m_lastSubmitFenceValue = 0;
+    UploadRing m_uploadRing;
+    std::vector<std::pair<UINT64, UINT64>> m_allocationsThisSubmit;
+
+    ComPtr<ID3D12Fence> m_uploadFence;
 };
 

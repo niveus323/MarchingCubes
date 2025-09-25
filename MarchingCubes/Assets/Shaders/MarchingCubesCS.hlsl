@@ -10,9 +10,12 @@ cbuffer GridCB : register(b0)
     float isoValue;
     uint3 numChunkAxis;
     uint chunkCubes; // 16
-    uint3 gropusPerChunk; // (chunkCubes + 7) / 8
-    uint chunkCapacity;
+    uint3 regionMin;
+    int _padding0;
+    uint3 regionMax;
+    int _padding1;
 };
+
 struct Vertex
 {
     float3 position;
@@ -30,11 +33,8 @@ struct Triangle
 
 StructuredBuffer<int> gTritable : register(t0);
 Texture3D<float> gDensityTex : register(t1);
-StructuredBuffer<uint> gChunkMask : register(t3);
 
-//AppendStructuredBuffer<Triangle> gTriangles : register(u0);
-RWStructuredBuffer<Triangle> gTriangles : register(u0);
-RWStructuredBuffer<uint2> gChunkMeta : register(u6); // x : touched, y : counter
+AppendStructuredBuffer<Triangle> gTriangles : register(u0);
 
 // Chunk 기준 고유 인덱스 <  1차원 벡터 -> [z][y][x] 인덱싱  >
 int IndexFromCoord(int3 coord)
@@ -62,7 +62,7 @@ float3 CalculateNormal(int3 coord)
     float dz = SampleDensity(coord + oz) - SampleDensity(coord - oz);
     
     float3 n = float3(dx, dy, dz);
-    return (dot(n, n) > 1e-20) ? normalize(n) : float3(0, 1, 0);
+    return (dot(n, n) > 1e-20) ? -normalize(n) : float3(0, 1, 0);
 }
 
 // Edge 보간 정점 생성
@@ -96,35 +96,15 @@ Vertex CreateVertex(int3 coordA, int3 coordB)
 
 [numthreads(8, 8, 8)]
 void MCMainCS(uint3 groupId : SV_GroupID, uint3 groupThreadID : SV_GroupThreadID)
-{
-    uint3 chunkgroup = groupId / gropusPerChunk;
-    uint3 loc = groupId % gropusPerChunk;
-    
-    // 청크 바깥 공간은 계산 x
-    if (any(chunkgroup >= numChunkAxis)) return;
-    
-    // Dirty Mask 검사
-    uint chunkIdx = (chunkgroup.z * numChunkAxis.y + chunkgroup.y) * numChunkAxis.x + chunkgroup.x;
-    uint word = chunkIdx >> 5;
-    uint bit = 1u << (chunkIdx & 31u);
-    if ((gChunkMask[word] & bit) == 0)
-        return;
-    
-    // Chunk 샘플 AABB
-    uint3 chunkMinS = chunkgroup * chunkCubes;
-    uint3 chunkMaxS = min(chunkMinS + chunkCubes, cells);
-    
-    uint3 cubeExt = (chunkMaxS - chunkMinS) - uint3(1, 1, 1);
-    if (any(cubeExt == int3(0,0,0)))
-        return;
-    
-    // 그룹의 base 좌표
-    uint3 base = chunkMinS + loc * 8 + groupThreadID;
-    uint3 limit = min(chunkMaxS, cells - uint3(1, 1, 1));
-    // 그룹이 청크 경계를 벗어나면 패스
+{   
+    uint3 base = regionMin + groupId * 8 + groupThreadID;
+    uint3 limit = min(regionMax, cells - uint3(1, 1, 1));
+
+    // 범위 밖이면 return
     if (any(base >= limit))
         return;
     
+    uint3 chunkCoord = base / chunkCubes;
     // 현재 Edge를 원점으로 하는 큐브를 형성
     int3 c[8];
     c[0] = base + int3(0, 0, 0);
@@ -174,16 +154,7 @@ void MCMainCS(uint3 groupId : SV_GroupID, uint3 groupThreadID : SV_GroupThreadID
         tri.vertexA = vC;
         tri.vertexB = vB;
         tri.vertexC = vA;
-        tri.chunkIdx = chunkIdx;
-        
-        uint localIdx = 0;
-        InterlockedAdd(gChunkMeta[chunkIdx].y, 1, localIdx);
-        
-        if (localIdx >= chunkCapacity)
-            return;
-        
-        uint globalIdx = chunkIdx * chunkCapacity + localIdx;
-        gTriangles[globalIdx] = tri;
-        //gTriangles.Append(tri);
+        tri.chunkIdx = (chunkCoord.z * numChunkAxis.y + chunkCoord.y) * numChunkAxis.x + chunkCoord.x;
+        gTriangles.Append(tri);
     }
 }

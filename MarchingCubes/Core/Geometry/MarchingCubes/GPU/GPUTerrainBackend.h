@@ -27,27 +27,24 @@ class GPUTerrainBackend : public ITerrainBackend
 {
 public:
 	explicit GPUTerrainBackend(ID3D12Device* device, const GridDesc& gridDesc);
+	~GPUTerrainBackend();
 
 	// ITerrainBackend을(를) 통해 상속됨
 	void setGridDesc(const GridDesc& desc) override;
 	void setFieldPtr(std::shared_ptr<_GRD> grid) override;
 	void requestBrush(const BrushRequest& r) override;
 	void requestRemesh(const RemeshRequest& r) override;
-	void encode(ID3D12GraphicsCommandList* cmd) override;
-	bool tryFetch(std::vector<ChunkUpdate>&) override;
-	void drainKeepAlive(std::vector<ComPtr<ID3D12Resource>>&) override;
+	bool tryFetch(std::vector<ChunkUpdate>& OutChunkUpdates) override;
 
+	void encode();
 	DescriptorHelper::DescriptorRing& descriptorRing() { return *m_descriptorRing; }
 	ConstantBufferHelper::CBRing& cbRing() { return *m_cbRing; }
 
 private:
 	void ensureTriangleBuffer();
-	void ensureChunkMaskBuffer();
-	void ensureChunkMetaBuffer();
 	void computeNumChunks();
 	void ensureRBSlot(UINT slot);
 	void resetRBSlot(UINT slot);
-	void initChunkBuffers(ID3D12GraphicsCommandList* cmd, bool bMarkAllDitry);
 
 private:
 	static constexpr UINT m_ring = 3;
@@ -55,6 +52,13 @@ private:
 	static constexpr int s_chunkcubes = 16; // threadgroup 8x8x8 정렬
 
 	ID3D12Device* m_device = nullptr;
+	ComPtr<ID3D12CommandQueue> m_commandQueue;
+	ComPtr<ID3D12CommandAllocator> m_commandAllocator[kRBFrameCount];
+	ComPtr<ID3D12GraphicsCommandList> m_commandList;
+	ComPtr<ID3D12Fence> m_fence;
+	HANDLE m_fenceEvent;
+	UINT64 m_fenceValues;
+	UINT64 m_lastSubmitFenceValues;
 
 	std::unique_ptr<SDFVolume3D>        m_vol;
 	std::unique_ptr<GPUBrushCS>         m_brush;
@@ -65,28 +69,10 @@ private:
 	std::unique_ptr<ConstantBufferHelper::CBRing> m_cbRing;
 	UINT m_ringCursor = 0;
 
-	// readback
-	ComPtr<ID3D12Resource> m_chunkMaskBuffer;
-	ComPtr<ID3D12Resource> m_chunkMaskUpload_Zeros; // zero-padding
-	ComPtr<ID3D12Resource> m_chunkMaskUpload_Ones;
-
-	struct ChunkMeta
-	{
-		UINT touched;
-		UINT counter;
-	};
-
-	ComPtr<ID3D12Resource> m_chunkMetaBuffer;
-	ComPtr<ID3D12Resource> m_chunkMetaUpload_Zeros; // zero-padding
-	ComPtr<ID3D12Resource> m_chunkMetaUpload_Ones;
-	UINT m_chunkMaskBytes = 0;
-	UINT m_chunkMetaBytes = 0;
-
 	struct RBRound {
-		ComPtr<ID3D12Resource> rbMeta;
 		ComPtr<ID3D12Resource> rbTriangles;
 		ComPtr<ID3D12Resource> rbCount;
-		bool scheduled = false;
+		UINT count = 0;
 	};
 	std::array<RBRound, kRBFrameCount> m_rb{};
 	UINT m_rbCursor = 0;
@@ -106,6 +92,7 @@ private:
 	bool m_fieldDirty = false;
 	bool m_hasBrush = false;
 	bool m_needsRemesh = false;
+	bool m_needsFetch = false;
 
 	std::vector<ComPtr<ID3D12Resource>> m_pendingDeletes;
 };

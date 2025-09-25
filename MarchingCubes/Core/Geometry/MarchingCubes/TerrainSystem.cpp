@@ -68,22 +68,16 @@ void TerrainSystem::requestBrush(const BrushRequest& r)
 	m_backend->requestBrush(r);
 }
 
-void TerrainSystem::encode(ID3D12GraphicsCommandList* cmd)
-{
-	m_backend->encode(cmd);
-}
-
-void TerrainSystem::tryFetch(ID3D12Device* device, ID3D12GraphicsCommandList* cmd)
+void TerrainSystem::tryFetch(ID3D12Device* device, ID3D12Fence* graphicsFence, std::vector<ComPtr<ID3D12Resource>>* sink)
 {
 	std::vector<ChunkUpdate> ups;
 	if (m_backend && m_backend->tryFetch(ups))
 	{
-		m_chunkRenderer->ApplyUpdates(device, cmd, ups);
+		m_chunkRenderer->ApplyUpdates(device, graphicsFence, sink, ups);
 	}
 }
 
-void TerrainSystem::drainKeepAlive(std::vector<ComPtr<ID3D12Resource>>& dst)
+void TerrainSystem::UploadRendererData(ID3D12Device* device, ID3D12GraphicsCommandList* cmd, std::vector<std::pair<UINT64, UINT64>>& outAllocations)
 {
-	m_backend->drainKeepAlive(dst);
-	m_chunkRenderer->DrainKeepAlive(dst);
+	m_chunkRenderer->UploadData(device, cmd, outAllocations);
 }

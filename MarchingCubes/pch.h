@@ -19,3 +19,12 @@
 //DirectX Helper https://github.com/microsoft/DirectX-Headers
 #include "DirectX-Headers/include/directx/d3dx12.h"
 #include "Core/Utils/DXHelper.h"
+
+#define PIX_DEBUGMODE 0
+
+#if PIX_DEBUGMODE
+#include <pix3.h>
+
+static HMODULE sPixGPU = PIXLoadLatestWinPixGpuCapturerLibrary();
+//static HMODULE sPixTiming = PIXLoadLatestWinPixTimingCapturerLibrary();
+#endif
