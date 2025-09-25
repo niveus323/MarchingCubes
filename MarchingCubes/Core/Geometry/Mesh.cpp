@@ -87,6 +87,10 @@ void MeshBuffer::StageBuffers(const MeshData& data)
 // UploadBuffer -> DefaultBuffer บนป็
 void MeshBuffer::CommitBuffers(ID3D12GraphicsCommandList* cmdList, const MeshData& data)
 {
+#if PIX_DEBUGMODE
+	PIXBeginEvent(cmdList, PIX_COLOR(0, 255, 0), L"MeshBuffer:CommitBuffers");
+#endif
+
 	m_vertexCount = UINT(data.vertices.size());
 	m_indexCount = UINT(data.indices.size());
 
@@ -117,6 +121,10 @@ void MeshBuffer::CommitBuffers(ID3D12GraphicsCommandList* cmdList, const MeshDat
 	}
 
 	m_justInitailized = false;
+
+#if PIX_DEBUGMODE
+	PIXEndEvent(cmdList);
+#endif
 }
 
 void MeshBuffer::ResizeIfNeededAndCommit(ID3D12Device* device, ID3D12GraphicsCommandList* cmdList, const MeshData& data)

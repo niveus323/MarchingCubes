@@ -13,7 +13,7 @@ TerrainChunkRenderer::TerrainChunkRenderer(ID3D12Device* device) :
 	CreateObjectConstantsBuffer(device);
 }
 
-void TerrainChunkRenderer::ApplyUpdates(ID3D12Device* device, ID3D12GraphicsCommandList* cmd, const std::vector<ChunkUpdate>& ups)
+void TerrainChunkRenderer::ApplyUpdates(ID3D12Device* device, const std::vector<ChunkUpdate>& ups)
 {
 	auto buildTriBounds = [](const MeshData& meshdata, BoundingBox& OutBounds){
 		const auto& vertices = meshdata.vertices;
@@ -47,25 +47,40 @@ void TerrainChunkRenderer::ApplyUpdates(ID3D12Device* device, ID3D12GraphicsComm
 			{
 				ChunkSlot& chunkSlot = iter->second;
 				chunkSlot.active = true;
+				chunkSlot.bNeedsUpload = true;
 				chunkSlot.meshData = u.md;
 				buildTriBounds(chunkSlot.meshData, chunkSlot.triBound);
 				chunkSlot.meshBuffer.StageBuffers(u.md);
-				chunkSlot.meshBuffer.ResizeIfNeededAndCommit(device, cmd, u.md);
+				//chunkSlot.meshBuffer.ResizeIfNeededAndCommit(device, cmd, u.md);
 			}
 			else
 			{
 				ChunkSlot chunkSlot;
 				chunkSlot.active = true;
+				chunkSlot.bNeedsUpload = true;
 				chunkSlot.meshBuffer.SetDeletionSink(&m_pendingDeletes);
 				chunkSlot.meshData = u.md;
 				buildTriBounds(chunkSlot.meshData, chunkSlot.triBound);
 				chunkSlot.meshBuffer.CreateBuffers(device, u.md);
 				chunkSlot.meshBuffer.StageBuffers(u.md);
-				chunkSlot.meshBuffer.CommitBuffers(cmd, u.md);
+				//chunkSlot.meshBuffer.CommitBuffers(cmd, u.md);
 				m_chunks.insert_or_assign(u.key, chunkSlot);
 			}
 		}
 	}
+}
+
+void TerrainChunkRenderer::UploadData(ID3D12Device* device, ID3D12GraphicsCommandList* cmd)
+{
+	for (auto& [key, slot] : m_chunks)
+	{
+		if (slot.bNeedsUpload)
+		{
+			slot.meshBuffer.ResizeIfNeededAndCommit(device, cmd, slot.meshData);
+			slot.bNeedsUpload = false;
+		}
+	}
+
 }
 
 void TerrainChunkRenderer::Clear()

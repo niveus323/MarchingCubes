@@ -49,13 +49,10 @@ GPUTerrainBackend::GPUTerrainBackend(ID3D12Device* device, const GridDesc& gridD
 
     ThrowIfFailed(m_device->CreateFence(0, D3D12_FENCE_FLAG_NONE, IID_PPV_ARGS(&m_fence)));
     NAME_D3D12_OBJECT(m_fence);
-    for (UINT i = 0; i < kRBFrameCount; ++i)
-    {
-        m_fenceValues[i] = 1;
-        m_lastSubmitFenceValues[i] = 0;
-    }
-
-    m_fenceEvent = CreateEvent(nullptr, FALSE, FALSE, nullptr);
+    m_fenceValues = 1;
+    m_lastSubmitFenceValues = 0;
+    
+    //m_fenceEvent = CreateEvent(nullptr, FALSE, FALSE, nullptr);
 
     ThrowIfFailed(m_device->CreateCommandList(0, D3D12_COMMAND_LIST_TYPE_COMPUTE, m_commandAllocator[m_rbCursor].Get(), nullptr, IID_PPV_ARGS(&m_commandList)));
     ThrowIfFailed(m_commandList->Close());
@@ -79,7 +76,7 @@ void GPUTerrainBackend::setGridDesc(const GridDesc& desc)
     ensureTriangleBuffer();
     for (UINT i = 0; i < kRBFrameCount; ++i)
     {
-        m_rb[i].rbTriangles.Reset();
+        resetRBSlot(i);
         ensureRBSlot(i);
     }
 }
@@ -112,12 +109,6 @@ void GPUTerrainBackend::encode()
     // encode가 발동하는 조건 : _GRD 갱신(m_fieldDirty == true), brush 사용(m_hasBrush == true)
     if (!m_device || (!m_fieldDirty && !m_hasBrush && !m_needsRemesh)) return;
 
-    if (m_lastSubmitFenceValues[m_rbCursor] != 0 &&
-        m_fence->GetCompletedValue() < m_lastSubmitFenceValues[m_rbCursor]) {
-        m_fence->SetEventOnCompletion(m_lastSubmitFenceValues[m_rbCursor], m_fenceEvent);
-        WaitForSingleObjectEx(m_fenceEvent, INFINITE, FALSE);
-    }
-
     ThrowIfFailed(m_commandAllocator[m_rbCursor]->Reset());
     ThrowIfFailed(m_commandList->Reset(m_commandAllocator[m_rbCursor].Get(), nullptr));
 
@@ -145,12 +136,8 @@ void GPUTerrainBackend::encode()
     volView.numChunkAxis = m_numChunkAxis;
 
 #if PIX_DEBUGMODE
-    if (m_hasBrush)
+    if (m_hasBrush && PIXGetCaptureState() > 0)
     {
-        if (PIXGetCaptureState() != PIX_CAPTURE_GPU)
-        {
-            PIXBeginCapture(PIX_CAPTURE_GPU, nullptr);
-        }
         PIXBeginEvent(m_commandList.Get(), PIX_COLOR(0, 255, 0), "GPUTerrainBackend");
     }
 #endif
@@ -236,7 +223,6 @@ void GPUTerrainBackend::encode()
             m_commandList->ResourceBarrier(_countof(toCopySrc), toCopySrc);
 
             m_commandList->CopyBufferRegion(m_rb[rbSlot].rbCount.Get(), 0, m_outCounter.Get(), 0, sizeof(UINT));
-            m_rb[rbSlot].bScheduled = true;
             
             CD3DX12_RESOURCE_BARRIER backToUav[2] =
             {
@@ -248,89 +234,74 @@ void GPUTerrainBackend::encode()
         m_needsRemesh = false;
     }
 
+#if PIX_DEBUGMODE
+    if (PIXGetCaptureState() > 0 )
+    {
+        PIXEndEvent(m_commandList.Get());
+    }
+#endif
     //Wait For GPU
     {
         m_commandList->Close();
         ID3D12CommandList* ppCommandLists[] = { m_commandList.Get() };
         m_commandQueue->ExecuteCommandLists(_countof(ppCommandLists), ppCommandLists);
 
-        ThrowIfFailed(m_commandQueue->Signal(m_fence.Get(), m_fenceValues[m_rbCursor]));
-        m_lastSubmitFenceValues[m_rbCursor] = m_fenceValues[m_rbCursor];
-        ++m_fenceValues[m_rbCursor];
+        ThrowIfFailed(m_commandQueue->Signal(m_fence.Get(), m_fenceValues));
+        ThrowIfFailed(m_fence->SetEventOnCompletion(m_fenceValues, m_fenceEvent));
+        WaitForSingleObjectEx(m_fenceEvent, INFINITE, false);
+        ++m_fenceValues;
+    }
 
+    auto& r = m_rb[m_rbCursor];
+    void* p = nullptr;
+    CD3DX12_RANGE range(0, sizeof(UINT));
+    r.rbCount->Map(0, &range, &p);
+    memcpy(&r.count, p, sizeof(UINT));
+    r.rbCount->Unmap(0, nullptr);
+    if (r.count == 0)
+    {
+        return;
+    }
+
+    m_commandAllocator[m_rbCursor]->Reset();
+    m_commandList->Reset(m_commandAllocator[m_rbCursor].Get(), nullptr);
+
+    m_commandList->CopyBufferRegion(r.rbTriangles.Get(), 0, m_outBuffer.Get(), 0, r.count * sizeof(OutTriangle));
+
+    {
+        m_commandList->Close();
+        ID3D12CommandList* cmdList[] = { m_commandList.Get() };
+        m_commandQueue->ExecuteCommandLists(_countof(cmdList), cmdList);
+
+        m_commandQueue->Signal(m_fence.Get(), m_fenceValues);
+        m_fence->SetEventOnCompletion(m_fenceValues, m_fenceEvent);
+        WaitForSingleObjectEx(m_fenceEvent, INFINITE, false);
+        m_lastSubmitFenceValues = m_fenceValues;
+        ++m_fenceValues;
+    }
+
+
+    {
         // 다음 프레임을 위한 링 advance (주의: frames-in-flight 이상이 되지 않도록 m_ring 조정)
         m_rbCursor = (m_rbCursor + 1) % kRBFrameCount;
         m_ringCursor = (m_ringCursor + 1) % m_ring;
 
         m_needsFetch = true;
     }
-
-#if PIX_DEBUGMODE
-    if (PIXGetCaptureState() == PIX_CAPTURE_GPU)
-    {
-        PIXEndEvent(m_commandList.Get());
-        PIXEndCapture(FALSE);
-    }
-#endif
 }
 
 bool GPUTerrainBackend::tryFetch(std::vector<ChunkUpdate>& OutChunkUpdates)
 {
     if (!m_needsFetch) return false;
     m_needsFetch = false;
-    const UINT fetchSlot = (m_rbCursor + kRBFrameCount - 1) % kRBFrameCount;
-
-    if (m_fence->GetCompletedValue() < m_lastSubmitFenceValues[fetchSlot])
-    {
-        m_fence->SetEventOnCompletion(m_lastSubmitFenceValues[fetchSlot], m_fenceEvent);
-        WaitForSingleObjectEx(m_fenceEvent, INFINITE, false);
-    }
-    auto& r = m_rb[fetchSlot];
-    if (!r.bScheduled) return false;
-
-    UINT triCount = 0;
-    void* p = nullptr;
-    CD3DX12_RANGE range(0, sizeof(UINT));
-    r.rbCount->Map(0, &range, &p);
-    memcpy(&triCount, p, sizeof(UINT));
-    r.rbCount->Unmap(0, nullptr);
-    if (triCount == 0)
-    {
-        r.bScheduled = false;
-        return false;
-    }
-
-    m_commandAllocator[fetchSlot]->Reset();
-    m_commandList->Reset(m_commandAllocator[fetchSlot].Get(), nullptr);
-
-    const UINT bytes = triCount * sizeof(OutTriangle);
-    {
-        auto toCopy = CD3DX12_RESOURCE_BARRIER::Transition(m_outBuffer.Get(), D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_COPY_SOURCE);
-        m_commandList->ResourceBarrier(1, &toCopy);
-        m_commandList->CopyBufferRegion(r.rbTriangles.Get(), 0, m_outBuffer.Get(), 0, bytes);
-        auto backToUav = CD3DX12_RESOURCE_BARRIER::Transition(m_outBuffer.Get(), D3D12_RESOURCE_STATE_COPY_SOURCE, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
-        m_commandList->ResourceBarrier(1, &backToUav);
-    }
     
-    {
-        m_commandList->Close();
-        ID3D12CommandList* cmdList[] = { m_commandList.Get() };
-        m_commandQueue->ExecuteCommandLists(_countof(cmdList), cmdList);
+    UINT fetchslot = (m_rbCursor + kRBFrameCount - 1) % kRBFrameCount;
 
-        m_commandQueue->Signal(m_fence.Get(), m_fenceValues[fetchSlot]);
-        if (m_fence->GetCompletedValue() < m_fenceValues[fetchSlot])
-        {
-            m_fence->SetEventOnCompletion(m_fenceValues[fetchSlot], m_fenceEvent);
-            WaitForSingleObjectEx(m_fenceEvent, INFINITE, false);
-        }
-        m_lastSubmitFenceValues[fetchSlot] = m_fenceValues[fetchSlot];
-        ++m_fenceValues[fetchSlot];
-    }
-    
+    UINT triCount = m_rb[fetchslot].count;
     // OutTriangle
     void* pTris = nullptr;
-    D3D12_RANGE rrTri{ 0, (SIZE_T)bytes };
-    r.rbTriangles->Map(0, &rrTri, &pTris);
+    D3D12_RANGE rrTri{ 0, (SIZE_T)triCount * sizeof(OutTriangle)};
+    m_rb[fetchslot].rbTriangles->Map(0, &rrTri, &pTris);
     const OutTriangle* OutTriangles = reinterpret_cast<const OutTriangle*>(pTris);
     
     std::vector<uint32_t> triPerChunk(m_numChunks, 0);
@@ -372,8 +343,7 @@ bool GPUTerrainBackend::tryFetch(std::vector<ChunkUpdate>& OutChunkUpdates)
         md.indices.push_back(baseIndex + 2);
         baseIndex += 3;
     }
-    r.rbTriangles->Unmap(0, nullptr);
-    r.bScheduled = false;
+    m_rb[fetchslot].rbTriangles->Unmap(0, nullptr);
 
     return !OutChunkUpdates.empty();
 }
@@ -447,5 +417,6 @@ void GPUTerrainBackend::ensureRBSlot(UINT slot)
 void GPUTerrainBackend::resetRBSlot(UINT slot)
 {
     auto& r = m_rb[slot];
+    r.rbCount.Reset();
     r.rbTriangles.Reset();
 }

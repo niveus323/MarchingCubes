@@ -18,12 +18,13 @@ public:
 
 	// GPU-Only ÀÛ¾÷
 	void encode();
-	void tryFetch(ID3D12Device* device, ID3D12GraphicsCommandList* cmd);
+	void tryFetch(ID3D12Device* device);
 	void drainKeepAlive(std::vector<ComPtr<ID3D12Resource>>& dst);
 
 	// ChunkRenderer
 	TerrainChunkRenderer* GetRenderer() { return m_chunkRenderer.get(); }
 	void ResetRenderer() { m_chunkRenderer->Clear(); }
+	void UploadRendererData(ID3D12Device* device, ID3D12GraphicsCommandList* graphicsCmd);
 
 private:
 	TerrainMode				m_mode{ TerrainMode::GPU_ORIGINAL };

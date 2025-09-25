@@ -62,7 +62,7 @@ float3 CalculateNormal(int3 coord)
     float dz = SampleDensity(coord + oz) - SampleDensity(coord - oz);
     
     float3 n = float3(dx, dy, dz);
-    return (dot(n, n) > 1e-20) ? normalize(n) : float3(0, 1, 0);
+    return (dot(n, n) > 1e-20) ? -normalize(n) : float3(0, 1, 0);
 }
 
 // Edge 보간 정점 생성

@@ -7,7 +7,8 @@ class TerrainChunkRenderer final : public IDrawable
 {
 public:
 	TerrainChunkRenderer(ID3D12Device* device);
-	void ApplyUpdates(ID3D12Device* device, ID3D12GraphicsCommandList* cmd, const std::vector<ChunkUpdate>& ups);
+	void ApplyUpdates(ID3D12Device* device, const std::vector<ChunkUpdate>& ups);
+	void UploadData(ID3D12Device* device, ID3D12GraphicsCommandList* cmd);
 	void Clear();
 	void DrainKeepAlive(std::vector<ComPtr<ID3D12Resource>>& dst);
 
@@ -39,6 +40,7 @@ private:
 		MeshBuffer meshBuffer;
 		DirectX::BoundingBox triBound;
 		bool active = false;
+		bool bNeedsUpload = false;
 		//uint32_t idleFrames = 0;
 		//uint32_t holdFrames = 0;
 		//uint64_t lastTouchedFrame = 0;

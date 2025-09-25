@@ -55,7 +55,7 @@ struct ITerrainBackend
 	virtual void setFieldPtr(std::shared_ptr<_GRD> grid) = 0;			// GPU: density3D 갱신 / CPU: 내부 GRD 보관
 	virtual void requestBrush(const BrushRequest&) = 0;
 	virtual void requestRemesh(const RemeshRequest&) = 0;
-	virtual bool tryFetch(std::vector<ChunkUpdate>&) = 0;  // GPU : readback / CPU : MeshData -> MeshBuffer Commit
+	virtual bool tryFetch(std::vector<ChunkUpdate>& OutChunkUpdates) = 0;  // GPU : readback / CPU : MeshData -> MeshBuffer Commit
 
 	// GPU Only
 	virtual void encode() {};					

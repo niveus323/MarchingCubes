@@ -3,14 +3,6 @@
 #include "Core/Utils/DXHelper.h"
 #include "Core/Geometry/MarchingCubes/ITerrainBackend.h"
 
-#define PIX_DEBUGMODE 0
-
-#if PIX_DEBUGMODE
-#include <pix3.h>
-
-static HMODULE sPix = PIXLoadLatestWinPixGpuCapturerLibrary();
-#endif
-
 struct SDFVolumeView
 {
 	ID3D12Resource* tex = nullptr;

@@ -35,7 +35,7 @@ public:
 	void requestBrush(const BrushRequest& r) override;
 	void requestRemesh(const RemeshRequest& r) override;
 	void encode() override;
-	bool tryFetch(std::vector<ChunkUpdate>&) override;
+	bool tryFetch(std::vector<ChunkUpdate>& OutChunkUpdates) override;
 	void drainKeepAlive(std::vector<ComPtr<ID3D12Resource>>&) override;
 
 	DescriptorHelper::DescriptorRing& descriptorRing() { return *m_descriptorRing; }
@@ -58,8 +58,8 @@ private:
 	ComPtr<ID3D12GraphicsCommandList> m_commandList;
 	ComPtr<ID3D12Fence> m_fence;
 	HANDLE m_fenceEvent;
-	UINT64 m_fenceValues[kRBFrameCount];
-	UINT64 m_lastSubmitFenceValues[kRBFrameCount];
+	UINT64 m_fenceValues;
+	UINT64 m_lastSubmitFenceValues;
 
 	std::unique_ptr<SDFVolume3D>        m_vol;
 	std::unique_ptr<GPUBrushCS>         m_brush;
@@ -73,7 +73,7 @@ private:
 	struct RBRound {
 		ComPtr<ID3D12Resource> rbTriangles;
 		ComPtr<ID3D12Resource> rbCount;
-		bool bScheduled = false;
+		UINT count = 0;
 	};
 	std::array<RBRound, kRBFrameCount> m_rb{};
 	UINT m_rbCursor = 0;

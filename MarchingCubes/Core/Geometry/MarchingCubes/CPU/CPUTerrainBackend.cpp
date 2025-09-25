@@ -17,15 +17,15 @@ void CPUTerrainBackend::setFieldPtr(std::shared_ptr<_GRD> grid)
 	m_grd = std::move(grid);
 }
 
-bool CPUTerrainBackend::tryFetch(std::vector<ChunkUpdate>& ups)
+bool CPUTerrainBackend::tryFetch(std::vector<ChunkUpdate>& OutChunkUpdates)
 {
 	// CPU Terrain¿∫ ¥‹¿œ Chunk.
-	ups.clear();
+	OutChunkUpdates.clear();
 	ChunkUpdate up;
 	up.empty = m_meshData.indices.empty();
 	up.key = { 0,0,0 };
 	up.md = std::move(m_meshData);
-	ups.push_back(up);
+	OutChunkUpdates.push_back(up);
 
 	return !up.empty;
 }
