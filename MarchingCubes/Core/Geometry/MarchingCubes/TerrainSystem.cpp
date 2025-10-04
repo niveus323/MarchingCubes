@@ -2,6 +2,7 @@
 #include "TerrainSystem.h"
 #include "Core/Geometry/MarchingCubes/GPU/GPUTerrainBackend.h"
 #include "Core/Geometry/MarchingCubes/CPU/MC33/MC33TerrainBackend.h"
+#include "Core/Geometry/MarchingCubes/CPU/NDC/NDCTerrainBackend.h"
 #include "Core/Geometry/MarchingCubes/TerrainChunkRenderer.h"
 
 TerrainSystem::TerrainSystem(ID3D12Device* device, std::shared_ptr<_GRD> grd, const GridDesc& desc, TerrainMode mode)
@@ -22,7 +23,11 @@ void TerrainSystem::setMode(ID3D12Device* device, TerrainMode mode)
 			m_backend = std::make_unique<GPUTerrainBackend>(device, m_grid);
 		}
 		break;
-
+		case TerrainMode::CPU_NDC:
+		{
+			m_backend = std::make_unique<NDCTerrainBackend>(m_grid, m_lastGRD);
+		}
+		break;
 		case TerrainMode::CPU_MC33:
 		default:
 		{
@@ -37,24 +42,6 @@ void TerrainSystem::setGridDesc(ID3D12Device* device, const GridDesc& d)
 {
 	m_grid = d;
 	m_backend->setGridDesc(d);
-}
-
-void TerrainSystem::initializeField(ID3D12Device* device, std::shared_ptr<_GRD> grid, const GridDesc& desc)
-{
-	m_lastGRD = std::move(grid);
-	if (m_chunkRenderer)
-	{
-		m_chunkRenderer.reset();
-	}
-
-	m_chunkRenderer = std::make_unique<TerrainChunkRenderer>(device);
-	setGridDesc(device, desc);
-	if(m_backend && m_lastGRD) m_backend->setFieldPtr(m_lastGRD);
-}
-
-void TerrainSystem::initializeField(ID3D12Device* device, const _GRD& grid, const GridDesc& desc)
-{
-	initializeField(device, std::make_shared<_GRD>(grid), desc);
 }
 
 void TerrainSystem::requestRemesh(const RemeshRequest& r)
@@ -80,4 +67,121 @@ void TerrainSystem::tryFetch(ID3D12Device* device, ID3D12Fence* graphicsFence, s
 void TerrainSystem::UploadRendererData(ID3D12Device* device, ID3D12GraphicsCommandList* cmd, std::vector<std::pair<UINT64, UINT64>>& outAllocations)
 {
 	m_chunkRenderer->UploadData(device, cmd, outAllocations);
+}
+
+void TerrainSystem::MakeDebugCell(MeshData& outMeshData)
+{
+	outMeshData.topology = D3D_PRIMITIVE_TOPOLOGY_LINELIST;
+
+	// XY-Plane
+	for (int x = 0; x < m_grid.cells.x; ++x)
+	{
+		for (int y = 0; y < m_grid.cells.y; ++y)
+		{
+			uint32_t index = outMeshData.indices.size();
+			Vertex A{};
+			A.pos = { 
+				m_grid.origin.x + x * m_grid.cellsize, 
+				m_grid.origin.y + y * m_grid.cellsize,
+				m_grid.origin.z 
+			};
+			A.normal = { 0.0f, 0.0f, 1.0f };
+			A.color = { 1.0f, 1.0f, 1.0f, 1.0f };
+
+			Vertex B{};
+			B.pos = { 
+				A.pos.x, 
+				A.pos.y, 
+				A.pos.z + m_grid.cells.z * m_grid.cellsize 
+			};
+			B.normal = { 0.0f, 0.0f, 1.0f };
+			B.color = { 1.0f, 1.0f, 1.0f, 1.0f };
+
+			outMeshData.vertices.push_back(A);
+			outMeshData.vertices.push_back(B);
+			outMeshData.indices.push_back(index);
+			outMeshData.indices.push_back(index + 1);
+		}
+		
+	}
+
+	// XZ-Plane
+	for (int x = 0; x < m_grid.cells.x; ++x)
+	{
+		for (int z = 0; z < m_grid.cells.z; ++z)
+		{
+			uint32_t index = outMeshData.indices.size();
+			Vertex A{};
+			A.pos = {
+				m_grid.origin.x + x * m_grid.cellsize,
+				m_grid.origin.y,
+				m_grid.origin.z + z * m_grid.cellsize
+			};
+			A.normal = { 0.0f, 1.0f, 0.0f };
+			A.color = { 1.0f, 1.0f, 1.0f, 1.0f };
+
+			Vertex B{};
+			B.pos = {
+				A.pos.x,
+				A.pos.y + m_grid.cells.y * m_grid.cellsize ,
+				A.pos.z 
+			};
+			B.normal = { 0.0f, 0.0f, 0.0f };
+			B.color = { 1.0f, 1.0f, 1.0f, 1.0f };
+
+			outMeshData.vertices.push_back(A);
+			outMeshData.vertices.push_back(B);
+			outMeshData.indices.push_back(index);
+			outMeshData.indices.push_back(index + 1);
+		}
+	}
+
+	// YZ-Plane
+	for (int y = 0; y < m_grid.cells.y; ++y)
+	{
+		for (int z = 0; z < m_grid.cells.z; ++z)
+		{
+			uint32_t index = outMeshData.indices.size();
+			Vertex A{};
+			A.pos = {
+				m_grid.origin.x,
+				m_grid.origin.y + y * m_grid.cellsize,
+				m_grid.origin.z + z * m_grid.cellsize
+			};
+			A.normal = { 0.0f, 0.0f, 0.0f };
+			A.color = { 1.0f, 1.0f, 1.0f, 1.0f };
+
+			Vertex B{};
+			B.pos = {
+				A.pos.x + m_grid.cells.x * m_grid.cellsize ,
+				A.pos.y,
+				A.pos.z
+			};
+			B.normal = { 0.0f, 0.0f, 0.0f };
+			B.color = { 1.0f, 1.0f, 1.0f, 1.0f };
+
+			outMeshData.vertices.push_back(A);
+			outMeshData.vertices.push_back(B);
+			outMeshData.indices.push_back(index);
+			outMeshData.indices.push_back(index + 1);
+		}
+	}
+}
+
+void TerrainSystem::initializeField(ID3D12Device* device, std::shared_ptr<_GRD> grid, const GridDesc& desc)
+{
+	m_lastGRD = std::move(grid);
+	if (m_chunkRenderer)
+	{
+		m_chunkRenderer.reset();
+	}
+
+	m_chunkRenderer = std::make_unique<TerrainChunkRenderer>(device);
+	setGridDesc(device, desc);
+	if (m_backend && m_lastGRD) m_backend->setFieldPtr(m_lastGRD);
+}
+
+void TerrainSystem::initializeField(ID3D12Device* device, const _GRD& grid, const GridDesc& desc)
+{
+	initializeField(device, std::make_shared<_GRD>(grid), desc);
 }

@@ -16,19 +16,16 @@ BundleRecorder::BundleRecorder(ID3D12Device* device, ID3D12RootSignature* rootSi
 		{
 			ThrowIfFailed(m_device->CreateCommandAllocator(D3D12_COMMAND_LIST_TYPE_BUNDLE, IID_PPV_ARGS(&context.allocator)));
 			NAME_D3D12_OBJECT_ALIAS(context.allocator, ToLPCWSTR(pso.first));
-			ThrowIfFailed(m_device->CreateCommandList(0, D3D12_COMMAND_LIST_TYPE_BUNDLE, context.allocator.Get(), pso.second.Get(), IID_PPV_ARGS(&context.bundle)));
+			ThrowIfFailed(m_device->CreateCommandList(0, D3D12_COMMAND_LIST_TYPE_BUNDLE, context.allocator.Get(), nullptr, IID_PPV_ARGS(&context.bundle)));
 			NAME_D3D12_OBJECT_ALIAS(context.bundle, ToLPCWSTR(pso.first));
-			context.bundle->SetGraphicsRootSignature(m_rootSignature);
 			context.bundle->Close();
 		}
 		m_pools.push_back(std::move(pool));
 	}
 }
 
-StaticRenderItem BundleRecorder::CreateBundleFor(const std::vector<IDrawable*>& drawables, PipelineMode mode)
+StaticRenderItem BundleRecorder::CreateBundleFor(const std::vector<std::unique_ptr<IDrawable>>& drawables, PipelineMode mode)
 {
-	StaticRenderItem item;
-
 	ContextPool& pool = m_pools[size_t(mode)];
 
 	size_t& idx = pool.nextIndex;
@@ -37,15 +34,16 @@ StaticRenderItem BundleRecorder::CreateBundleFor(const std::vector<IDrawable*>& 
 
 	context.allocator->Reset();
 	context.bundle->Reset(context.allocator.Get(), pool.pso.Get());
-	
-	for (IDrawable* drawable : drawables)
+	context.bundle->SetGraphicsRootSignature(m_rootSignature);
+	context.bundle->SetPipelineState(pool.pso.Get());
+
+	for (auto& drawable : drawables)
 	{
 		drawable->Draw(context.bundle.Get());
 	}
 	
 	// End Bundle Recording
 	context.bundle->Close();
-	item.bundle = context.bundle.Get();
 
-	return item;
+	return { context.bundle.Get() };
 }

@@ -9,6 +9,7 @@ public:
 	// ITerrainBackend을(를) 통해 상속됨
 	void setGridDesc(const GridDesc&) override;
 	void setFieldPtr(std::shared_ptr<_GRD> grid) override;
+	void requestBrush(const BrushRequest&) override;
 	bool tryFetch(std::vector<ChunkUpdate>& OutChunkUpdate) override;
 
 protected:

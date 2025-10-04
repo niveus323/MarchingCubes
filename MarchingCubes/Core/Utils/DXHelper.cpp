@@ -286,6 +286,7 @@ namespace MCUtil
             D3D12_RESOURCE_STATE_GENERIC_READ,
             nullptr,
             IID_PPV_ARGS(&g_zeroUpload)));
+        NAME_D3D12_OBJECT(g_zeroUpload);
 
         // 채워넣기
         void* p = nullptr;

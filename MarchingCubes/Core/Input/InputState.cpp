@@ -20,6 +20,7 @@ InputState::InputState()
 	m_keyMap[ActionKey::MoveDown] = 'Q';
 	m_keyMap[ActionKey::ToggleDebugView] = VK_F1;
 	m_keyMap[ActionKey::ToggleWireFrame] = VK_F2;
+	m_keyMap[ActionKey::ToggleDebugNormal] = VK_F3;
 }
 
 void InputState::OnMouseDown(int x, int y, WPARAM btn)
@@ -31,12 +32,12 @@ void InputState::OnMouseDown(int x, int y, WPARAM btn)
 	{
 	case VK_LBUTTON:
 	{
-		m_leftBtnState = MouseButtonState::JustPressed;
+		m_leftBtnState = ActionKeyState::JustPressed;
 	}
 		break;
 	case VK_RBUTTON:
 	{
-		m_rightBtnState = MouseButtonState::JustPressed;
+		m_rightBtnState = ActionKeyState::JustPressed;
 	}
 		break;
 	default:
@@ -53,12 +54,12 @@ void InputState::OnMouseUp(int x, int y, WPARAM btn)
 	{
 	case VK_LBUTTON:
 	{
-		m_leftBtnState = MouseButtonState::JustReleased;
+		m_leftBtnState = ActionKeyState::JustReleased;
 	}
 	break;
 	case VK_RBUTTON:
 	{
-		m_rightBtnState = MouseButtonState::JustReleased;
+		m_rightBtnState = ActionKeyState::JustReleased;
 	}
 	break;
 	default:
@@ -81,12 +82,12 @@ void InputState::OnMouseMove(int x, int y)
 
 void InputState::OnKeyDown(WPARAM key)
 {
-	m_keyState[key] = true;
+	m_keyState[key] = ActionKeyState::JustPressed;
 }
 
 void InputState::OnKeyUp(WPARAM key)
 {
-	m_keyState[key] = false;
+	m_keyState[key] = ActionKeyState::JustReleased;
 }
 
 bool InputState::IsPressed(ActionKey action) const
@@ -95,9 +96,24 @@ bool InputState::IsPressed(ActionKey action) const
 	if (iter != m_keyMap.end())
 	{
 		auto keyState = m_keyState.find(iter->second);
-		return keyState != m_keyState.end() && keyState->second;
+		return keyState != m_keyState.end() && (keyState->second == ActionKeyState::JustPressed || keyState->second == ActionKeyState::Pressed);
 	}
 	return false;
+}
+
+ActionKeyState InputState::GetKeyState(ActionKey action) const
+{
+	auto iter = m_keyMap.find(action);
+	if (iter != m_keyMap.end())
+	{
+		auto keyState = m_keyState.find(iter->second);
+		if (keyState == m_keyState.end()) 
+			return ActionKeyState::NONE;
+		
+		return keyState->second;
+	}
+
+	return ActionKeyState::NONE;
 }
 
 // TODO : 키 매핑 커스터마이징 기능 추가 (특수 키를 위한 문자열 <-> VK 매핑 테이블 추가)
@@ -188,11 +204,11 @@ void InputState::Update()
 
 	switch (m_leftBtnState)
 	{
-	case MouseButtonState::JustPressed:
-		m_leftBtnState = MouseButtonState::Pressed;
+	case ActionKeyState::JustPressed:
+		m_leftBtnState = ActionKeyState::Pressed;
 		break;
-	case MouseButtonState::JustReleased:
-		m_leftBtnState = MouseButtonState::NONE;
+	case ActionKeyState::JustReleased:
+		m_leftBtnState = ActionKeyState::NONE;
 		break;
 	default:
 		break;
@@ -200,13 +216,28 @@ void InputState::Update()
 
 	switch (m_rightBtnState)
 	{
-	case MouseButtonState::JustPressed:
-		m_rightBtnState = MouseButtonState::Pressed;
+	case ActionKeyState::JustPressed:
+		m_rightBtnState = ActionKeyState::Pressed;
 		break;
-	case MouseButtonState::JustReleased:
-		m_rightBtnState = MouseButtonState::NONE;
+	case ActionKeyState::JustReleased:
+		m_rightBtnState = ActionKeyState::NONE;
 		break;
 	default:
 		break;
+	}
+
+	for (auto& state : m_keyState)
+	{
+		switch (state.second)
+		{
+			case ActionKeyState::JustPressed:
+				state.second = ActionKeyState::Pressed;
+				break;
+			case ActionKeyState::JustReleased:
+				state.second = ActionKeyState::NONE;
+				break;
+			default:
+				break;
+		}
 	}
 }

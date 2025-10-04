@@ -5,6 +5,7 @@
 enum class TerrainMode
 {
 	CPU_MC33,
+	CPU_NDC,
 	GPU_ORIGINAL
 };
 

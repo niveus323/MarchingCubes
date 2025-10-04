@@ -31,7 +31,7 @@ class BundleRecorder
 public:
 	BundleRecorder(ID3D12Device* device, ID3D12RootSignature* rootSignature, const std::unordered_map<PipelineMode, ComPtr<ID3D12PipelineState>>& psos, size_t contextsPerPSO = 2);
 
-	StaticRenderItem CreateBundleFor(const std::vector<IDrawable*>& drawables, PipelineMode mode);
+	StaticRenderItem CreateBundleFor(const std::vector<std::unique_ptr<IDrawable>>& drawables, PipelineMode mode);
 private:
 	struct Context {
 		ComPtr<ID3D12CommandAllocator> allocator;

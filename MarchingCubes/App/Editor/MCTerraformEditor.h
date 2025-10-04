@@ -80,7 +80,7 @@ private:
     std::unique_ptr<Camera> m_camera;
     std::unique_ptr<LightManager> m_lightManager;
 
-    Mesh m_gridMesh;
+    std::vector<std::unique_ptr<IDrawable>> m_StaticObjects;
 
     // TODO : PBR 테스트를 위해 임시로 Material을 app에서 초기화하여 사용, ResoureManager 및 Wrapper 클래스로 만들어서 .mat 파일 로드하여 인스턴스를 wrapper 클래스에 넘기는 방식으로 수정할 것.
     std::shared_ptr<Material> m_defaultMat;
@@ -92,7 +92,7 @@ private:
     DirectX::XMFLOAT3 m_gridOrigin = { 0,0,0 };
     std::array<int, 3> m_gridSize = { 1,1,1 };
     int m_cellSize = 1;
-    float m_brushRadius = 1.0f;
+    float m_brushRadius = 3.0f;
     float m_brushStrength = 5.0f;
     std::array<float, 3> m_lightDir = { -1.0f, -1.0f, -1.0f };
 
@@ -101,7 +101,9 @@ private:
 
     // debug
     bool m_debugViewEnabled = false;
+    bool m_debugNormalEnabled = false;
     ComPtr<ID3D12PipelineState> m_wireFramePSO;
+    ComPtr<ID3D12PipelineState> m_debugNormalPSO;
 
    // MC(GPU)
     float m_mcIso = 0.0f;

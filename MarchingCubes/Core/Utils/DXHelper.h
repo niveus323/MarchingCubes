@@ -11,7 +11,6 @@
 using Microsoft::WRL::ComPtr;
 using namespace DirectX;
 
-
 extern UploadRing* g_uploadRing;
 
 inline std::string HrToString(HRESULT hr)

@@ -22,7 +22,7 @@ void Material::CreateConstantBuffer(ID3D12Device* device)
         nullptr,
         IID_PPV_ARGS(&m_buffer)
     ));
-    NAME_D3D12_OBJECT(m_buffer);
+    NAME_D3D12_OBJECT_ALIAS(m_buffer, L"Material");
 
     ThrowIfFailed(m_buffer->Map(0, nullptr, reinterpret_cast<void**>(&m_mappedData)));
     memcpy(m_mappedData, &m_cb, sizeof(m_cb));
