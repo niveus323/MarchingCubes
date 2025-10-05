@@ -3,10 +3,9 @@
 #include "Core/Math/PhysicsHelper.h"
 #include <algorithm>
 
-CPUTerrainBackend::CPUTerrainBackend(const GridDesc& desc, std::shared_ptr<_GRD> grid)
+CPUTerrainBackend::CPUTerrainBackend(ID3D12Device* device, const GridDesc& desc)
 {
 	setGridDesc(desc);
-	setFieldPtr(grid);
 }
 
 void CPUTerrainBackend::setGridDesc(const GridDesc& desc)
@@ -21,6 +20,9 @@ void CPUTerrainBackend::setFieldPtr(std::shared_ptr<_GRD> grid)
 
 void CPUTerrainBackend::requestBrush(const BrushRequest& req)
 {
+    RemeshRequest remeshRequest;
+    remeshRequest.isoValue = req.isoValue;
+
     const XMUINT3 cells = m_gridDesc.cells;
     const XMFLOAT3 origin = m_gridDesc.origin;
     const float cellsize = m_gridDesc.cellsize;
@@ -37,7 +39,7 @@ void CPUTerrainBackend::requestBrush(const BrushRequest& req)
     const float kBase = std::clamp(m_brushDelta * deltaTime * std::abs(weight), 0.0f, 1.0f);
 
     // 영향 범위 (Field 인덱스 공간으로 변환)
-    auto sample = [&](float p, float o) { return (p - o) / cellsize; };
+    auto sample = [cellsize](float p, float o) { return (p - o) / cellsize; };
     int minX = std::max(0, int(std::floor(sample(hitPos.x - radius, origin.x))));
     int maxX = std::min(SX - 1, int(std::ceil(sample(hitPos.x + radius, origin.x))));
     int minY = std::max(0, int(std::floor(sample(hitPos.y - radius, origin.y))));
@@ -72,12 +74,12 @@ void CPUTerrainBackend::requestBrush(const BrushRequest& req)
                 const float k = kBase * falloff;
 
                 F = F + (desired - F) * k;
+
+                remeshRequest.chunkset.insert(ChunkKey{ x / m_chunkSize, y / m_chunkSize, z / m_chunkSize });
             }
         }
     }
 
-    RemeshRequest remeshRequest;
-    remeshRequest.isoValue = req.isoValue;
     requestRemesh(remeshRequest);
 }
 

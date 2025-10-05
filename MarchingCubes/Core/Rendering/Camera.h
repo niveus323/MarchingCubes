@@ -17,6 +17,7 @@ public:
 	const float& GetViewportHeight() const { return m_viewportHeight; }
 	
 	const XMFLOAT3& GetPosition() const { return m_position; }
+	const XMVECTOR& GetLookDir() const { XMVECTOR vpos = XMLoadFloat3(&m_position), vtarget = XMLoadFloat3(&m_targetPos); return XMVector3Normalize(vtarget - vpos); };
 
 	void SetPosition(float x, float y, float z);
 	void SetTarget(float x, float y, float z);

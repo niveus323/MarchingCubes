@@ -4,21 +4,34 @@
 #include <thread>
 #include <windows.h>
 #include <string>
+//#include "cpu_provider_factory.h"
+#include <dml_provider_factory.h>
+#include <onnxruntime_c_api.h>
 
-NDCTerrainBackend::NDCTerrainBackend(const GridDesc& desc, std::shared_ptr<_GRD> grid) :
-	CPUTerrainBackend(desc, grid),
+NDCTerrainBackend::NDCTerrainBackend(ID3D12Device* device, const GridDesc& desc) :
+	CPUTerrainBackend(device, desc),
 	m_env(ORT_LOGGING_LEVEL_WARNING, "ndc"),
 	m_session(nullptr)
 {
+	m_chunkSize = kInD - kPad - 1;
 	std::wstring onnxPath = GetFullPath(AssetType::Data, L"NDC/ndc_sdf_float.onnx");
 
 	// onnx 모델 로드
 	try {
+		OrtApi const& ortApi = Ort::GetApi();
+		OrtDmlApi const* ortDmlApi = nullptr;
+		ortApi.GetExecutionProviderApi("DML", ORT_API_VERSION, reinterpret_cast<void const**>(&ortDmlApi));
+
 		Ort::SessionOptions so;
 		so.DisableMemPattern();
 		so.SetExecutionMode(ExecutionMode::ORT_SEQUENTIAL);
-		so.SetGraphOptimizationLevel(GraphOptimizationLevel::ORT_ENABLE_ALL); // 권장
+		so.SetGraphOptimizationLevel(GraphOptimizationLevel::ORT_ENABLE_ALL);
 
+		// 외장 GPU를 사용하지 않으므로 0번 디바이스를 사용 (TODO : 외장 GPU 사용 여부 체크)
+		ortDmlApi->SessionOptionsAppendExecutionProvider_DML(so, 0);
+
+		// NOTE : ONNX + DML 사용 시 MetaCommand 생성을 시도, 실패 시 다른 방식으로 Fallback 한다. 이 과정에서 META_COMMAND_UNSUPPORTED_PARAMS 메시지가 초기화 시 발생
+		// 직접 DirectML을 사용하여 MetaCommand 생성을 시도하지 않는 방식으로 메시지 처리 가능하나 이미 이 과정으로도 모델 아웃풋이 잘 나오기 때문에 에러를 무시하고 작업함
 		m_session = Ort::Session(m_env, onnxPath.c_str(), so);
 	}
 	catch (const Ort::Exception& e) {
@@ -40,27 +53,49 @@ void NDCTerrainBackend::requestRemesh(const RemeshRequest& req)
 {
 	m_chunkUpdates.clear();
 
+	// Seam 처리를 위해 앞 셸 3개 (포인트 4개)는 padding으로서 이전 chunk의 셸 3개를 포함한다. 실질적으로 이번 chunk에서 처리하는 크기는 64 -3x2 -1 = 57
+	m_chunkSize = kOutD - 1;
+
 	// 네트워크가 필요한 고정 코어로 분리. (입력이 64x64x64가 될 수 있도록 한다.)
 	std::vector<float> sdfValues;
 	int64_t D = 0, H = 0, W = 0;
 	Ort::Value input;
 	std::vector<Ort::Value> outputs;
-	for (int x = 0; x < (int)m_gridDesc.cells.x; x += kOutD - 1)
+
+	// 갱신할 메쉬의 chunk 정보가 없을 경우 전체 갱신
+	if (req.chunkset.empty())
 	{
-		for (int y = 0; y < (int)m_gridDesc.cells.y; y += kOutD - 1)
+		for (int x = 0; x < (int)m_gridDesc.cells.x; x += m_chunkSize)
 		{
-			for (int z = 0; z < (int)m_gridDesc.cells.z; z += kOutD - 1)
+			for (int y = 0; y < (int)m_gridDesc.cells.y; y += m_chunkSize)
 			{
-				ChunkUpdate up;
-				if (BuildNdcInputFromGRD(req.isoValue, XMINT3(x, y, z), up))
+				for (int z = 0; z < (int)m_gridDesc.cells.z; z += m_chunkSize)
 				{
-					m_chunkUpdates.push_back(up);
+					ChunkUpdate up;
+					if (BuildNdcInputFromGRD(req.isoValue, XMINT3(x, y, z), up))
+					{
+						m_chunkUpdates.push_back(up);
+					}
 				}
 			}
 		}
 	}
-
-
+	else
+	{
+		for (auto& chunk : req.chunkset)
+		{
+			ChunkUpdate up;
+			XMINT3 chunkStart = {
+				static_cast<int>(chunk.x * m_chunkSize),
+				static_cast<int>(chunk.y * m_chunkSize),
+				static_cast<int>(chunk.z * m_chunkSize)
+			};
+			if (BuildNdcInputFromGRD(req.isoValue, chunkStart, up))
+			{
+				m_chunkUpdates.push_back(up);
+			}
+		}
+	}
 }
 
 bool NDCTerrainBackend::tryFetch(std::vector<ChunkUpdate>& OutChunkUpdates)
@@ -78,7 +113,7 @@ bool NDCTerrainBackend::BuildNdcInputFromGRD(const float iso, const DirectX::XMI
 
 	// 2) ORT 텐서 만들기
 	auto mem = Ort::MemoryInfo::CreateCpu(OrtArenaAllocator, OrtMemTypeDefault);
-	std::array<int64_t, 5> ishape{ 1,1,kInD,kInD,kInD }; // N,C,D,H,W
+	std::array<int64_t, 5> ishape{ 1,1,kInD,kInD,kInD }; // N(1),C(1),D(64),H(64),W(64)
 	Ort::Value inTensor = Ort::Value::CreateTensor<float>(mem, input.data(), input.size(), ishape.data(), ishape.size());
 
 	// 3) 추론
@@ -97,18 +132,18 @@ bool NDCTerrainBackend::BuildNdcInputFromGRD(const float iso, const DirectX::XMI
 
 	// Chunk 시작 지점의 좌표 = 시작 인덱스 * 셀 크기
 	XMFLOAT3 chunkOrigin = {
-		m_gridDesc.origin.x + static_cast<float>(chunkStart.x) * m_gridDesc.cellsize,
-		m_gridDesc.origin.y + static_cast<float>(chunkStart.y) * m_gridDesc.cellsize,
-		m_gridDesc.origin.z + static_cast<float>(chunkStart.z) * m_gridDesc.cellsize
+		m_gridDesc.origin.x + static_cast<float>(chunkStart.x - kPad) * m_gridDesc.cellsize,
+		m_gridDesc.origin.y + static_cast<float>(chunkStart.y - kPad) * m_gridDesc.cellsize,
+		m_gridDesc.origin.z + static_cast<float>(chunkStart.z - kPad) * m_gridDesc.cellsize
 	};
 
 	// 4) DC 재구성
-	DualContouringNDC(input.data(), Y, kOutD, kOutD, kOutD, outUpdate.md.vertices, outUpdate.md.indices, chunkOrigin, m_gridDesc.cellsize, iso);
+	DualContouringNDC(input.data(), Y, kOutD, kOutD, kOutD, outUpdate.md.vertices, outUpdate.md.indices, chunkOrigin, iso);
 
 	outUpdate.empty = outUpdate.md.indices.empty();
-	outUpdate.key.x = chunkStart.x / (kOutD - 1);
-	outUpdate.key.y = chunkStart.y / (kOutD - 1);
-	outUpdate.key.z = chunkStart.z / (kOutD - 1);
+	outUpdate.key.x = chunkStart.x / m_chunkSize;
+	outUpdate.key.y = chunkStart.y / m_chunkSize;
+	outUpdate.key.z = chunkStart.z / m_chunkSize;
 
 	return !outUpdate.empty;
 }
@@ -117,7 +152,7 @@ bool NDCTerrainBackend::BuildNdcInputFromGRD(const float iso, const DirectX::XMI
 void NDCTerrainBackend::buildInput(const DirectX::XMINT3& chunkStart, std::vector<float>& outData) const
 {
 	// cellsize: 월드 단위 한 셀 크기
-	const float trunc_vox = 100.0f;                  // 3 voxels 권장
+	const float trunc_vox = 100.0f;
 	const float trunc_world = trunc_vox * m_gridDesc.cellsize;
 
 	const int Nxs = (int)m_gridDesc.cells.x;
@@ -192,7 +227,7 @@ void NDCTerrainBackend::DualContouringNDC(const float* input_sdf, const float* f
 	int dimX, int dimY, int dimZ,
 	std::vector<Vertex>& outVertices,
 	std::vector<uint32_t>& outIndices,
-	const XMFLOAT3& origin, float cellsize, const float iso)
+	const XMFLOAT3& origin, const float iso)
 {
 	if (dimX <= 0 || dimY <= 0 || dimZ <= 0) {
 		outVertices.clear(); outIndices.clear(); return;
@@ -230,7 +265,7 @@ void NDCTerrainBackend::DualContouringNDC(const float* input_sdf, const float* f
 			for (int k = 0; k < dimZ; ++k) {
 				bool v0 = input_sdf[idx_inSDF(i, j, k)] < iso;
 				bool v1 = input_sdf[idx_inSDF(i + 1, j, k)] < iso;
-				bool v2 = input_sdf[idx_inSDF(i + 1, j + 1, k)] < iso; 
+				bool v2 = input_sdf[idx_inSDF(i + 1, j + 1, k)] < iso;
 				bool v3 = input_sdf[idx_inSDF(i, j + 1, k)] < iso;
 				bool v4 = input_sdf[idx_inSDF(i, j, k + 1)] < iso;
 				bool v5 = input_sdf[idx_inSDF(i + 1, j, k + 1)] < iso;
@@ -242,20 +277,21 @@ void NDCTerrainBackend::DualContouringNDC(const float* input_sdf, const float* f
 				{
 					currPlane[idx_YZ(j, k)] = outVertices.size();
 
+					// SDF 포인트로부터 얼마나 떨어진 위치에 정점을 생성해야하는가
 					float fx = std::clamp(float_grid[idx_output(i, j, k, 0)], 0.0f, 1.0f);
 					float fy = std::clamp(float_grid[idx_output(i, j, k, 1)], 0.0f, 1.0f);
 					float fz = std::clamp(float_grid[idx_output(i, j, k, 2)], 0.0f, 1.0f);
 
 					// Output으로부터 Vertex 위치를 계산
 					XMFLOAT3 outPos{
-						origin.x + (static_cast<float>(i) + fx) * cellsize,
-						origin.y + (static_cast<float>(j) + fy) * cellsize,
-						origin.z + (static_cast<float>(k) + fz) * cellsize
+						origin.x + (static_cast<float>(i) + fx) * m_gridDesc.cellsize,
+						origin.y + (static_cast<float>(j) + fy) * m_gridDesc.cellsize,
+						origin.z + (static_cast<float>(k) + fz) * m_gridDesc.cellsize
 					};
 
 					Vertex v{};
 					v.pos = outPos;
-					v.normal = ComputeSdfNormal_Trilerp(input_sdf, dimX, dimY, dimZ, i, j, k, fx, fy, fz, cellsize);
+					v.normal = ComputeSdfNormal_Trilerp(input_sdf, dimX, dimY, dimZ, i, j, k, fx, fy, fz);
 					v.color = { 1.0f, 1.0f, 1.0f, 1.0f };
 
 					outVertices.push_back(v);
@@ -321,21 +357,20 @@ void NDCTerrainBackend::DualContouringNDC(const float* input_sdf, const float* f
 	}
 }
 
-DirectX::XMFLOAT3 NDCTerrainBackend::ComputeSdfNormal_Trilerp(
-	const float* sdf, int dimX, int dimY, int dimZ,
-	int i, int j, int k, float fx, float fy, float fz, float cellsize) const
+DirectX::XMFLOAT3 NDCTerrainBackend::ComputeSdfNormal_Trilerp(const float* sdf, int dimX, int dimY, int dimZ,
+	int i, int j, int k, float fx, float fy, float fz) const
 {
 	using namespace DirectX;
 
-	auto sample = [&](int x, int y, int z) -> float {
+	auto sample = [sdf, dimX, dimY, dimZ](int x, int y, int z) -> float {
 		x = std::clamp(x, 0, dimX);
 		y = std::clamp(y, 0, dimY);
 		z = std::clamp(z, 0, dimZ);
 		return sdf[idx_inSDF(x, y, z)];
 		};
 
-	const float inv2h = 1.0f / (2.0f * cellsize);
-	auto gradAt = [&](int x, int y, int z) -> XMVECTOR {
+	const float inv2h = 1.0f / (2.0f * m_gridDesc.cellsize);
+	auto gradAt = [sample, inv2h](int x, int y, int z) -> XMVECTOR {
 		float gx = (sample(x + 1, y, z) - sample(x - 1, y, z)) * inv2h;
 		float gy = (sample(x, y + 1, z) - sample(x, y - 1, z)) * inv2h;
 		float gz = (sample(x, y, z + 1) - sample(x, y, z - 1)) * inv2h;

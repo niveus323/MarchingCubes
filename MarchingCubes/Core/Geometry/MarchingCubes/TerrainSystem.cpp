@@ -15,7 +15,6 @@ void TerrainSystem::setMode(ID3D12Device* device, TerrainMode mode)
 {
 	m_mode = mode;
 
-	std::unique_ptr<ITerrainBackend> next;
 	switch (m_mode)
 	{
 		case TerrainMode::GPU_ORIGINAL:
@@ -25,17 +24,17 @@ void TerrainSystem::setMode(ID3D12Device* device, TerrainMode mode)
 		break;
 		case TerrainMode::CPU_NDC:
 		{
-			m_backend = std::make_unique<NDCTerrainBackend>(m_grid, m_lastGRD);
+			m_backend = std::make_unique<NDCTerrainBackend>(device, m_grid);
 		}
 		break;
 		case TerrainMode::CPU_MC33:
 		default:
 		{
-			m_backend = std::make_unique<MC33TerrainBackend>(m_grid, m_lastGRD);
+			m_backend = std::make_unique<MC33TerrainBackend>(device, m_grid);
 		}
 		break;
 	}
-	
+
 }
 
 void TerrainSystem::setGridDesc(ID3D12Device* device, const GridDesc& d)
@@ -73,10 +72,14 @@ void TerrainSystem::MakeDebugCell(MeshData& outMeshData)
 {
 	outMeshData.topology = D3D_PRIMITIVE_TOPOLOGY_LINELIST;
 
+	const int Nx = static_cast<int>(m_grid.cells.x);
+	const int Ny = static_cast<int>(m_grid.cells.y);
+	const int Nz = static_cast<int>(m_grid.cells.z);
+
 	// XY-Plane
-	for (int x = 0; x < m_grid.cells.x; ++x)
+	for (int x = 0; x < Nx; ++x)
 	{
-		for (int y = 0; y < m_grid.cells.y; ++y)
+		for (int y = 0; y < Ny; ++y)
 		{
 			uint32_t index = outMeshData.indices.size();
 			Vertex A{};
@@ -106,9 +109,9 @@ void TerrainSystem::MakeDebugCell(MeshData& outMeshData)
 	}
 
 	// XZ-Plane
-	for (int x = 0; x < m_grid.cells.x; ++x)
+	for (int x = 0; x < Nx; ++x)
 	{
-		for (int z = 0; z < m_grid.cells.z; ++z)
+		for (int z = 0; z < Nz; ++z)
 		{
 			uint32_t index = outMeshData.indices.size();
 			Vertex A{};
@@ -137,9 +140,9 @@ void TerrainSystem::MakeDebugCell(MeshData& outMeshData)
 	}
 
 	// YZ-Plane
-	for (int y = 0; y < m_grid.cells.y; ++y)
+	for (int y = 0; y < Ny; ++y)
 	{
-		for (int z = 0; z < m_grid.cells.z; ++z)
+		for (int z = 0; z < Nz; ++z)
 		{
 			uint32_t index = outMeshData.indices.size();
 			Vertex A{};

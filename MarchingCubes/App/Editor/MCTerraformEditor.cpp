@@ -137,7 +137,19 @@ void MCTerraformEditor::OnUpdate(float deltaTime)
 					PIXBeginCapture(PIX_CAPTURE_GPU, &param);
 				}
 #endif
+#ifdef _DEBUG
+				// Hit가 발생한 위치에 원 세팅
+				{
+					XMVECTOR vHitposLS = XMLoadFloat3(&hitPosLS);
+					XMVECTOR vHitposGS = XMVector3TransformCoord(vHitposLS, terrainRenderer->GetWorldMatrix());
+					
+					XMFLOAT3 pos;
+					XMStoreFloat3(&pos, vHitposGS);
 
+					m_debugBrush->SetPosition(pos);
+					m_debugBrush->UpdateConstants();
+				}
+#endif // DEBUG
 				BrushRequest req_brush{};
 				req_brush.hitpos = hitPosLS;
 				req_brush.radius = m_brushRadius;
@@ -146,6 +158,12 @@ void MCTerraformEditor::OnUpdate(float deltaTime)
 				req_brush.isoValue = m_mcIso;
 				m_terrain->requestBrush(req_brush);
 			}
+#ifdef _DEBUG
+			//else
+			//{
+			//	m_debugBrush->SetColor({ 1.0f, 0.0f, 0.0f, 0.0f }); // 안보이게 세팅
+			//}
+#endif // _DEBUG
 		}
 	}
 
@@ -227,6 +245,12 @@ void MCTerraformEditor::OnRenderUI()
 
 		ImGui::Text("Brush Radius");
 		ImGui::DragFloat("##Brush Radius", &m_brushRadius, 0.2f, 3.0f, 10.0f, "%.3f", ImGuiSliderFlags_AlwaysClamp);
+		if (ImGui::IsItemDeactivatedAfterEdit())
+		{
+			MeshData newBrushMeshData;
+			MeshGenerator::CreateSphereMeshData(m_brushRadius, { 1.0f, 0.0f, 0.0f, 0.4f });
+			m_uploadContext.UpdateMesh(m_swapChainFence.Get(), *m_debugBrush.get(), newBrushMeshData);
+		}
 
 		ImGui::Text("Brush Strength");
 		ImGui::DragFloat("##Brush Strength", &m_brushStrength, 1.0f, 1.0f, 10.0f, "%.3f", ImGuiSliderFlags_AlwaysClamp);
@@ -293,14 +317,14 @@ void MCTerraformEditor::LoadPipeline()
 		ComPtr<IDXGIAdapter> warpAdapter;
 		ThrowIfFailed(factory->EnumWarpAdapter(IID_PPV_ARGS(&warpAdapter)));
 
-		ThrowIfFailed(D3D12CreateDevice(warpAdapter.Get(), D3D_FEATURE_LEVEL_11_0, IID_PPV_ARGS(&m_device)));
+		ThrowIfFailed(D3D12CreateDevice(warpAdapter.Get(), D3D_FEATURE_LEVEL_12_0, IID_PPV_ARGS(&m_device)));
 	}
 	else
 	{
 		ComPtr<IDXGIAdapter1> hardwareAdapter;
 		GetHawrdwardAdapter(factory.Get(), &hardwareAdapter);
 
-		ThrowIfFailed(D3D12CreateDevice(hardwareAdapter.Get(), D3D_FEATURE_LEVEL_11_0, IID_PPV_ARGS(&m_device)));
+		ThrowIfFailed(D3D12CreateDevice(hardwareAdapter.Get(), D3D_FEATURE_LEVEL_12_0, IID_PPV_ARGS(&m_device)));
 	}
 	NAME_D3D12_OBJECT(m_device);
 
@@ -476,18 +500,33 @@ void MCTerraformEditor::LoadAssets()
 		DynamicRenderItem terrainMeshItem;
 		terrainMeshItem.object = terrainMesh;
 		m_dynamicRenderItems[PipelineMode::Filled].push_back(terrainMeshItem);
+	}
+
 
 #ifdef _DEBUG
-		/*std::unique_ptr<Mesh> debugCellMesh = std::make_unique<Mesh>();
+	/*
+	// Debug Terrain Cell
+	{
+		std::unique_ptr<Mesh> debugCellMesh = std::make_unique<Mesh>();
 		MeshData debugcelldata;
 		m_terrain->MakeDebugCell(debugcelldata);
 		m_uploadContext.UploadStaticMesh(m_swapChainFence.Get(), m_commandList.Get(), *debugCellMesh.get(), debugcelldata);
 		m_StaticObjects.push_back(std::move(debugCellMesh));
 		StaticRenderItem debugCellMeshItem = m_bundleRecorder->CreateBundleFor(m_StaticObjects, PipelineMode::Line);
-		m_staticRenderItems[PipelineMode::Line].push_back(debugCellMeshItem);*/
+		m_staticRenderItems[PipelineMode::Line].push_back(debugCellMeshItem);
+	}
+	*/
+	
+	// Debug Brush
+	{
+		m_debugBrush = std::make_unique<Mesh>();
+		MeshData debugBrushData = MeshGenerator::CreateSphereMeshData(m_brushRadius, { 1.0f, 0.0f, 0.0f, 0.4f });
+		auto item = m_uploadContext.UploadDynamicMesh(*m_debugBrush.get(), m_swapChainFence.Get(), debugBrushData);
+		m_dynamicRenderItems[PipelineMode::Wire].push_back(item);
+	}	
+
 #endif // _DEBUG
 
-	}
 
 	// Close CommandList
 	ThrowIfFailed(m_commandList->Close());
@@ -612,7 +651,7 @@ void MCTerraformEditor::CreatePipelineStates()
 		psoDesc.InputLayout = { inputElementDesc, _countof(inputElementDesc) };
 		psoDesc.pRootSignature = m_rootSignature.Get();
 		psoDesc.VS = CD3DX12_SHADER_BYTECODE(mainVS.Get());
-		psoDesc.PS = CD3DX12_SHADER_BYTECODE(mainPS.Get());
+		psoDesc.PS = CD3DX12_SHADER_BYTECODE(linePS.Get());
 		psoDesc.RasterizerState = CD3DX12_RASTERIZER_DESC(D3D12_DEFAULT);
 		psoDesc.RasterizerState.FillMode = D3D12_FILL_MODE_WIREFRAME;
 		psoDesc.BlendState = CD3DX12_BLEND_DESC(D3D12_DEFAULT);
@@ -628,6 +667,8 @@ void MCTerraformEditor::CreatePipelineStates()
 
 		m_wireFramePSO = pso;
 		NAME_D3D12_OBJECT(m_wireFramePSO);
+		m_pipelineStates[PipelineMode::Wire] = pso;
+		NAME_D3D12_OBJECT_ALIAS_INDEXED(m_pipelineStates, PipelineMode::Wire, ToLPCWSTR(PipelineMode::Wire));
 	}
 
 	//DebugNormal PSO
@@ -707,8 +748,9 @@ void MCTerraformEditor::PopulateCommandList()
 	m_commandList->ClearDepthStencilView(dsv, D3D12_CLEAR_FLAG_DEPTH, 1.0f, 0, 0, nullptr);
 
 	// PSO 별로 Draw Command 실행
-	for (PipelineMode mode : { PipelineMode::Filled, PipelineMode::Line })
+	for (int i = 0; i < static_cast<int>(PipelineMode::Count); ++i)
 	{
+		PipelineMode mode = static_cast<PipelineMode>(i);
 		m_commandList->SetPipelineState(m_pipelineStates[mode].Get());
 
 		// Bind Camera Constant Buffer

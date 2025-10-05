@@ -4,7 +4,7 @@
 class CPUTerrainBackend :   public ITerrainBackend
 {
 public:
-	CPUTerrainBackend(const GridDesc& desc, std::shared_ptr<_GRD> grid);
+	CPUTerrainBackend(ID3D12Device* device, const GridDesc& desc);
 
 	// ITerrainBackend을(를) 통해 상속됨
 	void setGridDesc(const GridDesc&) override;
@@ -18,5 +18,6 @@ protected:
 
 	MeshData m_meshData;
 	float m_brushDelta = 0.5f;
+	UINT m_chunkSize;
 };
 

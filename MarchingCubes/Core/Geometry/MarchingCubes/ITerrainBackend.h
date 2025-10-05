@@ -1,6 +1,7 @@
 #pragma once
 #include <MC33_c/marching_cubes_33.h>
 #include "Core/DataStructures/Data.h"
+#include <set>
 
 enum class TerrainMode
 {
@@ -16,20 +17,6 @@ struct GridDesc
 	DirectX::XMFLOAT3 origin;
 };
 
-struct RemeshRequest
-{
-	float isoValue = 0.0f;
-};
-
-struct BrushRequest
-{
-	DirectX::XMFLOAT3 hitpos{};
-	float radius = 1.0f;
-	float weight = 1.0f;
-	float deltaTime = 0.016f;
-	float isoValue = 0.0f;
-};
-
 struct ChunkKey
 {
 	UINT x = 0;
@@ -40,6 +27,11 @@ struct ChunkKey
 	{
 		return x == key.x && y == key.y && z == key.z;
 	}
+
+	inline bool operator<(const ChunkKey& rhs) const noexcept
+	{
+		return (x == rhs.x ? (y == rhs.y ? (z < rhs.z) : y < rhs.y) : x < rhs.x);
+	}
 };
 
 struct ChunkUpdate
@@ -47,6 +39,21 @@ struct ChunkUpdate
 	ChunkKey key{};
 	MeshData md{};
 	bool empty = true;
+};
+
+struct RemeshRequest
+{
+	float isoValue = 0.0f;
+	std::set<ChunkKey> chunkset;
+};
+
+struct BrushRequest
+{
+	DirectX::XMFLOAT3 hitpos{};
+	float radius = 1.0f;
+	float weight = 1.0f;
+	float deltaTime = 0.016f;
+	float isoValue = 0.0f;
 };
 
 struct ITerrainBackend

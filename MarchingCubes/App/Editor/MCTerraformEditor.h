@@ -95,6 +95,7 @@ private:
     float m_brushRadius = 3.0f;
     float m_brushStrength = 5.0f;
     std::array<float, 3> m_lightDir = { -1.0f, -1.0f, -1.0f };
+    float m_mcIso = 0.0f;
 
     // UI
     bool m_gridRenewRequested = false;
@@ -105,14 +106,15 @@ private:
     ComPtr<ID3D12PipelineState> m_wireFramePSO;
     ComPtr<ID3D12PipelineState> m_debugNormalPSO;
 
-   // MC(GPU)
-    float m_mcIso = 0.0f;
-
     std::unique_ptr<TerrainSystem> m_terrain;
 
     UploadRing m_uploadRing;
     std::vector<std::pair<UINT64, UINT64>> m_allocationsThisSubmit;
 
     ComPtr<ID3D12Fence> m_uploadFence;
-};
 
+#ifdef _DEBUG
+    std::unique_ptr<Mesh> m_debugBrush;
+#endif // _DEBUG
+
+};

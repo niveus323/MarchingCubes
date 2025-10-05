@@ -1,14 +1,11 @@
 #pragma once
 #include "Core/Geometry/MarchingCubes/CPU/CPUTerrainBackend.h"
-#include "cpu_provider_factory.h"
-#include "dml_provider_factory.h"
 #include "onnxruntime_cxx_api.h"
-#include "onnxruntime_c_api.h"
 
 class NDCTerrainBackend : public CPUTerrainBackend
 {
 public:
-	NDCTerrainBackend(const GridDesc& desc, std::shared_ptr<_GRD> grid);
+	NDCTerrainBackend(ID3D12Device* device, const GridDesc& desc);
 	
 	// ITerrainBackend을(를) 통해 상속됨
 	void requestRemesh(const RemeshRequest& req) override;
@@ -18,8 +15,8 @@ private:
 	bool BuildNdcInputFromGRD(const float iso, const DirectX::XMINT3& chunkStart, ChunkUpdate& outUpdate);
 	void buildInput(const DirectX::XMINT3& chunkStart, std::vector<float>& outData) const;
 	void ComputeVertexNormals(std::vector<Vertex>& vertices, const std::vector<uint32_t>& indices, bool areaWeighted = true) const;
-	void DualContouringNDC(const float* input_sdf, const float* float_grid, int dimX, int dimY, int dimZ, std::vector<Vertex>& outVertices, std::vector<uint32_t>& outIndices, const XMFLOAT3& origin = { 0,0,0 }, float cellsize = 1.0f, const float iso = 0.5f);
-	DirectX::XMFLOAT3 ComputeSdfNormal_Trilerp(const float* sdf, int dimX, int dimY, int dimZ, int i, int j, int k, float fx, float fy, float fz, float cellsize) const;
+	void DualContouringNDC(const float* input_sdf, const float* float_grid, int dimX, int dimY, int dimZ, std::vector<Vertex>& outVertices, std::vector<uint32_t>& outIndices, const XMFLOAT3& origin = { 0,0,0 }, const float iso = 0.5f);
+	DirectX::XMFLOAT3 ComputeSdfNormal_Trilerp(const float* sdf, int dimX, int dimY, int dimZ, int i, int j, int k, float fx, float fy, float fz) const;
 	// util: shape 값이 전부 비동적(>=0)인지
 	static bool allFinite(const std::vector<int64_t>& v) {
 		for (auto d : v) if (d < 0) return false;
