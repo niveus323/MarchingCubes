@@ -213,7 +213,6 @@
     <ClInclude Include="Core\Geometry\MarchingCubes\GPU\GPUTerrainBackend.h" />
     <ClInclude Include="Core\Geometry\MarchingCubes\CPU\MC33\MC33TerrainBackend.h" />
     <ClInclude Include="Core\Geometry\MarchingCubes\CPU\NDC\NDCTerrainBackend.h" />
-    <ClInclude Include="Core\Utils\Log.h" />
     <ClInclude Include="pch.h" />
     <ClInclude Include="Core\Utils\Timer.h" />
     <ClInclude Include="Core\Rendering\UploadContext.h" />

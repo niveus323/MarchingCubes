@@ -203,9 +203,6 @@
     <ClInclude Include="Core\Geometry\MarchingCubes\CPU\NDC\NDCTerrainBackend.h">
       <Filter>헤더 파일</Filter>
     </ClInclude>
-    <ClInclude Include="Core\Utils\Log.h">
-      <Filter>헤더 파일</Filter>
-    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <None Include="..\Directory.Builds.targets" />
