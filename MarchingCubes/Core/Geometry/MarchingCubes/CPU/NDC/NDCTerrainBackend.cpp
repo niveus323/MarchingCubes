@@ -7,6 +7,10 @@
 //#include "cpu_provider_factory.h"
 #include <dml_provider_factory.h>
 #include <onnxruntime_c_api.h>
+#include "Core/Utils/Timer.h"
+#include "Core/Utils/Log.h"
+#include <ppl.h>
+#include <unordered_set>
 
 NDCTerrainBackend::NDCTerrainBackend(ID3D12Device* device, const GridDesc& desc) :
 	CPUTerrainBackend(device, desc),
@@ -24,7 +28,7 @@ NDCTerrainBackend::NDCTerrainBackend(ID3D12Device* device, const GridDesc& desc)
 
 		Ort::SessionOptions so;
 		so.DisableMemPattern();
-		so.SetExecutionMode(ExecutionMode::ORT_SEQUENTIAL);
+		so.SetExecutionMode(ExecutionMode::ORT_PARALLEL);
 		so.SetGraphOptimizationLevel(GraphOptimizationLevel::ORT_ENABLE_ALL);
 
 		// 외장 GPU를 사용하지 않으므로 0번 디바이스를 사용 (TODO : 외장 GPU 사용 여부 체크)
@@ -48,6 +52,112 @@ NDCTerrainBackend::NDCTerrainBackend(ID3D12Device* device, const GridDesc& desc)
 	}
 }
 
+void NDCTerrainBackend::requestBrush(const BrushRequest& req)
+{
+	Timer::BeginKey("NDCRequestBrush");
+	RemeshRequest remeshRequest;
+	remeshRequest.isoValue = req.isoValue;
+
+	const XMUINT3 cells = m_gridDesc.cells;
+	const XMFLOAT3 origin = m_gridDesc.origin;
+	const float cellsize = m_gridDesc.cellsize;
+
+	const float deltaTime = req.deltaTime;
+	const XMFLOAT3 hitPos = req.hitpos;
+	const float weight = req.weight;
+	const float radius = req.radius;
+
+	const int SX = int(cells.x) + 1;
+	const int SY = int(cells.y) + 1;
+	const int SZ = int(cells.z) + 1;
+
+	const float kBase = std::clamp(m_brushDelta * deltaTime * std::abs(weight), 0.0f, 1.0f);
+
+	// 영향 범위 (Field 인덱스 공간으로 변환)
+	auto sample = [cellsize](float p, float o) { return (p - o) / cellsize; };
+	XMINT3 min = {
+		std::max(0, int(std::floor(sample(hitPos.x - radius, origin.x)))),
+		std::max(0, int(std::floor(sample(hitPos.y - radius, origin.y)))),
+		 std::max(0, int(std::floor(sample(hitPos.z - radius, origin.z))))
+	};
+	XMINT3 max = {
+		std::min(SX - 1, int(std::ceil(sample(hitPos.x + radius, origin.x)))),
+		std::min(SY - 1, int(std::ceil(sample(hitPos.y + radius, origin.y)))),
+		std::min(SZ - 1, int(std::ceil(sample(hitPos.z + radius, origin.z))))
+	};
+
+	for (int z = min.z; z <= max.z; ++z)
+	{
+		const float pz = origin.z + z * cellsize;
+		const float dz = pz - hitPos.z;
+
+		for (int y = min.y; y <= max.y; ++y)
+		{
+			const float py = origin.y + y * cellsize;
+			const float dy = py - hitPos.y;
+
+			for (int x = min.x; x <= max.x; ++x)
+			{
+				const float px = origin.x + x * cellsize;
+				const float dx = px - hitPos.x;
+
+				const float dist = std::sqrt(dx * dx + dy * dy + dz * dz);
+				if (dist > radius) continue; // 반경 밖은 영향 없음(빠른 스킵)
+
+				// Brush 중심과의 거리에 따라 가중치 부여
+				const float sphere = radius - dist;
+
+				float& F = m_grd->F[z][y][x];
+				float desired = (weight < 0) ? std::min(F, -sphere) : std::max(F, sphere);
+				const float falloff = std::clamp(sphere / radius, 0.0f, 1.0f);
+				const float k = kBase * falloff;
+
+				F = F + (desired - F) * k;
+			}
+		}
+	}
+
+	// 1) 캐시 패치용 더티 AABB는 패딩(kPad=3)을 포함해서 확장 전달 (64³ 입력이 ±3 패딩을 포함하기 때문)
+    XMINT3 dirtyMin = { 
+		std::max(0, min.x - kPad), 
+		std::max(0, min.y - kPad), 
+		std::max(0, min.z - kPad) 
+	};
+    XMINT3 dirtyMax = { 
+		std::min(SX-1, max.x + kPad), 
+		std::min(SY-1, max.y + kPad), 
+		std::min(SZ-1, max.z + kPad) 
+	};
+    NotifyBrushDirtyAABB(dirtyMin, dirtyMax);
+
+    // 2) 리메시 대상 청크 범위 산출 (패딩 영향 고려해서 +kPad 확장한 AABB로 계산)
+    const int step = kOutD - 1; // 57
+    const auto chunksX = (int)((cells.x + step - 1) / step); // ceil
+    const auto chunksY = (int)((cells.y + step - 1) / step);
+    const auto chunksZ = (int)((cells.z + step - 1) / step);
+    auto idxFloor = [&](int g)->int { return g / step; };                // g >= 0
+    auto idxMax   = [&](int g)->int { return (std::max(0, g - 1)) / step; }; // 포함 상한: (gmax-1)/step
+    int cx0 = std::clamp(idxFloor(dirtyMin.x), 0, std::max(0, chunksX - 1));
+    int cy0 = std::clamp(idxFloor(dirtyMin.y), 0, std::max(0, chunksY - 1));
+    int cz0 = std::clamp(idxFloor(dirtyMin.z), 0, std::max(0, chunksZ - 1));
+    int cx1 = std::clamp(idxMax  (dirtyMax.x), 0, std::max(0, chunksX - 1));
+    int cy1 = std::clamp(idxMax  (dirtyMax.y), 0, std::max(0, chunksY - 1));
+    int cz1 = std::clamp(idxMax  (dirtyMax.z), 0, std::max(0, chunksZ - 1));
+    if (cx1 < cx0 || cy1 < cy0 || cz1 < cz0) {
+        // 더티가 너무 얇아 청크 경계에 걸리지 않은 케이스 → 최소 한 청크는 리메시 시킴
+        cx0 = cx1 = std::clamp(idxFloor((dirtyMin.x+dirtyMax.x)/2), 0, std::max(0, chunksX-1));
+        cy0 = cy1 = std::clamp(idxFloor((dirtyMin.y+dirtyMax.y)/2), 0, std::max(0, chunksY-1));
+        cz0 = cz1 = std::clamp(idxFloor((dirtyMin.z+dirtyMax.z)/2), 0, std::max(0, chunksZ-1));
+    }
+    for (int cz = cz0; cz <= cz1; ++cz)
+        for (int cy = cy0; cy <= cy1; ++cy)
+            for (int cx = cx0; cx <= cx1; ++cx)
+                remeshRequest.chunkset.insert(ChunkKey{ (uint32_t)cx, (uint32_t)cy, (uint32_t)cz });
+ 
+	Timer::EndKey("NDCRequestBrush");
+	requestRemesh(remeshRequest);
+}
+
 // onnx 모델 추론
 void NDCTerrainBackend::requestRemesh(const RemeshRequest& req)
 {
@@ -65,6 +175,7 @@ void NDCTerrainBackend::requestRemesh(const RemeshRequest& req)
 	// 갱신할 메쉬의 chunk 정보가 없을 경우 전체 갱신
 	if (req.chunkset.empty())
 	{
+		Log::Print("NDC", "[Remesh] Full rebuild: req.chunkset empty");
 		for (int x = 0; x < (int)m_gridDesc.cells.x; x += m_chunkSize)
 		{
 			for (int y = 0; y < (int)m_gridDesc.cells.y; y += m_chunkSize)
@@ -80,16 +191,29 @@ void NDCTerrainBackend::requestRemesh(const RemeshRequest& req)
 			}
 		}
 	}
+	// Sliding Cache
 	else
 	{
-		for (auto& chunk : req.chunkset)
+		// 1) 이웃성 확보: (x,y,z) 오름차순 정렬
+		std::vector<XMINT3> targets;
+		targets.reserve(req.chunkset.size());
+		for (auto& c : req.chunkset) {
+			targets.push_back({
+				static_cast<int>(c.x * m_chunkSize),
+				static_cast<int>(c.y * m_chunkSize),
+				static_cast<int>(c.z * m_chunkSize)
+				});
+		}
+		std::sort(targets.begin(), targets.end(),
+			[](const XMINT3& a, const XMINT3& b) {
+				if (a.x != b.x) return a.x < b.x;
+				if (a.y != b.y) return a.y < b.y;
+				return a.z < b.z;
+			});
+		Log::Print("NDC", "[Remesh] Partial: chunkset=%u, step=%d", (unsigned)targets.size(), m_chunkSize);
+		for (const auto& chunkStart : targets)
 		{
 			ChunkUpdate up;
-			XMINT3 chunkStart = {
-				static_cast<int>(chunk.x * m_chunkSize),
-				static_cast<int>(chunk.y * m_chunkSize),
-				static_cast<int>(chunk.z * m_chunkSize)
-			};
 			if (BuildNdcInputFromGRD(req.isoValue, chunkStart, up))
 			{
 				m_chunkUpdates.push_back(up);
@@ -107,9 +231,30 @@ bool NDCTerrainBackend::tryFetch(std::vector<ChunkUpdate>& OutChunkUpdates)
 
 bool NDCTerrainBackend::BuildNdcInputFromGRD(const float iso, const DirectX::XMINT3& chunkStart, ChunkUpdate& outUpdate)
 {
-	// 1) 입력 70^3 준비 (정점 SDF, 경계 클램프)
+	// 1) 입력 64^3 준비 (정점 SDF, 경계 클램프)
 	std::vector<float> input;
-	buildInput(chunkStart, input);
+
+	double buildTime = Timer::MeasureMs([&] {
+		bool bSlid = buildInputSliding(chunkStart, input);
+		Log::Print("NDC", "SlidingHit=%d  (cache=%d, prev=[%d,%d,%d], curr=[%d,%d,%d], step=%d)",
+			(int)bSlid,(int)m_cacheValid, m_cachedStart.x, m_cachedStart.y, m_cachedStart.z,
+			chunkStart.x, chunkStart.y, chunkStart.z, m_chunkSize);
+		if (!bSlid)
+		{
+			buildInput(chunkStart, input);
+			m_inputCache = input;
+			m_cachedStart = chunkStart;
+			m_cacheValid = true;
+		}
+		// 슬라이딩/동일 청크 재사용 이후, 브러시 더티 AABB가 있으면 그 부분만 빠르게 패치
+		if (m_hasDirty) {
+			patchCacaheFromDirtyAABB(chunkStart, input);
+			// 캐시도 동기화
+			m_inputCache = input;
+		}
+	});
+	Log::Print("Timer", "buildInput : %.3f ms", buildTime);
+	//buildInput(chunkStart, input);
 
 	// 2) ORT 텐서 만들기
 	auto mem = Ort::MemoryInfo::CreateCpu(OrtArenaAllocator, OrtMemTypeDefault);
@@ -122,7 +267,12 @@ bool NDCTerrainBackend::BuildNdcInputFromGRD(const float iso, const DirectX::XMI
 	std::vector<Ort::Value> outs;
 	try
 	{
-		outs = m_session.Run(Ort::RunOptions{ nullptr }, inNames, &inTensor, 1, outNames, 1);
+		//outs = m_session.Run(Ort::RunOptions{ nullptr }, inNames, &inTensor, 1, outNames, 1);
+
+		double sessionTime = Timer::MeasureMs([&] {
+			outs = m_session.Run(Ort::RunOptions{ nullptr }, inNames, &inTensor, 1, outNames, 1);
+			});
+		Log::Print("Timer", "Session : %.3f ms", sessionTime);
 	}
 	catch (const Ort::Exception& e) {
 		OutputDebugStringA(("ORT FAIL: " + std::string(e.what()) + "\n").c_str());
@@ -138,7 +288,10 @@ bool NDCTerrainBackend::BuildNdcInputFromGRD(const float iso, const DirectX::XMI
 	};
 
 	// 4) DC 재구성
-	DualContouringNDC(input.data(), Y, kOutD, kOutD, kOutD, outUpdate.md.vertices, outUpdate.md.indices, chunkOrigin, iso);
+	double DCTime = Timer::MeasureMs(&NDCTerrainBackend::DualContouringNDC, this, input.data(), Y, kOutD, kOutD, kOutD, outUpdate.md.vertices, outUpdate.md.indices, chunkOrigin, iso);
+	Log::Print("Timer", "DualContouring : %.3f ms", DCTime);
+
+	//DualContouringNDC(input.data(), Y, kOutD, kOutD, kOutD, outUpdate.md.vertices, outUpdate.md.indices, chunkOrigin, iso);
 
 	outUpdate.empty = outUpdate.md.indices.empty();
 	outUpdate.key.x = chunkStart.x / m_chunkSize;
@@ -177,6 +330,260 @@ void NDCTerrainBackend::buildInput(const DirectX::XMINT3& chunkStart, std::vecto
 		}
 	}
 
+}
+
+bool NDCTerrainBackend::buildInputSliding(const DirectX::XMINT3& chunkStart, std::vector<float>& outData)
+{
+	if (!m_cacheValid || m_inputCache.size() != size_t(kInD * kInD * kInD))
+		return false;
+
+	const int step = m_chunkSize; // 보통 57 (요청 루프에서 이렇게 설정됨) :contentReference[oaicite:4]{index=4}
+	const int dx = chunkStart.x - m_cachedStart.x;
+	const int dy = chunkStart.y - m_cachedStart.y;
+	const int dz = chunkStart.z - m_cachedStart.z;
+
+    if (dx == 0 && dy == 0 && dz == 0) {
+        outData.assign(m_inputCache.begin(), m_inputCache.end());
+        return true;
+    }
+
+	// 단일 축으로만 이동한 경우만 처리 (대각선/멀리 점프는 전체 재구성)
+	const bool movedXp = (dx == step) && dy == 0 && dz == 0;
+	const bool movedXm = (dx == -step) && dy == 0 && dz == 0;
+	const bool movedYp = (dy == step) && dx == 0 && dz == 0;
+	const bool movedYm = (dy == -step) && dx == 0 && dz == 0;
+	const bool movedZp = (dz == step) && dx == 0 && dy == 0;
+	const bool movedZm = (dz == -step) && dx == 0 && dy == 0;
+	const bool movedX = movedXp || movedXm;
+	const bool movedY = movedYp || movedYm;
+	const bool movedZ = movedZp || movedZm;
+	if (!movedX && !movedY && !movedZ)
+		return false;
+
+	outData.resize(size_t(kInD * kInD * kInD));
+	float* dst = outData.data();
+	float* src = m_inputCache.data();
+
+	// 유틸: 월드 그리드에서 TSDF 샘플 (기존 buildInput과 동일) :contentReference[oaicite:5]{index=5}
+	const float trunc_vox = 100.0f;
+	const float trunc_world = trunc_vox * m_gridDesc.cellsize; // :contentReference[oaicite:6]{index=6}
+	const int Nxs = (int)m_gridDesc.cells.x;
+	const int Nys = (int)m_gridDesc.cells.y;
+	const int Nzs = (int)m_gridDesc.cells.z;                    // :contentReference[oaicite:7]{index=7}
+	auto tsdfAt = [&](int gx, int gy, int gz) {
+		gx = std::clamp(gx, 0, Nxs);
+		gy = std::clamp(gy, 0, Nys);
+		gz = std::clamp(gz, 0, Nzs);
+		float s = m_grd->F[gz][gy][gx];
+		return std::clamp(s / trunc_world, -1.0f, 1.0f);
+		};
+
+	const int overlap = kInD - step; // 64 - 57 = 7
+	const size_t planeStride = size_t(kInD) * kInD; // 한 z-슬라이스 크기
+
+	if (movedX) {
+		// 1) [x=overlap..63] → [x=0..63-overlap] 슬라이딩 (각 y,z에 대해 행 단위 memmove)
+        if (movedXp) {
+            // → +X로 전진: [x=7..63] → [x=0..56], 오른쪽 7열 채움
+            for (int z = 0; z < kInD; ++z) {
+                for (int y = 0; y < kInD; ++y) {
+                    float* rowDst = dst + (z * kInD + y) * kInD;
+                    const float* rowSrc = src + (z * kInD + y) * kInD;
+                    memmove(rowDst, rowSrc + overlap, sizeof(float) * (kInD - overlap));
+                }
+            }
+            const int x0 = kInD - overlap; // 57..63 새로 채움
+            for (int z = 0; z < kInD; ++z) {
+                const int gzBase = chunkStart.z - kPad + z;
+                for (int y = 0; y < kInD; ++y) {
+                    const int gyBase = chunkStart.y - kPad + y;
+                    for (int x = x0; x < kInD; ++x) {
+                        const int gx = chunkStart.x - kPad + x;
+                        dst[idx_inSDF(x, y, z)] = tsdfAt(gx, gyBase, gzBase);
+                    }
+                }
+            }
+        } else { // movedXm: -X로 후진
+            // ← -X: [x=0..56] → [x=7..63], 왼쪽 7열 새로 채움
+            for (int z = 0; z < kInD; ++z) {
+                for (int y = 0; y < kInD; ++y) {
+                    float* rowDst = dst + (z * kInD + y) * kInD;
+                    const float* rowSrc = src + (z * kInD + y) * kInD;
+                    memmove(rowDst + overlap, rowSrc, sizeof(float) * (kInD - overlap));
+                }
+            }
+            const int x1 = overlap; // 0..6 새로 채움
+            for (int z = 0; z < kInD; ++z) {
+                const int gzBase = chunkStart.z - kPad + z;
+                for (int y = 0; y < kInD; ++y) {
+                    const int gyBase = chunkStart.y - kPad + y;
+                    for (int x = 0; x < x1; ++x) {
+                        const int gx = chunkStart.x - kPad + x;
+                        dst[idx_inSDF(x, y, z)] = tsdfAt(gx, gyBase, gzBase);
+                    }
+                }
+            }
+        }
+	}
+	else if (movedY) {
+		// 1) y축 슬라이딩: 각 z에 대해 [y=overlap..63] → [y=0..63-overlap]
+        if (movedYp) {
+            for (int z = 0; z < kInD; ++z) {
+                float* planeDst = dst + z * planeStride;
+                const float* planeSrc = src + z * planeStride;
+                for (int y = 0; y < kInD - overlap; ++y) {
+                    memmove(planeDst + y * kInD, planeSrc + (y + overlap) * kInD, sizeof(float) * kInD);
+                }
+            }
+            const int y0 = kInD - overlap;
+            for (int z = 0; z < kInD; ++z) {
+                const int gzBase = chunkStart.z - kPad + z;
+                for (int y = y0; y < kInD; ++y) {
+                    const int gy = chunkStart.y - kPad + y;
+                    for (int x = 0; x < kInD; ++x) {
+                        const int gxBase = chunkStart.x - kPad + x;
+                        dst[idx_inSDF(x, y, z)] = tsdfAt(gxBase, gy, gzBase);
+                    }
+                }
+            }
+        } 
+		else 
+		{ // movedYm
+            for (int z = 0; z < kInD; ++z) 
+			{
+                float* planeDst = dst + z * planeStride;
+                const float* planeSrc = src + z * planeStride;
+                for (int y = 0; y < kInD - overlap; ++y) 
+				{
+                    memmove(planeDst + (y + overlap) * kInD, planeSrc + y * kInD, sizeof(float) * kInD);
+                }
+            }
+            const int y1 = overlap;
+            for (int z = 0; z < kInD; ++z) 
+			{
+                const int gzBase = chunkStart.z - kPad + z;
+                for (int y = 0; y < y1; ++y) 
+				{
+                    const int gy = chunkStart.y - kPad + y;
+                    for (int x = 0; x < kInD; ++x) 
+					{
+                        const int gxBase = chunkStart.x - kPad + x;
+                        dst[idx_inSDF(x, y, z)] = tsdfAt(gxBase, gy, gzBase);
+                    }
+                }
+            }
+        }
+	}
+	else if (movedZ) 
+	{
+		if (movedZp) 
+		{
+			// +Z: [z=7..63] → [z=0..56]
+			memmove(dst, src + overlap * planeStride, sizeof(float) * (kInD * kInD * (kInD - overlap)));
+			const int z0 = kInD - overlap;
+			for (int z = z0; z < kInD; ++z) 
+			{
+				const int gz = chunkStart.z - kPad + z;
+				for (int y = 0; y < kInD; ++y) 
+				{
+					const int gyBase = chunkStart.y - kPad + y;
+					for (int x = 0; x < kInD; ++x) {
+						const int gxBase = chunkStart.x - kPad + x;
+						dst[idx_inSDF(x, y, z)] = tsdfAt(gxBase, gyBase, gz);
+					}
+				}
+			}
+		}
+		else { // movedZm
+			// -Z: [z=0..56] → [z=7..63]
+			memmove(dst + overlap * planeStride, src, sizeof(float) * (kInD * kInD * (kInD - overlap)));
+			const int z1 = overlap;
+			for (int z = 0; z < z1; ++z) {
+				const int gz = chunkStart.z - kPad + z;
+				for (int y = 0; y < kInD; ++y) {
+					const int gyBase = chunkStart.y - kPad + y;
+					for (int x = 0; x < kInD; ++x) {
+						const int gxBase = chunkStart.x - kPad + x;
+						dst[idx_inSDF(x, y, z)] = tsdfAt(gxBase, gyBase, gz);
+					}
+				}
+			}
+		}
+	}
+	// 새 캐시로 교체
+	m_inputCache.swap(outData);
+	outData.assign(m_inputCache.begin(), m_inputCache.end());
+	m_cachedStart = chunkStart;
+	m_cacheValid = true;
+	return true;
+}
+
+void NDCTerrainBackend::NotifyBrushDirtyAABB(const DirectX::XMINT3& minG, const DirectX::XMINT3& maxG)
+{
+    // 여러 번 들어오면 누적 병합
+    m_dirtyMin.x = std::min(m_dirtyMin.x, minG.x);
+    m_dirtyMin.y = std::min(m_dirtyMin.y, minG.y);
+    m_dirtyMin.z = std::min(m_dirtyMin.z, minG.z);
+    m_dirtyMax.x = std::max(m_dirtyMax.x, maxG.x);
+    m_dirtyMax.y = std::max(m_dirtyMax.y, maxG.y);
+    m_dirtyMax.z = std::max(m_dirtyMax.z, maxG.z);
+    m_hasDirty = true;
+}
+
+void NDCTerrainBackend::patchCacaheFromDirtyAABB(const DirectX::XMINT3& chunkStart, std::vector<float>& inoutData)
+{
+    if (!m_hasDirty) return;
+
+    // 현재 64^3 입력 영역의 그리드 좌표 범위 (양끝 포함)
+	const int gx0 = chunkStart.x - kPad;
+	const int gy0 = chunkStart.y - kPad;
+	const int gz0 = chunkStart.z - kPad;
+    const int gx1 = gx0 + (kInD - 1);
+    const int gy1 = gy0 + (kInD - 1);
+    const int gz1 = gz0 + (kInD - 1);
+
+    // 교집합(비어 있으면 곧장 반환)
+    const int ix0 = std::max(gx0, m_dirtyMin.x);
+    const int iy0 = std::max(gy0, m_dirtyMin.y);
+    const int iz0 = std::max(gz0, m_dirtyMin.z);
+    const int ix1 = std::min(gx1, m_dirtyMax.x);
+    const int iy1 = std::min(gy1, m_dirtyMax.y);
+    const int iz1 = std::min(gz1, m_dirtyMax.z);
+    if (ix0 > ix1 || iy0 > iy1 || iz0 > iz1) {
+        // 이번 64^3과는 겹치지 않음: 다음 기회로 미룸
+        return;
+    }
+
+    // 유틸: TSDF 샘플 (buildInput과 동일)
+    const float trunc_vox   = 100.0f;
+    const float trunc_world = trunc_vox * m_gridDesc.cellsize;
+    const int Nxs = (int)m_gridDesc.cells.x;
+    const int Nys = (int)m_gridDesc.cells.y;
+    const int Nzs = (int)m_gridDesc.cells.z;
+    auto tsdfAt = [&](int gx, int gy, int gz) {
+        gx = std::clamp(gx, 0, Nxs);
+        gy = std::clamp(gy, 0, Nys);
+        gz = std::clamp(gz, 0, Nzs);
+        float s = m_grd->F[gz][gy][gx];
+        return std::clamp(s / trunc_world, -1.0f, 1.0f);
+    };
+
+    // inoutData: 현재 64^3 입력 버퍼. 그리드 좌표(gx,gy,gz) → 로컬 인덱스(x,y,z) 변환
+    for (int gz = iz0; gz <= iz1; ++gz) {
+        const int z = gz - gz0;
+        for (int gy = iy0; gy <= iy1; ++gy) {
+            const int y = gy - gy0;
+            for (int gx = ix0; gx <= ix1; ++gx) {
+                const int x = gx - gx0;
+                inoutData[idx_inSDF(x, y, z)] = tsdfAt(gx, gy, gz);
+            }
+        }
+    }
+
+    // 이번 패치를 소비했으니 더티 플래그 리셋
+    m_dirtyMin = { INT_MAX, INT_MAX, INT_MAX };
+    m_dirtyMax = { INT_MIN, INT_MIN, INT_MIN };
+    m_hasDirty = false;
 }
 
 void NDCTerrainBackend::ComputeVertexNormals(std::vector<Vertex>& vertices, const std::vector<uint32_t>& indices, bool areaWeighted) const
@@ -273,7 +680,7 @@ void NDCTerrainBackend::DualContouringNDC(const float* input_sdf, const float* f
 				bool v7 = input_sdf[idx_inSDF(i, j + 1, k + 1)] < iso;
 
 				// 8방향에 대해 표면 체크
-				if (v1 != v0 || v2 != v0 || v3 != v0 || v4 != v0 || v5 != v0 || v6 != v0 || v7 != v0) 
+				if (v1 != v0 || v2 != v0 || v3 != v0 || v4 != v0 || v5 != v0 || v6 != v0 || v7 != v0)
 				{
 					currPlane[idx_YZ(j, k)] = outVertices.size();
 
