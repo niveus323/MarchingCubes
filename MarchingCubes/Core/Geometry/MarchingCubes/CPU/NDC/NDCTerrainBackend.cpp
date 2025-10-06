@@ -8,6 +8,9 @@
 #include <dml_provider_factory.h>
 #include <onnxruntime_c_api.h>
 
+#include "Core/Utils/Timer.h"
+#include "Core/Utils/Log.h"
+
 NDCTerrainBackend::NDCTerrainBackend(ID3D12Device* device, const GridDesc& desc) :
 	CPUTerrainBackend(device, desc),
 	m_env(ORT_LOGGING_LEVEL_WARNING, "ndc"),
@@ -109,7 +112,10 @@ bool NDCTerrainBackend::BuildNdcInputFromGRD(const float iso, const DirectX::XMI
 {
 	// 1) 입력 70^3 준비 (정점 SDF, 경계 클램프)
 	std::vector<float> input;
-	buildInput(chunkStart, input);
+
+	double buildInputTime = Timer::MeasureMs(&NDCTerrainBackend::buildInput, this, chunkStart, input);
+	Log::Print("Timer", "[NDC BuildInput] %.3f", buildInputTime);
+	//buildInput(chunkStart, input);
 
 	// 2) ORT 텐서 만들기
 	auto mem = Ort::MemoryInfo::CreateCpu(OrtArenaAllocator, OrtMemTypeDefault);
@@ -122,7 +128,10 @@ bool NDCTerrainBackend::BuildNdcInputFromGRD(const float iso, const DirectX::XMI
 	std::vector<Ort::Value> outs;
 	try
 	{
+		Timer::BeginKey("NDCRun");
 		outs = m_session.Run(Ort::RunOptions{ nullptr }, inNames, &inTensor, 1, outNames, 1);
+		double sessionTime = Timer::EndKey("NDCRun");
+		Log::Print("Timer", "[NDC SessionRun] %.3f", sessionTime);
 	}
 	catch (const Ort::Exception& e) {
 		OutputDebugStringA(("ORT FAIL: " + std::string(e.what()) + "\n").c_str());
@@ -138,7 +147,8 @@ bool NDCTerrainBackend::BuildNdcInputFromGRD(const float iso, const DirectX::XMI
 	};
 
 	// 4) DC 재구성
-	DualContouringNDC(input.data(), Y, kOutD, kOutD, kOutD, outUpdate.md.vertices, outUpdate.md.indices, chunkOrigin, iso);
+	double dcTime = Timer::MeasureMs(&NDCTerrainBackend::DualContouringNDC, this,input.data(), Y, kOutD, kOutD, kOutD, outUpdate.md.vertices, outUpdate.md.indices, chunkOrigin, iso);
+	//DualContouringNDC(input.data(), Y, kOutD, kOutD, kOutD, outUpdate.md.vertices, outUpdate.md.indices, chunkOrigin, iso);
 
 	outUpdate.empty = outUpdate.md.indices.empty();
 	outUpdate.key.x = chunkStart.x / m_chunkSize;

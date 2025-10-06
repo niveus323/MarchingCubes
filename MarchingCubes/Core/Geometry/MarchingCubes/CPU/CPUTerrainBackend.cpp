@@ -2,6 +2,7 @@
 #include "CPUTerrainBackend.h"
 #include "Core/Math/PhysicsHelper.h"
 #include <algorithm>
+#include "Core/Utils/Log.h"
 
 CPUTerrainBackend::CPUTerrainBackend(ID3D12Device* device, const GridDesc& desc)
 {
@@ -20,6 +21,8 @@ void CPUTerrainBackend::setFieldPtr(std::shared_ptr<_GRD> grid)
 
 void CPUTerrainBackend::requestBrush(const BrushRequest& req)
 {
+    Log::Print("CPUTerrain", "Brush Called");
+
     RemeshRequest remeshRequest;
     remeshRequest.isoValue = req.isoValue;
 

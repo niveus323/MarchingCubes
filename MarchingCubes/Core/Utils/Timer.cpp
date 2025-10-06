@@ -39,9 +39,6 @@ double Timer::EndKey(std::string_view key)
 	}
 
 	const auto t1 = clock::now();
-
 	const double ms = std::chrono::duration<double, std::milli>(t1 - t0).count();
-	Log::Print("Timer", "'%.*s' : %.3f ms", (int)key.size(), key.data(), ms);
-
 	return ms;
 }
