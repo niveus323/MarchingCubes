@@ -164,7 +164,7 @@ void TerrainChunkRenderer::CreateObjectConstantsBuffer(ID3D12Device* device)
 		nullptr,
 		IID_PPV_ARGS(&m_objectCB)
 	));
-	NAME_D3D12_OBJECT(m_objectCB);
+	NAME_D3D12_OBJECT_ALIAS(m_objectCB, L"TerrainChunkRenderer");
 
 	// Map & CreateUploadBuffer Constant Buffer
 	ThrowIfFailed(m_objectCB->Map(0, nullptr, reinterpret_cast<void**>(&m_mappedObjectCB)));

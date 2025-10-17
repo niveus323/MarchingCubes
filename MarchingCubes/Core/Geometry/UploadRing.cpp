@@ -37,6 +37,7 @@ void UploadRing::Initialize(ID3D12Device* device, UINT64 totalSize)
         D3D12_RESOURCE_STATE_GENERIC_READ,
         nullptr,
         IID_PPV_ARGS(&m_uploadBuffer)));
+    NAME_D3D12_OBJECT(m_uploadBuffer);
 
     // 영구 매핑 (https://learn.microsoft.com/en-us/windows/win32/api/d3d12/nf-d3d12-id3d12resource-map)
     D3D12_RANGE readRange = { 0, 0 };

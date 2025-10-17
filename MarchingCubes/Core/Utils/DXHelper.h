@@ -11,7 +11,6 @@
 using Microsoft::WRL::ComPtr;
 using namespace DirectX;
 
-
 extern UploadRing* g_uploadRing;
 
 inline std::string HrToString(HRESULT hr)
@@ -181,7 +180,8 @@ void ResetUniquePtrArray(T* uniquePtrArray)
 
 #define PIPELINEMODE_LIST \
     X(Filled)             \
-    X(Line)               
+    X(Line)               \
+    X(Wire)
 
 enum class PipelineMode
 {

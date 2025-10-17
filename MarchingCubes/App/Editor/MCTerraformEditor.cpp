@@ -11,13 +11,14 @@
 int sDebugFrame = 0;
 
 MCTerraformEditor::MCTerraformEditor(UINT width, UINT height, std::wstring name)
-	: DXAppBase(width, height, name), 
-	m_frameIndex(0), 
-	m_viewport(0.0f, 0.0f, static_cast<float>(width), static_cast<float>(height)), 
-	m_scissorRect(0,0,static_cast<LONG>(width), static_cast<LONG>(height)), 
+	: DXAppBase(width, height, name),
+	m_frameIndex(0),
+	m_viewport(0.0f, 0.0f, static_cast<float>(width), static_cast<float>(height)),
+	m_scissorRect(0, 0, static_cast<LONG>(width), static_cast<LONG>(height)),
 	m_fenceValues{},
 	m_rtvDescriptorSize(0),
-	m_camera(nullptr)
+	m_camera(nullptr),
+	m_fenceEvent(0)
 {
 }
 
@@ -63,7 +64,7 @@ void MCTerraformEditor::OnInitUI()
 	initOptions.gpuHandle = srvHeap->GetGPUDescriptorHandleForHeapStart();
 
 	initContext.userData = std::any(initOptions);
-	
+
 	if (!imguiRenderer->Initialize(initContext))
 	{
 		MessageBox(Win32Application::GetHwnd(), m_uiRenderer->GetLastErrorMsg().c_str(), L"UI Initialization Error", MB_OK | MB_ICONERROR);
@@ -76,42 +77,37 @@ void MCTerraformEditor::OnInitUI()
 
 void MCTerraformEditor::OnUpdate(float deltaTime)
 {
-	m_inputState.Update();
-
 	if (m_inputState.IsPressed(ActionKey::Escape))
 	{
 		PostQuitMessage(0);
 		return;
 	}
 
-	// TODO : 토글 키 개선 (2025-07-28 Author : DHLee)
-	static bool prevToggleState = false;
-	bool currentToggleState = m_inputState.IsPressed(ActionKey::ToggleDebugView) || m_inputState.IsPressed(ActionKey::ToggleWireFrame);
-	if (currentToggleState && !prevToggleState)
+	if (m_inputState.GetKeyState(ActionKey::ToggleDebugView) == ActionKeyState::JustPressed)
 	{
-		if (m_inputState.IsPressed(ActionKey::ToggleDebugView))
-		{
-			m_debugViewEnabled = true;
-		}
-		else if (m_inputState.IsPressed(ActionKey::ToggleWireFrame))
-		{
-			// Rasterize State WireFrame으로 변경
-			m_pipelineStates[PipelineMode::Filled].Swap(m_wireFramePSO);
-		}
-		
+		m_debugViewEnabled = !m_debugViewEnabled;
 	}
-	prevToggleState = currentToggleState;
+	else if (m_inputState.GetKeyState(ActionKey::ToggleWireFrame) == ActionKeyState::JustPressed)
+	{
+		// Rasterize State WireFrame으로 변경
+		m_pipelineStates[PipelineMode::Filled].Swap(m_wireFramePSO);
+	}
+	else if (m_inputState.GetKeyState(ActionKey::ToggleDebugNormal) == ActionKeyState::JustPressed)
+	{
+		m_debugNormalEnabled = !m_debugNormalEnabled;
+	}
+
 
 	if (!m_uiRenderer->IsCapturingUI())
 	{
 		m_camera->Move(m_inputState, deltaTime);
-		if (m_inputState.m_rightBtnState == MouseButtonState::Pressed)
+		if (m_inputState.m_rightBtnState == ActionKeyState::Pressed)
 		{
 			m_camera->Rotate(m_inputState.m_mouseDeltaX, m_inputState.m_mouseDeltaY);
 		}
 
 		// 마우스 좌 버튼 (Terraform)
-		const bool terraformHeld = m_inputState.m_leftBtnState == MouseButtonState::Pressed;
+		const bool terraformHeld = m_inputState.m_leftBtnState == ActionKeyState::Pressed;
 
 		if (terraformHeld)
 		{
@@ -123,7 +119,7 @@ void MCTerraformEditor::OnUpdate(float deltaTime)
 			XMVECTOR rayOriginls = XMVector3TransformCoord(rayOrigin, terrainRenderer->GetWorldInvMatrix());
 			// normalized된 방향 벡터는 회전 행렬에 대한 역변환만 고려하면되지만 편의를 위해 WorldInvMatrix를 사용
 			XMVECTOR rayDirls = XMVector3Normalize(XMVector3TransformCoord(rayDir, terrainRenderer->GetWorldInvMatrix()));
-			
+
 			// RayCast로 terrainMesh를 피킹중인지 확인
 			XMFLOAT3 hitPosLS;
 			if (PhysicsUtil::IsHit(rayOriginls, rayDirls, terrainRenderer->GetMeshData(), terrainRenderer->GetBoundingBox(), hitPosLS))
@@ -142,7 +138,19 @@ void MCTerraformEditor::OnUpdate(float deltaTime)
 					PIXBeginCapture(PIX_CAPTURE_GPU, &param);
 				}
 #endif
+#ifdef _DEBUG
+				// Hit가 발생한 위치에 원 세팅
+				{
+					XMVECTOR vHitposLS = XMLoadFloat3(&hitPosLS);
+					XMVECTOR vHitposGS = XMVector3TransformCoord(vHitposLS, terrainRenderer->GetWorldMatrix());
+					
+					XMFLOAT3 pos;
+					XMStoreFloat3(&pos, vHitposGS);
 
+					m_debugBrush->SetPosition(pos);
+					m_debugBrush->UpdateConstants();
+				}
+#endif // DEBUG
 				BrushRequest req_brush{};
 				req_brush.hitpos = hitPosLS;
 				req_brush.radius = m_brushRadius;
@@ -151,6 +159,12 @@ void MCTerraformEditor::OnUpdate(float deltaTime)
 				req_brush.isoValue = m_mcIso;
 				m_terrain->requestBrush(req_brush);
 			}
+#ifdef _DEBUG
+			//else
+			//{
+			//	m_debugBrush->SetColor({ 1.0f, 0.0f, 0.0f, 0.0f }); // 안보이게 세팅
+			//}
+#endif // _DEBUG
 		}
 	}
 
@@ -168,6 +182,8 @@ void MCTerraformEditor::OnUpdate(float deltaTime)
 	m_camera->UpdateViewMatrix();
 	m_camera->UpdateConstantBuffer();
 	m_lightManager->Update();
+	m_inputState.Update();
+
 	m_terrain->tryFetch(m_device.Get(), m_swapChainFence.Get(), &m_toDeletesContainer);
 }
 
@@ -187,11 +203,11 @@ void MCTerraformEditor::OnRenderUI()
 {
 	// UI 렌더링 코드
 	ImGui::Text("FPS : %.1f", ImGui::GetIO().Framerate);
-	
+
 	// Camera
 	{
 		ImGui::Begin("Camera & Light");
-		ImGui::Text("Position : %.1f, %.1f, %.1f",m_camera->GetPosition().x, m_camera->GetPosition().y, m_camera->GetPosition().z);
+		ImGui::Text("Position : %.1f, %.1f, %.1f", m_camera->GetPosition().x, m_camera->GetPosition().y, m_camera->GetPosition().z);
 		ImGui::Text("MoveSpeed");
 		ImGui::SliderFloat("##MoveSpeed", &m_camera->GetMoveSpeedPtr(), 1.0f, 25.0f);
 		ImGui::Text("Light Direction");
@@ -202,11 +218,11 @@ void MCTerraformEditor::OnRenderUI()
 		}
 		ImGui::End();
 	}
-	
+
 	// MarchingCubes
 	{
 		ImGui::Begin("Marching Cubes Options");
-		
+
 		ImGui::Text("Origin");
 		ImGui::SliderFloat3("##Origin", &m_gridOrigin.x, -10.0f, 10.0f, "%.3f", ImGuiSliderFlags_AlwaysClamp);
 
@@ -229,7 +245,13 @@ void MCTerraformEditor::OnRenderUI()
 		}
 
 		ImGui::Text("Brush Radius");
-		ImGui::DragFloat("##Brush Radius", &m_brushRadius, 0.2f, 0.1f, 10.0f, "%.3f", ImGuiSliderFlags_AlwaysClamp);
+		ImGui::DragFloat("##Brush Radius", &m_brushRadius, 0.2f, 3.0f, 10.0f, "%.3f", ImGuiSliderFlags_AlwaysClamp);
+		if (ImGui::IsItemDeactivatedAfterEdit())
+		{
+			MeshData newBrushMeshData;
+			MeshGenerator::CreateSphereMeshData(m_brushRadius, { 1.0f, 0.0f, 0.0f, 0.4f });
+			m_uploadContext.UpdateMesh(m_swapChainFence.Get(), *m_debugBrush.get(), newBrushMeshData);
+		}
 
 		ImGui::Text("Brush Strength");
 		ImGui::DragFloat("##Brush Strength", &m_brushStrength, 1.0f, 1.0f, 10.0f, "%.3f", ImGuiSliderFlags_AlwaysClamp);
@@ -296,14 +318,14 @@ void MCTerraformEditor::LoadPipeline()
 		ComPtr<IDXGIAdapter> warpAdapter;
 		ThrowIfFailed(factory->EnumWarpAdapter(IID_PPV_ARGS(&warpAdapter)));
 
-		ThrowIfFailed(D3D12CreateDevice(warpAdapter.Get(), D3D_FEATURE_LEVEL_11_0, IID_PPV_ARGS(&m_device)));
+		ThrowIfFailed(D3D12CreateDevice(warpAdapter.Get(), D3D_FEATURE_LEVEL_12_0, IID_PPV_ARGS(&m_device)));
 	}
 	else
 	{
 		ComPtr<IDXGIAdapter1> hardwareAdapter;
 		GetHawrdwardAdapter(factory.Get(), &hardwareAdapter);
 
-		ThrowIfFailed(D3D12CreateDevice(hardwareAdapter.Get(), D3D_FEATURE_LEVEL_11_0, IID_PPV_ARGS(&m_device)));
+		ThrowIfFailed(D3D12CreateDevice(hardwareAdapter.Get(), D3D_FEATURE_LEVEL_12_0, IID_PPV_ARGS(&m_device)));
 	}
 	NAME_D3D12_OBJECT(m_device);
 
@@ -373,7 +395,7 @@ void MCTerraformEditor::LoadPipeline()
 			NAME_D3D12_OBJECT_INDEXED(m_commandAllocators, n);
 		}
 
-	}	
+	}
 
 	// SRV (Env Texture) 생성
 	{
@@ -388,7 +410,7 @@ void MCTerraformEditor::LoadPipeline()
 
 	// DSV 생성
 	{ // TODO : 윈도우 리사이즈 시 재생성하도록 대응하기.
-		
+
 		D3D12_CLEAR_VALUE clear{};
 		clear.Format = DXGI_FORMAT_D32_FLOAT;
 		clear.DepthStencil.Depth = 1.0f;
@@ -397,11 +419,11 @@ void MCTerraformEditor::LoadPipeline()
 		CD3DX12_RESOURCE_DESC dsDesc = CD3DX12_RESOURCE_DESC::Tex2D(DXGI_FORMAT_D32_FLOAT, m_width, m_height, 1, 1, 1, 0, D3D12_RESOURCE_FLAG_ALLOW_DEPTH_STENCIL);
 
 		ThrowIfFailed(m_device->CreateCommittedResource(
-			&CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT), 
+			&CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT),
 			D3D12_HEAP_FLAG_NONE,
-			&dsDesc, 
-			D3D12_RESOURCE_STATE_DEPTH_WRITE, 
-			&clear, 
+			&dsDesc,
+			D3D12_RESOURCE_STATE_DEPTH_WRITE,
+			&clear,
 			IID_PPV_ARGS(&m_depthStencil))
 		);
 
@@ -417,7 +439,7 @@ void MCTerraformEditor::LoadPipeline()
 		ThrowIfFailed(m_device->CreateFence(0, D3D12_FENCE_FLAG_NONE, IID_PPV_ARGS(&m_uploadFence)));
 		NAME_D3D12_OBJECT(m_uploadFence);
 	}
-	
+
 
 	m_uploadContext.Initailize(m_device.Get());
 
@@ -436,9 +458,6 @@ void MCTerraformEditor::LoadAssets()
 	// Create CommandList.
 	ThrowIfFailed(m_device->CreateCommandList(0, D3D12_COMMAND_LIST_TYPE_DIRECT, m_commandAllocators[m_frameIndex].Get(), nullptr, IID_PPV_ARGS(&m_commandList)));
 	NAME_D3D12_OBJECT(m_commandList);
-
-	// Close CommandList
-	ThrowIfFailed(m_commandList->Close());
 
 	// Initaizlie Camera
 	{
@@ -467,12 +486,12 @@ void MCTerraformEditor::LoadAssets()
 		m_defaultMat->SetOpacity(1.0f);
 		m_defaultMat->CreateConstantBuffer(m_device.Get());
 	}
-	
+
 	// TerrainSystem 초기화
 	{
 		GridDesc gridDesc{};
 		auto initialSphereField = MakeSphereGrid(100U, 1.0f, 25.0f, m_gridOrigin, gridDesc);
-		m_terrain = std::make_unique<TerrainSystem>(m_device.Get(), initialSphereField, gridDesc, TerrainMode::GPU_ORIGINAL);
+		m_terrain = std::make_unique<TerrainSystem>(m_device.Get(), initialSphereField, gridDesc, TerrainMode::CPU_MC33);
 		RemeshRequest req(m_mcIso);
 		m_terrain->requestRemesh(req);
 
@@ -483,25 +502,62 @@ void MCTerraformEditor::LoadAssets()
 		terrainMeshItem.object = terrainMesh;
 		m_dynamicRenderItems[PipelineMode::Filled].push_back(terrainMeshItem);
 	}
+
+
+#ifdef _DEBUG
+	/*
+	// Debug Terrain Cell
+	{
+		std::unique_ptr<Mesh> debugCellMesh = std::make_unique<Mesh>();
+		MeshData debugcelldata;
+		m_terrain->MakeDebugCell(debugcelldata);
+		m_uploadContext.UploadStaticMesh(m_swapChainFence.Get(), m_commandList.Get(), *debugCellMesh.get(), debugcelldata);
+		m_StaticObjects.push_back(std::move(debugCellMesh));
+		StaticRenderItem debugCellMeshItem = m_bundleRecorder->CreateBundleFor(m_StaticObjects, PipelineMode::Line);
+		m_staticRenderItems[PipelineMode::Line].push_back(debugCellMeshItem);
+	}
+	*/
+	
+	// Debug Brush
+	{
+		m_debugBrush = std::make_unique<Mesh>();
+		MeshData debugBrushData = MeshGenerator::CreateSphereMeshData(m_brushRadius, { 1.0f, 0.0f, 0.0f, 0.4f });
+		auto item = m_uploadContext.UploadDynamicMesh(*m_debugBrush.get(), m_swapChainFence.Get(), debugBrushData);
+		m_dynamicRenderItems[PipelineMode::Wire].push_back(item);
+	}	
+
+#endif // _DEBUG
+
+
+	// Close CommandList
+	ThrowIfFailed(m_commandList->Close());
+
+	ID3D12CommandList* ppCommandLists[] = { m_commandList.Get() };
+	m_graphicsQueue->ExecuteCommandLists(_countof(ppCommandLists), ppCommandLists);
+
+	WaitForGpu();
+
 }
 
 
 void MCTerraformEditor::CreatePipelineStates()
 {
-	ComPtr<ID3DBlob> vertexShader, pixelShader;
+	ComPtr<ID3DBlob> mainVS, mainPS;
 	ComPtr<ID3DBlob> linePS;
 	ComPtr<ID3DBlob> pickIDPS;
+	ComPtr<ID3DBlob> normalGS;
 
 #if defined(_DEBUG)
 	UINT compileFlags = D3DCOMPILE_DEBUG | D3DCOMPILE_SKIP_OPTIMIZATION;
 #else
 	UINT compileFlags = 0;
 #endif
-	
+
 	// TODO : 너무 느려서 shader cache 이용하는 방식으로 수정. D3DReadFileToBlob.
-	ThrowIfFailed(D3DCompileFromFile(GetShaderFullPath(L"shaders.hlsl").c_str(), nullptr, D3D_COMPILE_STANDARD_FILE_INCLUDE, "VSMain", "vs_5_0", compileFlags, 0, &vertexShader, nullptr));
-	ThrowIfFailed(D3DCompileFromFile(GetShaderFullPath(L"MainPS.hlsl").c_str(), nullptr, D3D_COMPILE_STANDARD_FILE_INCLUDE, "PSMain", "ps_5_0", compileFlags, 0, &pixelShader, nullptr));
+	ThrowIfFailed(D3DCompileFromFile(GetShaderFullPath(L"shaders.hlsl").c_str(), nullptr, D3D_COMPILE_STANDARD_FILE_INCLUDE, "VSMain", "vs_5_0", compileFlags, 0, &mainVS, nullptr));
+	ThrowIfFailed(D3DCompileFromFile(GetShaderFullPath(L"MainPS.hlsl").c_str(), nullptr, D3D_COMPILE_STANDARD_FILE_INCLUDE, "PSMain", "ps_5_0", compileFlags, 0, &mainPS, nullptr));
 	ThrowIfFailed(D3DCompileFromFile(GetShaderFullPath(L"LineShaders.hlsl").c_str(), nullptr, D3D_COMPILE_STANDARD_FILE_INCLUDE, "PSMain", "ps_5_0", compileFlags, 0, &linePS, nullptr));
+	ThrowIfFailed(D3DCompileFromFile(GetShaderFullPath(L"NormalGS.hlsl").c_str(), nullptr, D3D_COMPILE_STANDARD_FILE_INCLUDE, "GSMain", "gs_5_0", compileFlags, 0, &normalGS, nullptr));
 
 	D3D12_INPUT_ELEMENT_DESC inputElementDesc[] =
 	{
@@ -519,7 +575,7 @@ void MCTerraformEditor::CreatePipelineStates()
 		rootParams[1].InitAsConstantBufferView(1); // b1
 		rootParams[2].InitAsConstantBufferView(2); // b2
 		rootParams[3].InitAsConstantBufferView(3); // b3
-		
+
 		// 환경 맵 텍스쳐 슬롯 등록. (샘플러는 Static Sampler 사용)
 		CD3DX12_DESCRIPTOR_RANGE1 range;
 		range.Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 0); // t0
@@ -546,8 +602,8 @@ void MCTerraformEditor::CreatePipelineStates()
 		D3D12_GRAPHICS_PIPELINE_STATE_DESC psoDesc = {};
 		psoDesc.InputLayout = { inputElementDesc, _countof(inputElementDesc) };
 		psoDesc.pRootSignature = m_rootSignature.Get();
-		psoDesc.VS = CD3DX12_SHADER_BYTECODE(vertexShader.Get());
-		psoDesc.PS = CD3DX12_SHADER_BYTECODE(pixelShader.Get());
+		psoDesc.VS = CD3DX12_SHADER_BYTECODE(mainVS.Get());
+		psoDesc.PS = CD3DX12_SHADER_BYTECODE(mainPS.Get());
 		psoDesc.RasterizerState = CD3DX12_RASTERIZER_DESC(D3D12_DEFAULT);
 		psoDesc.RasterizerState.CullMode = D3D12_CULL_MODE_NONE;
 		psoDesc.BlendState = CD3DX12_BLEND_DESC(D3D12_DEFAULT);
@@ -571,7 +627,7 @@ void MCTerraformEditor::CreatePipelineStates()
 		D3D12_GRAPHICS_PIPELINE_STATE_DESC psoDesc = {};
 		psoDesc.InputLayout = { inputElementDesc, _countof(inputElementDesc) };
 		psoDesc.pRootSignature = m_rootSignature.Get();
-		psoDesc.VS = CD3DX12_SHADER_BYTECODE(vertexShader.Get());
+		psoDesc.VS = CD3DX12_SHADER_BYTECODE(mainVS.Get());
 		psoDesc.PS = CD3DX12_SHADER_BYTECODE(linePS.Get());
 		psoDesc.RasterizerState = CD3DX12_RASTERIZER_DESC(D3D12_DEFAULT);
 		psoDesc.RasterizerState.CullMode = D3D12_CULL_MODE_NONE;
@@ -595,8 +651,8 @@ void MCTerraformEditor::CreatePipelineStates()
 		D3D12_GRAPHICS_PIPELINE_STATE_DESC psoDesc = {};
 		psoDesc.InputLayout = { inputElementDesc, _countof(inputElementDesc) };
 		psoDesc.pRootSignature = m_rootSignature.Get();
-		psoDesc.VS = CD3DX12_SHADER_BYTECODE(vertexShader.Get());
-		psoDesc.PS = CD3DX12_SHADER_BYTECODE(pixelShader.Get());
+		psoDesc.VS = CD3DX12_SHADER_BYTECODE(mainVS.Get());
+		psoDesc.PS = CD3DX12_SHADER_BYTECODE(linePS.Get());
 		psoDesc.RasterizerState = CD3DX12_RASTERIZER_DESC(D3D12_DEFAULT);
 		psoDesc.RasterizerState.FillMode = D3D12_FILL_MODE_WIREFRAME;
 		psoDesc.BlendState = CD3DX12_BLEND_DESC(D3D12_DEFAULT);
@@ -612,6 +668,33 @@ void MCTerraformEditor::CreatePipelineStates()
 
 		m_wireFramePSO = pso;
 		NAME_D3D12_OBJECT(m_wireFramePSO);
+		m_pipelineStates[PipelineMode::Wire] = pso;
+		NAME_D3D12_OBJECT_ALIAS_INDEXED(m_pipelineStates, PipelineMode::Wire, ToLPCWSTR(PipelineMode::Wire));
+	}
+
+	//DebugNormal PSO
+	{
+		D3D12_GRAPHICS_PIPELINE_STATE_DESC psoDesc = {};
+		psoDesc.InputLayout = { inputElementDesc, _countof(inputElementDesc) };
+		psoDesc.pRootSignature = m_rootSignature.Get();
+		psoDesc.VS = CD3DX12_SHADER_BYTECODE(mainVS.Get());
+		psoDesc.GS = CD3DX12_SHADER_BYTECODE(normalGS.Get());
+		psoDesc.PS = CD3DX12_SHADER_BYTECODE(linePS.Get());
+		psoDesc.RasterizerState = CD3DX12_RASTERIZER_DESC(D3D12_DEFAULT);
+		psoDesc.RasterizerState.CullMode = D3D12_CULL_MODE_NONE;
+		psoDesc.BlendState = CD3DX12_BLEND_DESC(D3D12_DEFAULT);
+		psoDesc.DepthStencilState = CD3DX12_DEPTH_STENCIL_DESC(D3D12_DEFAULT);
+		psoDesc.DSVFormat = DXGI_FORMAT_D32_FLOAT;
+		psoDesc.SampleMask = UINT_MAX;
+		psoDesc.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
+		psoDesc.NumRenderTargets = 1;
+		psoDesc.RTVFormats[0] = DXGI_FORMAT_R8G8B8A8_UNORM;
+		psoDesc.SampleDesc.Count = 1;
+		ComPtr <ID3D12PipelineState> pso;
+		ThrowIfFailed(m_device->CreateGraphicsPipelineState(&psoDesc, IID_PPV_ARGS(&pso)));
+
+		m_debugNormalPSO = pso;
+		NAME_D3D12_OBJECT(m_debugNormalPSO);
 	}
 }
 
@@ -621,7 +704,7 @@ void MCTerraformEditor::PopulateCommandList()
 	{
 		m_uploadRing.ReclaimCompleted(m_swapChainFence->GetCompletedValue());
 	}
-	
+
 	ThrowIfFailed(m_commandAllocators[m_frameIndex]->Reset());
 	ThrowIfFailed(m_commandList->Reset(m_commandAllocators[m_frameIndex].Get(), nullptr));
 
@@ -635,7 +718,7 @@ void MCTerraformEditor::PopulateCommandList()
 	{
 		m_terrain->UploadRendererData(m_device.Get(), m_commandList.Get(), m_allocationsThisSubmit);
 	}
-	
+
 	// Set necessary state.
 	m_commandList->SetGraphicsRootSignature(m_rootSignature.Get());
 	m_commandList->RSSetViewports(1, &m_viewport);
@@ -648,7 +731,7 @@ void MCTerraformEditor::PopulateCommandList()
 	m_lightManager->BindConstant(m_commandList.Get());
 
 	// Descriptor Heaps
-	ID3D12DescriptorHeap* ppHeaps[] = { m_srvHeap.Get()};
+	ID3D12DescriptorHeap* ppHeaps[] = { m_srvHeap.Get() };
 	m_commandList->SetDescriptorHeaps(1, ppHeaps);
 	m_commandList->SetGraphicsRootDescriptorTable(4, m_srvHeap->GetGPUDescriptorHandleForHeapStart());
 
@@ -660,15 +743,21 @@ void MCTerraformEditor::PopulateCommandList()
 	m_commandList->OMSetRenderTargets(1, &rtvHandle, FALSE, &dsvHandle);
 
 	// RTV Clear 명령 추가.
-	const float clearColor[] = { 0.0f, 0.2f, 0.4f, 1.0f };
+	const float clearColor[] = { 0.0f, 0.0f, 0.2f, 1.0f };
 	m_commandList->ClearRenderTargetView(rtvHandle, clearColor, 0, nullptr);
 	auto dsv = m_dsvHeap->GetCPUDescriptorHandleForHeapStart();
 	m_commandList->ClearDepthStencilView(dsv, D3D12_CLEAR_FLAG_DEPTH, 1.0f, 0, 0, nullptr);
 
 	// PSO 별로 Draw Command 실행
-	for (PipelineMode mode : { PipelineMode::Filled, PipelineMode::Line })
+	for (int i = 0; i < static_cast<int>(PipelineMode::Count); ++i)
 	{
+		PipelineMode mode = static_cast<PipelineMode>(i);
 		m_commandList->SetPipelineState(m_pipelineStates[mode].Get());
+
+		// Bind Camera Constant Buffer
+		m_camera->BindConstantBuffer(m_commandList.Get(), 0);
+		// Bind Lights
+		m_lightManager->BindConstant(m_commandList.Get());
 
 		// 정적 object 렌더링
 		for (auto item : m_staticRenderItems[mode])
@@ -677,16 +766,33 @@ void MCTerraformEditor::PopulateCommandList()
 			m_commandList->ExecuteBundle(item.bundle);
 		}
 
-		// Bind Camera Constant Buffer
-		m_camera->BindConstantBuffer(m_commandList.Get(), 0);
-		// Bind Lights
-		m_lightManager->BindConstant(m_commandList.Get());
-
 		// 동적 object 렌더링
 		for (auto item : m_dynamicRenderItems[mode])
 		{
 			item.object->Draw(m_commandList.Get());
 		}
+	}
+
+	if (m_debugNormalEnabled)
+	{
+		m_commandList->SetPipelineState(m_debugNormalPSO.Get());
+		for (PipelineMode mode : { PipelineMode::Filled, PipelineMode::Line })
+		{
+			m_camera->BindConstantBuffer(m_commandList.Get(), 0);
+			m_lightManager->BindConstant(m_commandList.Get());
+
+			for (auto item : m_staticRenderItems[mode])
+			{
+				// Bundle에 있던 Command 실행.
+				m_commandList->ExecuteBundle(item.bundle);
+			}
+
+			for (auto item : m_dynamicRenderItems[mode])
+			{
+				item.object->Draw(m_commandList.Get());
+			}
+		}
+
 	}
 
 	OnRenderUI();
@@ -722,10 +828,10 @@ void MCTerraformEditor::MoveToNextFrame()
 	ThrowIfFailed(m_graphicsQueue->Signal(m_swapChainFence.Get(), currentFenceValue));
 
 	// 이번 프레임에 할당했던 요소들에 대해 완료 대기를 걸어둔다 
-    for (auto &a : m_allocationsThisSubmit) {
-        m_uploadRing.TrackAllocation(a.first, a.second, currentFenceValue);
-    }
-    m_allocationsThisSubmit.clear();
+	for (auto& a : m_allocationsThisSubmit) {
+		m_uploadRing.TrackAllocation(a.first, a.second, currentFenceValue);
+	}
+	m_allocationsThisSubmit.clear();
 
 	if (!m_toDeletesContainer.empty())
 	{
@@ -739,7 +845,7 @@ void MCTerraformEditor::MoveToNextFrame()
 	m_frameIndex = m_swapChain->GetCurrentBackBufferIndex();
 
 	// 체인 스왑 전에 완료하지 못한 작업은 대기
-	if (m_swapChainFence->GetCompletedValue() < m_fenceValues[m_frameIndex]) 
+	if (m_swapChainFence->GetCompletedValue() < m_fenceValues[m_frameIndex])
 	{
 		ThrowIfFailed(m_swapChainFence->SetEventOnCompletion(m_fenceValues[m_frameIndex], m_fenceEvent));
 		WaitForSingleObjectEx(m_fenceEvent, INFINITE, FALSE);
@@ -763,7 +869,7 @@ void MCTerraformEditor::MoveToNextFrame()
 	m_fenceValues[m_frameIndex] = currentFenceValue + 1;
 }
 
-std::shared_ptr<_GRD> MCTerraformEditor::MakeSphereGrid(unsigned int N, float cellSize, float radius, XMFLOAT3 center, GridDesc& OutGridDesc)
+std::shared_ptr<SdfField<float>> MCTerraformEditor::MakeSphereGrid(unsigned int N, float cellSize, float radius, XMFLOAT3 center, GridDesc& OutGridDesc)
 {
 	const float half = 0.5f * (float)N;
 	XMFLOAT3 origin = { center.x - half * cellSize, center.y - half * cellSize, center.z - half * cellSize };
@@ -772,36 +878,27 @@ std::shared_ptr<_GRD> MCTerraformEditor::MakeSphereGrid(unsigned int N, float ce
 	OutGridDesc.cellsize = cellSize;
 	OutGridDesc.origin = origin;
 
-	auto gridData = new _GRD{};
-	gridData->N[0] = N;			 gridData->N[1] = N;		  gridData->N[2] = N;           // 셀 개수
-	gridData->d[0] = cellSize;   gridData->d[1] = cellSize;   gridData->d[2] = cellSize;    // 셀 크기
-	gridData->r0[0] = origin.x;  gridData->r0[1] = origin.y;  gridData->r0[2] = origin.z;   // [-0.5, 0.5] 범위가 될 수 있도록 grid의 0번은 (-0.5, -0.5, -0.5)
-	gridData->nonortho = 0;
-	gridData->periodic = 0;
-
 	// 샘플 수 = (N+1)^3
 	const int SX = N + 1, SY = N + 1, SZ = N + 1;
 
 	// 채우기: F = radius - |p - center|
-	gridData->F = new float** [SZ];
+	auto gridData = new SdfField<float>(SX, SY, SZ);
 	for (int z = 0; z < SZ; ++z)
 	{
-		gridData->F[z] = new float* [SY];
 		float dz = (z - half) * cellSize;
-		for (int y = 0; y < SY; ++y) 
+		for (int y = 0; y < SY; ++y)
 		{
-			gridData->F[z][y] = new float[SX];
 			float dy = (y - half) * cellSize;
-			for (int x = 0; x < SX; ++x) 
+			for (int x = 0; x < SX; ++x)
 			{
+				// 내부>0, 표면=0, 외부<0
 				float dx = (x - half) * cellSize;
 				const float dist = sqrtf(dx * dx + dy * dy + dz * dz);
-				gridData->F[z][y][x] = radius - dist; // 내부>0, 표면=0, 외부<0
+				gridData->at(x, y, z) = std::clamp((radius - dist) / N, -1.0f, 1.0f);
 			}
 		}
 	}
-	//m_mcIso = 0.5f;
 	m_mcIso = 0.0f;
 
-	return std::shared_ptr<_GRD>(gridData);
+	return std::shared_ptr<SdfField<float>>(gridData);
 }

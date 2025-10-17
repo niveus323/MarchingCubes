@@ -1,76 +1,32 @@
 #include "pch.h"
 #include "MC33TerrainBackend.h"
-#include "Core/Math/PhysicsHelper.h"
-#include <algorithm>
+#include <MC33_c/marching_cubes_33.h>
 
-void MC33TerrainBackend::requestBrush(const BrushRequest& req)
-{
-    const XMUINT3 cells = m_gridDesc.cells;
-    const XMFLOAT3 origin = m_gridDesc.origin;
-    const float cellsize = m_gridDesc.cellsize;
-
-    const float deltaTime = req.deltaTime;
-	const XMFLOAT3 hitPos = req.hitpos;
-    const float weight = req.weight;
-    const float radius = req.radius;
-
-    const int SX = int(m_gridDesc.cells.x) + 1;
-    const int SY = int(m_gridDesc.cells.y) + 1;
-    const int SZ = int(m_gridDesc.cells.z) + 1;
-
-    const float kBase = std::clamp(m_brushDelta * deltaTime * std::abs(weight), 0.0f, 1.0f);
-
-    // 영향 범위 (Field 인덱스 공간으로 변환)
-    auto sample = [&](float p, float o) { return (p - o) / cellsize; };
-    int minX = std::max(0, int(std::floor(sample(hitPos.x - radius, origin.x))));
-    int maxX = std::min(SX - 1, int(std::ceil(sample(hitPos.x + radius, origin.x))));
-    int minY = std::max(0, int(std::floor(sample(hitPos.y - radius, origin.y))));
-    int maxY = std::min(SY - 1, int(std::ceil(sample(hitPos.y + radius, origin.y))));
-    int minZ = std::max(0, int(std::floor(sample(hitPos.z - radius, origin.z))));
-    int maxZ = std::min(SZ - 1, int(std::ceil(sample(hitPos.z + radius, origin.z))));
-
-    for (int z = minZ; z <= maxZ; ++z)
-    {
-        const float pz = origin.z + z * cellsize;
-        const float dz = pz - hitPos.z;
-
-        for (int y = minY; y <= maxY; ++y)
-        {
-            const float py = origin.y + y * cellsize;
-            const float dy = py - hitPos.y;
-
-            for (int x = minX; x <= maxX; ++x)
-            {
-                const float px = origin.x + x * cellsize;
-                const float dx = px - hitPos.x;
-
-                const float dist = std::sqrt(dx * dx + dy * dy + dz * dz);
-                if (dist > radius) continue; // 반경 밖은 영향 없음(빠른 스킵)
-
-                // Brush 중심과의 거리에 따라 가중치 부여
-                const float sphere = radius - dist;
-
-                float& F = m_grd->F[z][y][x];
-                float desired = (weight < 0) ? std::min(F, -sphere) : std::max(F, sphere);
-                const float falloff = std::clamp(sphere / radius, 0.0f, 1.0f);
-                const float k = kBase * falloff;
-
-                F = F + (desired - F) * k;
-            }
-        }
-    }
-
-	RemeshRequest remeshRequest;
-	remeshRequest.isoValue = req.isoValue;
-	requestRemesh(remeshRequest);
-}
 
 void MC33TerrainBackend::requestRemesh(const RemeshRequest& req)
 {
     m_meshData.vertices.clear();
     m_meshData.indices.clear();
 
-    MC33* M = create_MC33(m_grd.get());
+    _GRD* grd = new _GRD{};
+    grd->N[0] = m_gridDesc.cells.x;
+    grd->N[1] = m_gridDesc.cells.y;
+    grd->N[2] = m_gridDesc.cells.z;
+
+    grd->d[0] = m_gridDesc.cellsize;
+    grd->d[1] = m_gridDesc.cellsize;
+    grd->d[2] = m_gridDesc.cellsize;
+    
+    grd->r0[0] = m_gridDesc.origin.x;
+    grd->r0[1] = m_gridDesc.origin.y;
+    grd->r0[2] = m_gridDesc.origin.z;
+
+    grd->nonortho = 0;
+    grd->periodic = 0;
+
+    grd->F = reinterpret_cast<GRD_data_type***>(static_cast<float***>(*m_grd.get()));;
+
+    MC33* M = create_MC33(grd);
     surface* S = calculate_isosurface(M, req.isoValue);
 
     m_meshData.vertices.reserve(S->nV);
@@ -88,4 +44,6 @@ void MC33TerrainBackend::requestRemesh(const RemeshRequest& req)
 
     free_surface_memory(S);
     free_MC33(M);
+
+    delete grd;
 }

@@ -31,7 +31,7 @@ public:
 
 	// ITerrainBackend을(를) 통해 상속됨
 	void setGridDesc(const GridDesc& desc) override;
-	void setFieldPtr(std::shared_ptr<_GRD> grid) override;
+	void setFieldPtr(std::shared_ptr<SdfField<float>> grid) override;
 	void requestBrush(const BrushRequest& r) override;
 	void requestRemesh(const RemeshRequest& r) override;
 	bool tryFetch(std::vector<ChunkUpdate>& OutChunkUpdates) override;
@@ -85,7 +85,7 @@ private:
 	DirectX::XMUINT3 m_numChunkAxis{};
 	UINT m_numChunks = 0;
 
-	std::shared_ptr<_GRD>     m_gridData;
+	std::shared_ptr<SdfField<float>>     m_gridData;
 	BrushRequest m_requestedBrush{};
 	RemeshRequest m_requestedRemesh{};
 

@@ -39,7 +39,7 @@ private:
     void WaitForGpu();
     
     //Marching Cubes
-    std::shared_ptr<_GRD> MakeSphereGrid(unsigned int N, float cell, float radius, XMFLOAT3 origin, GridDesc& OutGridDesc);
+    std::shared_ptr<SdfField<float>> MakeSphereGrid(unsigned int N, float cell, float radius, XMFLOAT3 origin, GridDesc& OutGridDesc);
 
 private:
     static const UINT FrameCount = 2;
@@ -80,7 +80,7 @@ private:
     std::unique_ptr<Camera> m_camera;
     std::unique_ptr<LightManager> m_lightManager;
 
-    Mesh m_gridMesh;
+    std::vector<std::unique_ptr<IDrawable>> m_StaticObjects;
 
     // TODO : PBR 테스트를 위해 임시로 Material을 app에서 초기화하여 사용, ResoureManager 및 Wrapper 클래스로 만들어서 .mat 파일 로드하여 인스턴스를 wrapper 클래스에 넘기는 방식으로 수정할 것.
     std::shared_ptr<Material> m_defaultMat;
@@ -92,19 +92,19 @@ private:
     DirectX::XMFLOAT3 m_gridOrigin = { 0,0,0 };
     std::array<int, 3> m_gridSize = { 1,1,1 };
     int m_cellSize = 1;
-    float m_brushRadius = 1.0f;
+    float m_brushRadius = 3.0f;
     float m_brushStrength = 5.0f;
     std::array<float, 3> m_lightDir = { -1.0f, -1.0f, -1.0f };
+    float m_mcIso = 0.0f;
 
     // UI
     bool m_gridRenewRequested = false;
 
     // debug
     bool m_debugViewEnabled = false;
+    bool m_debugNormalEnabled = false;
     ComPtr<ID3D12PipelineState> m_wireFramePSO;
-
-   // MC(GPU)
-    float m_mcIso = 0.0f;
+    ComPtr<ID3D12PipelineState> m_debugNormalPSO;
 
     std::unique_ptr<TerrainSystem> m_terrain;
 
@@ -112,5 +112,9 @@ private:
     std::vector<std::pair<UINT64, UINT64>> m_allocationsThisSubmit;
 
     ComPtr<ID3D12Fence> m_uploadFence;
-};
 
+#ifdef _DEBUG
+    std::unique_ptr<Mesh> m_debugBrush;
+#endif // _DEBUG
+
+};

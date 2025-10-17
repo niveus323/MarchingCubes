@@ -85,7 +85,7 @@ void LightManager::CreateUploadBuffer(ID3D12Device* device)
 		nullptr,
 		IID_PPV_ARGS(&m_uploadBuffer)
 	));
-	NAME_D3D12_OBJECT(m_uploadBuffer);
+	NAME_D3D12_OBJECT_ALIAS(m_uploadBuffer, L"LightManager");
 
 
 	ThrowIfFailed(m_uploadBuffer->Map(0, nullptr, reinterpret_cast<void**>(&m_mappedBase)));

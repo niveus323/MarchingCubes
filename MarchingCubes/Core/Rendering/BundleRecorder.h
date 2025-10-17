@@ -22,7 +22,7 @@ struct DynamicRenderItem
 
 struct PendingDeleteItem
 {
-	UINT64 fenceValue; // 삭제 요청 시점의 fence 값
+	UINT64 fenceValue = 0; // 삭제 요청 시점의 fence 값
 	std::vector<ComPtr<ID3D12Resource>> resources;
 };
 
@@ -31,7 +31,7 @@ class BundleRecorder
 public:
 	BundleRecorder(ID3D12Device* device, ID3D12RootSignature* rootSignature, const std::unordered_map<PipelineMode, ComPtr<ID3D12PipelineState>>& psos, size_t contextsPerPSO = 2);
 
-	StaticRenderItem CreateBundleFor(const std::vector<IDrawable*>& drawables, PipelineMode mode);
+	StaticRenderItem CreateBundleFor(const std::vector<std::unique_ptr<IDrawable>>& drawables, PipelineMode mode);
 private:
 	struct Context {
 		ComPtr<ID3D12CommandAllocator> allocator;

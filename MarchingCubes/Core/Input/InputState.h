@@ -13,15 +13,16 @@ enum class ActionKey
 	MoveDown,
 	ToggleDebugView,
 	ToggleWireFrame,
+	ToggleDebugNormal,
 	Count
 };
 
-enum class MouseButtonState
+enum class ActionKeyState
 {
 	NONE, 
+	JustReleased,
 	JustPressed,
 	Pressed,
-	JustReleased
 };
 
 class InputState
@@ -38,6 +39,7 @@ public:
 	void Update();
 
 	bool IsPressed(ActionKey action) const;
+	ActionKeyState GetKeyState(ActionKey action) const;
 
 	//Ini
 	void LoadKeyBindingsFromIni(const std::wstring& filename);
@@ -52,11 +54,11 @@ public:
 	float m_mouseDeltaY;
 
 	bool m_mouseInitialized;
-	MouseButtonState m_leftBtnState;
-	MouseButtonState m_rightBtnState;
+	ActionKeyState m_leftBtnState;
+	ActionKeyState m_rightBtnState;
 
 	std::unordered_map<ActionKey, WPARAM> m_keyMap;
-	std::unordered_map<WPARAM, bool> m_keyState;
+	std::unordered_map<WPARAM, ActionKeyState> m_keyState;
 
 
 };

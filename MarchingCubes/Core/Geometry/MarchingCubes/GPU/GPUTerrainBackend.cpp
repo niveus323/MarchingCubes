@@ -81,7 +81,7 @@ void GPUTerrainBackend::setGridDesc(const GridDesc& desc)
     }
 }
 
-void GPUTerrainBackend::setFieldPtr(std::shared_ptr<_GRD> grid)
+void GPUTerrainBackend::setFieldPtr(std::shared_ptr<SdfField<float>> grid)
 {
     m_gridData = std::move(grid);
     //SDFVolume3D의 Upload는 m_fieldDirty를 체크하여 encode에서 처리.
