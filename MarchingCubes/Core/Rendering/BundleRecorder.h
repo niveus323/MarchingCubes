@@ -22,7 +22,7 @@ struct DynamicRenderItem
 
 struct PendingDeleteItem
 {
-	UINT64 fenceValue; // 삭제 요청 시점의 fence 값
+	UINT64 fenceValue = 0; // 삭제 요청 시점의 fence 값
 	std::vector<ComPtr<ID3D12Resource>> resources;
 };
 

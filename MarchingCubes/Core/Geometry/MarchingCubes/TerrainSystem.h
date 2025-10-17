@@ -4,7 +4,7 @@
 class TerrainSystem
 {
 public:
-	explicit TerrainSystem(ID3D12Device* device, std::shared_ptr<_GRD> grd, const GridDesc& desc, TerrainMode mode);
+	explicit TerrainSystem(ID3D12Device* device, std::shared_ptr<SdfField<float>> grd, const GridDesc& desc, TerrainMode mode);
 	~TerrainSystem() = default;
 
 	void setMode(ID3D12Device* device, TerrainMode mode);
@@ -24,13 +24,12 @@ public:
 	void MakeDebugCell(MeshData& outMeshData);
 
 private:
-	void initializeField(ID3D12Device* device, std::shared_ptr<_GRD> grid, const GridDesc& desc);
-	void initializeField(ID3D12Device* device, const _GRD& grid, const GridDesc& desc);
-
+	void initializeField(ID3D12Device* device, std::shared_ptr<SdfField<float>> grid, const GridDesc& desc);
+	
 private:
 	TerrainMode				m_mode{ TerrainMode::GPU_ORIGINAL };
-	std::shared_ptr<_GRD>	m_lastGRD;
-	GridDesc				m_grid{};
+	std::shared_ptr<SdfField<float>>	m_lastGRD;
+	GridDesc				m_desc{};
 
 	std::unique_ptr<ITerrainBackend> m_backend;
 

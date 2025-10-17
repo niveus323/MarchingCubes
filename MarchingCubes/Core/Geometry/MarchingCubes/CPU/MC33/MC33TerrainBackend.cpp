@@ -1,12 +1,32 @@
 #include "pch.h"
 #include "MC33TerrainBackend.h"
+#include <MC33_c/marching_cubes_33.h>
+
 
 void MC33TerrainBackend::requestRemesh(const RemeshRequest& req)
 {
     m_meshData.vertices.clear();
     m_meshData.indices.clear();
 
-    MC33* M = create_MC33(m_grd.get());
+    _GRD* grd = new _GRD{};
+    grd->N[0] = m_gridDesc.cells.x;
+    grd->N[1] = m_gridDesc.cells.y;
+    grd->N[2] = m_gridDesc.cells.z;
+
+    grd->d[0] = m_gridDesc.cellsize;
+    grd->d[1] = m_gridDesc.cellsize;
+    grd->d[2] = m_gridDesc.cellsize;
+    
+    grd->r0[0] = m_gridDesc.origin.x;
+    grd->r0[1] = m_gridDesc.origin.y;
+    grd->r0[2] = m_gridDesc.origin.z;
+
+    grd->nonortho = 0;
+    grd->periodic = 0;
+
+    grd->F = reinterpret_cast<GRD_data_type***>(static_cast<float***>(*m_grd.get()));;
+
+    MC33* M = create_MC33(grd);
     surface* S = calculate_isosurface(M, req.isoValue);
 
     m_meshData.vertices.reserve(S->nV);
@@ -24,4 +44,6 @@ void MC33TerrainBackend::requestRemesh(const RemeshRequest& req)
 
     free_surface_memory(S);
     free_MC33(M);
+
+    delete grd;
 }

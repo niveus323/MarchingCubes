@@ -96,9 +96,6 @@
     <ClCompile Include="Core\Geometry\UploadRing.cpp">
       <Filter>소스 파일</Filter>
     </ClCompile>
-    <ClCompile Include="Core\Geometry\MarchingCubes\CPU\NDC\NDCTerrainBackend.cpp">
-      <Filter>소스 파일</Filter>
-    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="pch.h">
@@ -200,10 +197,10 @@
     <ClInclude Include="Core\Geometry\UploadRing.h">
       <Filter>헤더 파일</Filter>
     </ClInclude>
-    <ClInclude Include="Core\Geometry\MarchingCubes\CPU\NDC\NDCTerrainBackend.h">
+    <ClInclude Include="Core\Utils\Log.h">
       <Filter>헤더 파일</Filter>
     </ClInclude>
-    <ClInclude Include="Core\Utils\Log.h">
+    <ClInclude Include="Core\Geometry\MarchingCubes\SdfField.h">
       <Filter>헤더 파일</Filter>
     </ClInclude>
   </ItemGroup>

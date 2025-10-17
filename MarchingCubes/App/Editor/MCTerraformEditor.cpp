@@ -17,7 +17,8 @@ MCTerraformEditor::MCTerraformEditor(UINT width, UINT height, std::wstring name)
 	m_scissorRect(0, 0, static_cast<LONG>(width), static_cast<LONG>(height)),
 	m_fenceValues{},
 	m_rtvDescriptorSize(0),
-	m_camera(nullptr)
+	m_camera(nullptr),
+	m_fenceEvent(0)
 {
 }
 
@@ -490,7 +491,7 @@ void MCTerraformEditor::LoadAssets()
 	{
 		GridDesc gridDesc{};
 		auto initialSphereField = MakeSphereGrid(100U, 1.0f, 25.0f, m_gridOrigin, gridDesc);
-		m_terrain = std::make_unique<TerrainSystem>(m_device.Get(), initialSphereField, gridDesc, TerrainMode::CPU_NDC);
+		m_terrain = std::make_unique<TerrainSystem>(m_device.Get(), initialSphereField, gridDesc, TerrainMode::CPU_MC33);
 		RemeshRequest req(m_mcIso);
 		m_terrain->requestRemesh(req);
 
@@ -868,7 +869,7 @@ void MCTerraformEditor::MoveToNextFrame()
 	m_fenceValues[m_frameIndex] = currentFenceValue + 1;
 }
 
-std::shared_ptr<_GRD> MCTerraformEditor::MakeSphereGrid(unsigned int N, float cellSize, float radius, XMFLOAT3 center, GridDesc& OutGridDesc)
+std::shared_ptr<SdfField<float>> MCTerraformEditor::MakeSphereGrid(unsigned int N, float cellSize, float radius, XMFLOAT3 center, GridDesc& OutGridDesc)
 {
 	const float half = 0.5f * (float)N;
 	XMFLOAT3 origin = { center.x - half * cellSize, center.y - half * cellSize, center.z - half * cellSize };
@@ -877,36 +878,27 @@ std::shared_ptr<_GRD> MCTerraformEditor::MakeSphereGrid(unsigned int N, float ce
 	OutGridDesc.cellsize = cellSize;
 	OutGridDesc.origin = origin;
 
-	auto gridData = new _GRD{};
-	gridData->N[0] = N;			 gridData->N[1] = N;		  gridData->N[2] = N;           // 셀 개수
-	gridData->d[0] = cellSize;   gridData->d[1] = cellSize;   gridData->d[2] = cellSize;    // 셀 크기
-	gridData->r0[0] = origin.x;  gridData->r0[1] = origin.y;  gridData->r0[2] = origin.z;   // [-0.5, 0.5] 범위가 될 수 있도록 grid의 0번은 (-0.5, -0.5, -0.5)
-	gridData->nonortho = 0;
-	gridData->periodic = 0;
-
 	// 샘플 수 = (N+1)^3
 	const int SX = N + 1, SY = N + 1, SZ = N + 1;
 
 	// 채우기: F = radius - |p - center|
-	gridData->F = new float** [SZ];
+	auto gridData = new SdfField<float>(SX, SY, SZ);
 	for (int z = 0; z < SZ; ++z)
 	{
-		gridData->F[z] = new float* [SY];
 		float dz = (z - half) * cellSize;
 		for (int y = 0; y < SY; ++y)
 		{
-			gridData->F[z][y] = new float[SX];
 			float dy = (y - half) * cellSize;
 			for (int x = 0; x < SX; ++x)
 			{
+				// 내부>0, 표면=0, 외부<0
 				float dx = (x - half) * cellSize;
 				const float dist = sqrtf(dx * dx + dy * dy + dz * dz);
-				gridData->F[z][y][x] = radius - dist; // 내부>0, 표면=0, 외부<0
+				gridData->at(x, y, z) = std::clamp((radius - dist) / N, -1.0f, 1.0f);
 			}
 		}
 	}
-	//m_mcIso = 0.5f;
 	m_mcIso = 0.0f;
 
-	return std::shared_ptr<_GRD>(gridData);
+	return std::shared_ptr<SdfField<float>>(gridData);
 }

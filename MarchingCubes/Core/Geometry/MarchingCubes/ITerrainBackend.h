@@ -1,12 +1,12 @@
 #pragma once
-#include <MC33_c/marching_cubes_33.h>
+//#include <MC33_c/marching_cubes_33.h>
+#include <Core/Geometry/MarchingCubes/SdfField.h>
 #include "Core/DataStructures/Data.h"
 #include <set>
 
 enum class TerrainMode
 {
 	CPU_MC33,
-	CPU_NDC,
 	GPU_ORIGINAL
 };
 
@@ -60,7 +60,7 @@ struct ITerrainBackend
 {
 	virtual ~ITerrainBackend() = default;
 	virtual void setGridDesc(const GridDesc&) = 0;
-	virtual void setFieldPtr(std::shared_ptr<_GRD> grid) = 0;			// GPU: density3D 갱신 / CPU: 내부 GRD 보관
+	virtual void setFieldPtr(std::shared_ptr<SdfField<float>> grid) = 0;			// GPU: density3D 갱신 / CPU: 내부 GRD 보관
 	virtual void requestBrush(const BrushRequest&) = 0;
 	virtual void requestRemesh(const RemeshRequest&) = 0;
 	virtual bool tryFetch(std::vector<ChunkUpdate>& OutChunkUpdates) = 0;  // GPU : readback / CPU : MeshData -> MeshBuffer Commit

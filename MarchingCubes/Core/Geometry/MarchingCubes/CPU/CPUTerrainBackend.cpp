@@ -4,25 +4,25 @@
 #include <algorithm>
 #include "Core/Utils/Log.h"
 
-CPUTerrainBackend::CPUTerrainBackend(ID3D12Device* device, const GridDesc& desc)
+CPUTerrainBackend::CPUTerrainBackend(ID3D12Device* device, const GridDesc& desc):
+    m_gridDesc(desc),
+    m_chunkSize(std::max(desc.cells.x, std::max(desc.cells.y, desc.cells.z)))
 {
-	setGridDesc(desc);
 }
 
 void CPUTerrainBackend::setGridDesc(const GridDesc& desc)
 {
 	m_gridDesc = desc;
+    m_chunkSize = std::max(desc.cells.x, std::max(desc.cells.y, desc.cells.z));
 }
 
-void CPUTerrainBackend::setFieldPtr(std::shared_ptr<_GRD> grid)
+void CPUTerrainBackend::setFieldPtr(std::shared_ptr<SdfField<float>> grid)
 {
 	m_grd = std::move(grid);
 }
 
 void CPUTerrainBackend::requestBrush(const BrushRequest& req)
 {
-    Log::Print("CPUTerrain", "Brush Called");
-
     RemeshRequest remeshRequest;
     remeshRequest.isoValue = req.isoValue;
 
@@ -71,7 +71,7 @@ void CPUTerrainBackend::requestBrush(const BrushRequest& req)
                 // Brush 중심과의 거리에 따라 가중치 부여
                 const float sphere = radius - dist;
 
-                float& F = m_grd->F[z][y][x];
+                float& F = m_grd->at(x, y, z);
                 float desired = (weight < 0) ? std::min(F, -sphere) : std::max(F, sphere);
                 const float falloff = std::clamp(sphere / radius, 0.0f, 1.0f);
                 const float k = kBase * falloff;

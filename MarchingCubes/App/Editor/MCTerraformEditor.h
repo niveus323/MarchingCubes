@@ -39,7 +39,7 @@ private:
     void WaitForGpu();
     
     //Marching Cubes
-    std::shared_ptr<_GRD> MakeSphereGrid(unsigned int N, float cell, float radius, XMFLOAT3 origin, GridDesc& OutGridDesc);
+    std::shared_ptr<SdfField<float>> MakeSphereGrid(unsigned int N, float cell, float radius, XMFLOAT3 origin, GridDesc& OutGridDesc);
 
 private:
     static const UINT FrameCount = 2;
