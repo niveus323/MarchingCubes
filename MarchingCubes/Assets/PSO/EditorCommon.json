@@ -1,0 +1,57 @@
+{
+  "schema": 1,
+  "pso": [
+    {
+      "id": "Filled",
+      "order": 10,
+      "shaders": {
+        "vs": "MainVS.cso",
+        "ps": "MainPS.cso"
+      },
+      "rt": {
+        "format": "R8G8B8A8_UNORM",
+        "dsv": "D32_FLOAT",
+        "msaa": 1,
+        "depthOnly": false
+      },
+      "raster": {
+        "fill": "solid",
+        "cull": "none",
+        "frontCCW": false
+      },
+      "blend": { "alpha": false },
+      "depth": {
+        "enable": true,
+        "write": true,
+        "func": "less_equal"
+      },
+      "topology": "triangle"
+    },
+    {
+      "id": "Line",
+      "order": 20,
+      "inherits": "Filled",
+      "shaders": { "ps": "LinePS.cso" },
+      "topology": "line"
+    },
+    {
+      "id": "Wire",
+      "order": 30,
+      "inherits": "Filled",
+      "shaders": { "ps": "LinePS.cso" },
+      "raster": {
+        "fill": "wireframe",
+        "cull": "back"
+      }
+    },
+    {
+      "id": "DrawNormal",
+      "order": 40,
+      "inherits": "Filled",
+      "shaders": {
+        "gs": "NormalGS.cso",
+        "ps": "LinePS.cso"
+      }
+    }
+  ]
+}

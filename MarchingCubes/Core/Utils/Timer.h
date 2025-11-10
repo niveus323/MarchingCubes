@@ -3,6 +3,7 @@
 #include <mutex>
 #include <unordered_map>
 #include <vector>
+#include <deque>
 
 class Timer
 {
@@ -11,6 +12,21 @@ class Timer
 public:
 	void Start();
 	float Tick();
+	static uint64_t GetTimeMs() { return duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now().time_since_epoch()).count(); }
+
+	double GetCpuFrameMs() const { return m_lastCpuMs; }
+	float GetCpuFPS() const { return m_lastCpuMs > 0 ? float(1000.0 / m_lastCpuMs) : 0.0f; }
+	double GetCpuFrameMsAvg() const;
+	float GetCpuFPSAvg() const;
+
+	void PushGpuFrameMs(double ms);
+	double GetGpuFrameMs() const { return m_lastGpuMs; }
+	float GetGpuFPS() const { return m_lastGpuMs > 0 ? float(1000.0 / m_lastGpuMs) : 0.0f; }
+	double GetGpuFrameMsAvg() const;
+	float GetGpuFPSAvg() const;
+
+	void SetFpsSampleCount(size_t n);
+	void ResetFps();
 
 	template <typename F, typename... Args>
 	static auto MeasureCall(F&& f, Args&&... args)
@@ -79,6 +95,13 @@ public:
 
 private:
 	Time_point m_prev;
+
+	// FPS & FrameTime
+	size_t m_maxSamples = 120;
+	std::deque<double> m_cpuMsQ;
+	std::deque<double> m_gpuMsQ;
+	double m_lastCpuMs = 0.0;
+	double m_lastGpuMs = 0.0;
 
 	struct TimerKey
 	{

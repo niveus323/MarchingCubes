@@ -5,7 +5,6 @@ using namespace DirectX;
 // alignment
 static constexpr UINT CB_ALIGN = D3D12_CONSTANT_BUFFER_DATA_PLACEMENT_ALIGNMENT;
 
-
 struct alignas(16) CameraConstants
 {
 	XMFLOAT4X4 viewProjMatrix;
@@ -68,7 +67,7 @@ struct alignas(16) Light
 	XMFLOAT3 spotDir;
 	float spotInnerCos;
 };
-static_assert(sizeof(Light) == 64, "Light layout mismatch!!!!");
+static_assert(sizeof(Light) == 64 && "Light layout mismatch!!!!");
 
 struct alignas(16) LightConstants
 {

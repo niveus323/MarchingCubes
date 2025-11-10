@@ -1,23 +1,14 @@
 #pragma once
+#include "Core/DataStructures/Drawable.h"
+#include "Core/Rendering/PSO/PSOList.h"
+#include "Core/Rendering/Material.h"
+#include <unordered_set>
 #include <unordered_map>
-using Microsoft::WRL::ComPtr;
-
-interface IDrawable
-{
-public:
-	virtual void Draw(ID3D12GraphicsCommandList* cmdList) const = 0;
-	virtual void SetConstantsBuffers(ID3D12GraphicsCommandList* cmdList) const = 0;
-	virtual ~IDrawable() = default;
-};
 
 struct StaticRenderItem
 {
-	ID3D12GraphicsCommandList* bundle;
-};
-
-struct DynamicRenderItem
-{
-	const IDrawable* object;
+	ID3D12GraphicsCommandList* bundle = nullptr;
+	std::vector<IDrawable*> objects; // 번들에 들어가는 object 리스트
 };
 
 struct PendingDeleteItem
@@ -26,12 +17,15 @@ struct PendingDeleteItem
 	std::vector<ComPtr<ID3D12Resource>> resources;
 };
 
+void RecordDrawItem(ID3D12GraphicsCommandList* cmdList, const IDrawable* drawable);
+
 class BundleRecorder
 {
 public:
-	BundleRecorder(ID3D12Device* device, ID3D12RootSignature* rootSignature, const std::unordered_map<PipelineMode, ComPtr<ID3D12PipelineState>>& psos, size_t contextsPerPSO = 2);
+	BundleRecorder(ID3D12Device* device, ID3D12RootSignature* rootSignature, const PSOList* psoList, size_t contextsPerPSO = 2);
 
-	StaticRenderItem CreateBundleFor(const std::vector<std::unique_ptr<IDrawable>>& drawables, PipelineMode mode);
+	ID3D12GraphicsCommandList* CreateBundleFor(const std::vector<IDrawable*>& drawables, const std::string& psoName);
+	bool SyncWithPSOList(const PSOList* psoList);
 private:
 	struct Context {
 		ComPtr<ID3D12CommandAllocator> allocator;
@@ -43,8 +37,11 @@ private:
 		size_t nextIndex = 0;
 	};
 
-	ID3D12Device* m_device;
-	ID3D12RootSignature* m_rootSignature;
+	ID3D12Device* m_device = nullptr;
+	ID3D12RootSignature* m_rootSignature = nullptr;
+	const PSOList* m_psoList = nullptr;
+	size_t m_contextsPerPSO = 2;
+
 	std::vector<ContextPool> m_pools;
 };
 

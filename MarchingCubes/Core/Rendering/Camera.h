@@ -1,4 +1,5 @@
 #pragma once
+#include "Core/DataStructures/ShaderTypes.h"
 using namespace DirectX;
 
 class InputState;
@@ -28,9 +29,7 @@ public:
 	void UpdateProjMatrix();
 
 	// Constant Buffer 관련 함수
-	void CreateConstantBuffer(ID3D12Device* device);
-	void UpdateConstantBuffer();
-	void BindConstantBuffer(ID3D12GraphicsCommandList* cmdList, UINT rootIndex);
+	CameraConstants BuildCameraConstants() const;
 
 	// 카메라 이동 & 회전
 	void Rotate(float deltaX, float deltaY);
@@ -57,10 +56,6 @@ private:
 
 	XMFLOAT4X4 m_viewMatrix;
 	XMFLOAT4X4 m_projMatrix;
-
-	// Constant Buffer 관련 리소스
-	Microsoft::WRL::ComPtr<ID3D12Resource> m_cameraBuffer;
-	UINT8* m_mappedDataCB;
 
 	// 카메라 이동 & 회전
 	float m_yaw = 0.0f;

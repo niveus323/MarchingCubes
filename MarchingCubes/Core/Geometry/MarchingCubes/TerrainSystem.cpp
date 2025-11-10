@@ -2,7 +2,8 @@
 #include "TerrainSystem.h"
 #include "Core/Geometry/MarchingCubes/GPU/GPUTerrainBackend.h"
 #include "Core/Geometry/MarchingCubes/CPU/MC33/MC33TerrainBackend.h"
-#include "Core/Geometry/MarchingCubes/TerrainChunkRenderer.h"
+#include "Core/Geometry/Mesh/MeshChunkRenderer.h"
+#include "Core/Rendering/RenderSystem.h"
 
 TerrainSystem::TerrainSystem(ID3D12Device* device, std::shared_ptr<SdfField<float>> grd, const GridDesc& desc, TerrainMode mode):
 	m_desc(desc)
@@ -49,21 +50,31 @@ void TerrainSystem::requestBrush(const BrushRequest& r)
 	m_backend->requestBrush(r);
 }
 
-void TerrainSystem::tryFetch(ID3D12Device* device, ID3D12Fence* graphicsFence, std::vector<ComPtr<ID3D12Resource>>* sink)
+void TerrainSystem::tryFetch(ID3D12Device* device, RenderSystem* renderSystem, const std::string& psoName)
 {
 	std::vector<ChunkUpdate> ups;
 	if (m_backend && m_backend->tryFetch(ups))
 	{
-		m_chunkRenderer->ApplyUpdates(device, graphicsFence, sink, ups);
+		m_chunkRenderer->ApplyUpdates(device, ups);
+
+		auto pd = m_chunkRenderer->GetPendingDeletes();
+		for (auto& drawablePtr : pd)
+		{
+			renderSystem->UnRegisterDynamic(drawablePtr.get(), psoName);
+		}
+
+		auto chunks = m_chunkRenderer->GetChunkDrawables();
+		for (auto& drawable : chunks)
+		{
+			// 이미 등록되어 있으면 update
+			if (renderSystem->IsDynamicRegistered(drawable, psoName)) renderSystem->UpdateDynamic(drawable, *drawable->GetCPUData());
+			else renderSystem->RegisterDynamic(drawable, psoName);
+		}
 	}
 }
 
-void TerrainSystem::UploadRendererData(ID3D12Device* device, ID3D12GraphicsCommandList* cmd, std::vector<std::pair<UINT64, UINT64>>& outAllocations)
-{
-	m_chunkRenderer->UploadData(device, cmd, outAllocations);
-}
-
-void TerrainSystem::MakeDebugCell(MeshData& outMeshData)
+#ifdef _DEBUG
+void TerrainSystem::MakeDebugCell(GeometryData& outMeshData, bool bDrawFullCell)
 {
 	outMeshData.topology = D3D_PRIMITIVE_TOPOLOGY_LINELIST;
 
@@ -74,8 +85,19 @@ void TerrainSystem::MakeDebugCell(MeshData& outMeshData)
 	// XY-Plane
 	for (int x = 0; x < Nx; ++x)
 	{
+		if (!bDrawFullCell && (x > 0 && x < Nx - 1))
+		{
+			x = Nx - 2;
+			continue;
+		}
 		for (int y = 0; y < Ny; ++y)
 		{
+			if (!bDrawFullCell && (y > 0 && y < Ny - 1))
+			{
+				y = Ny - 2;
+				continue;
+			}
+
 			uint32_t index = outMeshData.indices.size();
 			Vertex A{};
 			A.pos = { 
@@ -106,8 +128,20 @@ void TerrainSystem::MakeDebugCell(MeshData& outMeshData)
 	// XZ-Plane
 	for (int x = 0; x < Nx; ++x)
 	{
+		if (!bDrawFullCell && (x > 0 && x < Nx - 1))
+		{
+			x = Nx - 2;
+			continue;
+		}
+
 		for (int z = 0; z < Nz; ++z)
 		{
+			if (!bDrawFullCell && (z > 0 && z < Nz - 1))
+			{
+				z = Nz - 2;
+				continue;
+			}
+
 			uint32_t index = outMeshData.indices.size();
 			Vertex A{};
 			A.pos = {
@@ -137,8 +171,20 @@ void TerrainSystem::MakeDebugCell(MeshData& outMeshData)
 	// YZ-Plane
 	for (int y = 0; y < Ny; ++y)
 	{
+		if (!bDrawFullCell && (y > 0 && y < Ny - 1))
+		{
+			y = Ny - 2;
+			continue;
+		}
+
 		for (int z = 0; z < Nz; ++z)
 		{
+			if (!bDrawFullCell && (z > 0 && z < Nz - 1))
+			{
+				z = Nz - 2;
+				continue;
+			}
+
 			uint32_t index = outMeshData.indices.size();
 			Vertex A{};
 			A.pos = {
@@ -166,6 +212,17 @@ void TerrainSystem::MakeDebugCell(MeshData& outMeshData)
 	}
 }
 
+void TerrainSystem::EraseChunk(RenderSystem* renderSystem)
+{
+	m_chunkRenderer->Clear();
+	auto pd = m_chunkRenderer->GetPendingDeletes();
+	for (auto& drawablePtr : pd)
+	{
+		renderSystem->UnRegisterDynamic(drawablePtr.get(), "Filled");
+	}
+}
+#endif
+
 void TerrainSystem::initializeField(ID3D12Device* device, std::shared_ptr<SdfField<float>> grid, const GridDesc& desc)
 {
 	m_lastGRD = std::move(grid);
@@ -174,7 +231,7 @@ void TerrainSystem::initializeField(ID3D12Device* device, std::shared_ptr<SdfFie
 		m_chunkRenderer.reset();
 	}
 
-	m_chunkRenderer = std::make_unique<TerrainChunkRenderer>(device);
+	m_chunkRenderer = std::make_unique<MeshChunkRenderer>(device);
 	if (m_backend && m_lastGRD) m_backend->setFieldPtr(m_lastGRD);
 }
 

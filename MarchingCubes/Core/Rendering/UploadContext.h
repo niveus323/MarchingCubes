@@ -1,25 +1,59 @@
 #pragma once
-#include "Core/Geometry/Mesh.h"
+#include "Core/DataStructures/Drawable.h"
+#include "Core/Rendering/Memory/CommonMemory.h"
+#include <functional>
+
+struct DynamicRenderItem
+{
+	IDrawable* object;
+};
+
+class GpuAllocator;
+class StaticBufferRegistry;
 
 class UploadContext
 {
 public:
-	UploadContext() = default;
-	~UploadContext();
+	UploadContext(ID3D12Device* device, GpuAllocator* allocator, StaticBufferRegistry* staticBufferRegistry);
+	~UploadContext() = default;
 
-	void Initailize(ID3D12Device* device);
 	void Execute(ID3D12GraphicsCommandList* cmdList);
-	DynamicRenderItem UploadDynamicMesh(Mesh& mesh, ID3D12Fence* graphicsFence, const MeshData& data);
-	void UploadStaticMesh(ID3D12Fence * graphicsFence, ID3D12GraphicsCommandList* cmdList, Mesh& mesh, const MeshData& data);
-	void UpdateMesh(Mesh& mesh);
-	void UpdateMesh(ID3D12Fence * graphicsFence, Mesh& mesh, const MeshData& data);
-	void SetDeletionSink(std::vector<ComPtr<ID3D12Resource>>* sink);
+	void TrackPendingAllocations(UINT64 submitFenceValue);
+	void ReclaimCompleted(UINT64 completedFenceValue);
+	void UploadDrawable(IDrawable* drawable, UINT64 completedFenceValue);
+	void UploadStatic(IDrawable* drawable, UINT64 completedFenceValue);
+	void UploadObjectConstants(GeometryBuffer* buf, const ObjectConstants& cb);
 
 private:
-	ComPtr<ID3D12Device> m_device;
+	void EnsureDefaultVB(GeometryBuffer* buf, UINT64 neededSize, const char* debugName = nullptr);
+	void EnsureDefaultIB(GeometryBuffer* buf, UINT64 neededSize, const char* debugName = nullptr);
 
-	std::vector<Mesh*> m_meshToCommit;
+private:
+	ID3D12Device* m_device = nullptr;
+	GpuAllocator* m_allocator = nullptr;
+	StaticBufferRegistry* m_staticBufferRegistry = nullptr;
 
-	std::vector<ComPtr<ID3D12Resource>>* m_deletionSink = nullptr;
+	struct PendingUpload {
+		ResourceSlice stagingSlice;
+		ResourceSlice vbSlice;
+		ResourceSlice ibSlice;
+		enum class UploadState : uint8_t {
+			Enqueued,
+			Recorded,
+			InFlight,
+			Reclaimed,
+			Failed
+		} state = UploadState::Enqueued;
+
+		UINT64 vbSize = 0;
+		UINT64 ibSize = 0;
+		UINT64 vbAligned = 0;
+		UINT64 fenceValue = 0;
+		IDrawable* drawable = nullptr;
+	};
+	std::vector<PendingUpload> m_pendingUploads;
+
+	std::vector<ResourceSlice> m_reclaimed;
+	UINT64 m_lastReclaimedFenceValue = 0;
 };
 

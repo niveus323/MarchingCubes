@@ -1,49 +1,101 @@
 #include "pch.h"
 #include "BundleRecorder.h"
 
-BundleRecorder::BundleRecorder(ID3D12Device* device, ID3D12RootSignature* rootSignature, const std::unordered_map<PipelineMode, ComPtr<ID3D12PipelineState>>& psos, size_t contextsPerPso)
-	: m_device(device), m_rootSignature(rootSignature)
+BundleRecorder::BundleRecorder(ID3D12Device* device, ID3D12RootSignature* rootSignature, const PSOList* psoList, size_t contextsPerPSO) :
+	m_device(device), 
+    m_rootSignature(rootSignature), 
+    m_contextsPerPSO(contextsPerPSO),
+    m_psoList(psoList)
 {
-	for (auto& pso : psos)
+	for (int i = 0; i < m_psoList->Count(); ++i)
 	{
 		ContextPool pool;
-		pool.pso = pso.second;
-		NAME_D3D12_OBJECT_ALIAS(pool.pso, ToLPCWSTR(pso.first));
 		pool.nextIndex = 0;
-		pool.contexts.resize(contextsPerPso);
+		pool.pso = m_psoList->Get(i);
+		pool.contexts.resize(m_contextsPerPSO);
 
 		for (Context& context : pool.contexts)
 		{
-			ThrowIfFailed(m_device->CreateCommandAllocator(D3D12_COMMAND_LIST_TYPE_BUNDLE, IID_PPV_ARGS(&context.allocator)));
-			NAME_D3D12_OBJECT_ALIAS(context.allocator, ToLPCWSTR(pso.first));
-			ThrowIfFailed(m_device->CreateCommandList(0, D3D12_COMMAND_LIST_TYPE_BUNDLE, context.allocator.Get(), nullptr, IID_PPV_ARGS(&context.bundle)));
-			NAME_D3D12_OBJECT_ALIAS(context.bundle, ToLPCWSTR(pso.first));
+			ThrowIfFailed(m_device->CreateCommandAllocator(D3D12_COMMAND_LIST_TYPE_BUNDLE, IID_PPV_ARGS(context.allocator.ReleaseAndGetAddressOf())));
+			NAME_D3D12_OBJECT(context.allocator);
+			ThrowIfFailed(m_device->CreateCommandList(0, D3D12_COMMAND_LIST_TYPE_BUNDLE, context.allocator.Get(), nullptr, IID_PPV_ARGS(context.bundle.ReleaseAndGetAddressOf())));
+			NAME_D3D12_OBJECT(context.bundle);
 			context.bundle->Close();
 		}
 		m_pools.push_back(std::move(pool));
 	}
 }
 
-StaticRenderItem BundleRecorder::CreateBundleFor(const std::vector<std::unique_ptr<IDrawable>>& drawables, PipelineMode mode)
+ID3D12GraphicsCommandList* BundleRecorder::CreateBundleFor(const std::vector<IDrawable*>& drawables, const std::string& psoName)
 {
-	ContextPool& pool = m_pools[size_t(mode)];
+	int psoIndex = m_psoList->IndexOf(psoName);
+	ID3D12PipelineState* pso = m_psoList->Get(psoIndex);
+	ContextPool& pool = m_pools[size_t(psoIndex)];
 
 	size_t& idx = pool.nextIndex;
 	Context& context = pool.contexts[idx];
 	idx = (idx + 1) % pool.contexts.size();
 
 	context.allocator->Reset();
-	context.bundle->Reset(context.allocator.Get(), pool.pso.Get());
-	context.bundle->SetGraphicsRootSignature(m_rootSignature);
-	context.bundle->SetPipelineState(pool.pso.Get());
 
-	for (auto& drawable : drawables)
-	{
-		drawable->Draw(context.bundle.Get());
-	}
-	
-	// End Bundle Recording
-	context.bundle->Close();
+    ID3D12GraphicsCommandList* cmd = context.bundle.Get();
+	cmd->Reset(context.allocator.Get(), pso);
+	cmd->SetGraphicsRootSignature(m_rootSignature);
+	cmd->SetPipelineState(pso);
 
-	return { context.bundle.Get() };
+    for (auto& drawable : drawables)
+    {
+        RecordDrawItem(cmd, drawable);
+    }
+
+    cmd->Close();
+    return cmd;
+}
+
+// 핫 리로드된 PSOList에 맞춰서 Pool 재구성
+bool BundleRecorder::SyncWithPSOList(const PSOList* psoList)
+{
+    if (!m_device || !m_rootSignature)
+    {
+        return false;
+    }
+
+    const int newCount = psoList->Count();
+    m_pools.resize(newCount);
+
+    for (int i = 0; i < newCount; ++i)
+    {
+        ContextPool& pool = m_pools[i];
+        ID3D12PipelineState* newPSO = psoList->Get(i);
+
+        bool needRebuildPool = false;
+
+        if (pool.pso == nullptr)
+        {
+            needRebuildPool = true;
+        }
+        else if (pool.pso.Get() != newPSO)
+        {
+            needRebuildPool = true;
+        }
+
+        if (needRebuildPool)
+        {
+            pool.pso = newPSO;
+            pool.contexts.clear();
+            pool.nextIndex = 0;
+            pool.contexts.reserve(m_contextsPerPSO);
+
+            for (size_t c = 0; c < m_contextsPerPSO; ++c)
+            {
+                Context ctx;
+                ThrowIfFailed(m_device->CreateCommandAllocator( D3D12_COMMAND_LIST_TYPE_BUNDLE, IID_PPV_ARGS(ctx.allocator.ReleaseAndGetAddressOf())));
+                ThrowIfFailed(m_device->CreateCommandList(0, D3D12_COMMAND_LIST_TYPE_BUNDLE, ctx.allocator.Get(), pool.pso.Get(), IID_PPV_ARGS(ctx.bundle.ReleaseAndGetAddressOf())));
+                ctx.bundle->Close();
+                pool.contexts.push_back(std::move(ctx));
+            }
+        }
+    }
+    m_psoList = psoList;
+	return true;
 }

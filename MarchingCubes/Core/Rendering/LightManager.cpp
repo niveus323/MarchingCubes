@@ -1,33 +1,29 @@
 #include "pch.h"
 #include "LightManager.h"
 
-LightManager::LightManager(ID3D12Device* device, UINT maxLights, UINT rootParamIndex) :
-	//m_mappedData(nullptr),
-	m_uploadBufferSize(0),
-	m_maxLights(maxLights),
-	m_rootParamIndex(rootParamIndex)
+LightManager::LightManager(ID3D12Device* device, UINT rootParamIndex)
 {
-	m_lights.reserve(maxLights);
+	m_lights.reserve(kMaxLights);
 
-	m_headerSizeAligned = static_cast<UINT>(sizeof(LightConstantsHeader));
+	//m_headerSizeAligned = static_cast<UINT>(sizeof(LightConstantsHeader));
 
-	UINT lightsSize = sizeof(Light) * maxLights;
-	m_uploadBufferSize = AlignUp(m_headerSizeAligned + lightsSize, D3D12_CONSTANT_BUFFER_DATA_PLACEMENT_ALIGNMENT);
-
-	CreateUploadBuffer(device);
+	//UINT lightsSize = sizeof(Light) * maxLights;
+	//m_uploadBufferSize = AlignUp(m_headerSizeAligned + lightsSize, D3D12_CONSTANT_BUFFER_DATA_PLACEMENT_ALIGNMENT);
+	//
+	//CreateUploadBuffer(device);
 }
 
 LightManager::~LightManager()
 {
-	if (m_uploadBuffer && m_mappedBase)
-	{
-		m_uploadBuffer->Unmap(0, nullptr);
-	}
+	//if (m_uploadBuffer && m_mappedBase)
+	//{
+	//	m_uploadBuffer->Unmap(0, nullptr);
+	//}
 }
 
 void LightManager::AddDirectional(const DirectX::XMFLOAT3& dir, const DirectX::XMFLOAT3& radiance)
 {
-	if (m_lights.size() >= m_maxLights) return;
+	if (m_lights.size() >= kMaxLights) return;
 
 	Light data{};
 	data.type = ELightType::Directional;
@@ -39,7 +35,7 @@ void LightManager::AddDirectional(const DirectX::XMFLOAT3& dir, const DirectX::X
 
 void LightManager::AddPoint(const DirectX::XMFLOAT3& pos, const DirectX::XMFLOAT3& radiance, float range)
 {
-	if (m_lights.size() >= m_maxLights) return;
+	if (m_lights.size() >= kMaxLights) return;
 
 	Light data{};
 	data.type = ELightType::Point;
@@ -51,6 +47,8 @@ void LightManager::AddPoint(const DirectX::XMFLOAT3& pos, const DirectX::XMFLOAT
 
 void LightManager::AddSpot(const DirectX::XMFLOAT3& pos, const DirectX::XMFLOAT3& dir, const DirectX::XMFLOAT3& radiance, float innerCos, float outerCos, float range)
 {
+	if (m_lights.size() >= kMaxLights) return;
+
 	Light data{};
 	data.type = ELightType::Spot;
 	data.radiance = radiance;
@@ -62,35 +60,37 @@ void LightManager::AddSpot(const DirectX::XMFLOAT3& pos, const DirectX::XMFLOAT3
 	m_lights.emplace_back(data);
 }
 
-void LightManager::Update()
+LightBlobView LightManager::BuildLightConstants() const
 {
-	UINT count = std::min<UINT>((UINT)m_lights.size(), m_maxLights);
-	m_header->lightCounts = count;
+	// 1) 라이트 개수 계산
+	uint32_t count = (uint32_t)m_lights.size(); // 여기서 m_lights는 "씬의 현재 라이트" 목록
 
-	std::memcpy(m_lightsPtr, m_lights.data(), count * sizeof(Light));
+	// 2) 필요한 총 바이트 수 계산
+	size_t totalBytes =
+		sizeof(LightConstantsHeader) +
+		sizeof(Light) * count;
+
+	// 3) 내부 임시 버퍼 사이즈 맞추기
+	m_scratch.resize(totalBytes);
+
+	// 4) header 채우기
+	LightConstantsHeader header{};
+	header.lightCounts = count;
+	// padding 등도 세팅
+
+	// 5) scratch[0..headerSize) 에 header 복사
+	std::memcpy(m_scratch.data(), &header, sizeof(LightConstantsHeader));
+
+	// 6) 그 다음 라이트 배열 채우기
+	uint8_t* dstLights = m_scratch.data() + sizeof(LightConstantsHeader);
+	for (uint32_t i = 0; i < count; ++i) 
+	{
+		std::memcpy(dstLights + i * sizeof(Light), &m_lights[i], sizeof(Light));
+	}
+
+	// 7) 뷰 리턴
+	LightBlobView view{};
+	view.data = m_scratch.data();
+	view.size = totalBytes;
+	return view;
 }
-
-void LightManager::BindConstant(ID3D12GraphicsCommandList* cmdList)
-{
-	cmdList->SetGraphicsRootConstantBufferView(m_rootParamIndex, m_uploadBuffer->GetGPUVirtualAddress());
-}
-
-void LightManager::CreateUploadBuffer(ID3D12Device* device)
-{
-	ThrowIfFailed(device->CreateCommittedResource(
-		&CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD),
-		D3D12_HEAP_FLAG_NONE,
-		&CD3DX12_RESOURCE_DESC::Buffer(m_uploadBufferSize),
-		D3D12_RESOURCE_STATE_GENERIC_READ,
-		nullptr,
-		IID_PPV_ARGS(&m_uploadBuffer)
-	));
-	NAME_D3D12_OBJECT_ALIAS(m_uploadBuffer, L"LightManager");
-
-
-	ThrowIfFailed(m_uploadBuffer->Map(0, nullptr, reinterpret_cast<void**>(&m_mappedBase)));
-
-	m_header = reinterpret_cast<LightConstantsHeader*>(m_mappedBase);
-	m_lightsPtr = reinterpret_cast<Light*>(m_mappedBase + m_headerSizeAligned);
-}
-

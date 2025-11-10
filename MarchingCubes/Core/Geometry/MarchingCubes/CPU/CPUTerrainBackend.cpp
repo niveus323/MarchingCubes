@@ -2,18 +2,16 @@
 #include "CPUTerrainBackend.h"
 #include "Core/Math/PhysicsHelper.h"
 #include <algorithm>
-#include "Core/Utils/Log.h"
+#include <cmath>
 
 CPUTerrainBackend::CPUTerrainBackend(ID3D12Device* device, const GridDesc& desc):
-    m_gridDesc(desc),
-    m_chunkSize(std::max(desc.cells.x, std::max(desc.cells.y, desc.cells.z)))
+    m_gridDesc(desc)
 {
 }
 
 void CPUTerrainBackend::setGridDesc(const GridDesc& desc)
 {
 	m_gridDesc = desc;
-    m_chunkSize = std::max(desc.cells.x, std::max(desc.cells.y, desc.cells.z));
 }
 
 void CPUTerrainBackend::setFieldPtr(std::shared_ptr<SdfField<float>> grid)
@@ -35,9 +33,9 @@ void CPUTerrainBackend::requestBrush(const BrushRequest& req)
     const float weight = req.weight;
     const float radius = req.radius;
 
-    const int SX = int(m_gridDesc.cells.x) + 1;
-    const int SY = int(m_gridDesc.cells.y) + 1;
-    const int SZ = int(m_gridDesc.cells.z) + 1;
+    const int SX = int(m_gridDesc.cells.x);
+    const int SY = int(m_gridDesc.cells.y);
+    const int SZ = int(m_gridDesc.cells.z);
 
     const float kBase = std::clamp(m_brushDelta * deltaTime * std::abs(weight), 0.0f, 1.0f);
 
@@ -78,7 +76,7 @@ void CPUTerrainBackend::requestBrush(const BrushRequest& req)
 
                 F = F + (desired - F) * k;
 
-                remeshRequest.chunkset.insert(ChunkKey{ x / m_chunkSize, y / m_chunkSize, z / m_chunkSize });
+                remeshRequest.chunkset.insert(ChunkKey{ x / m_gridDesc.chunkSize, y / m_gridDesc.chunkSize,  z / m_gridDesc.chunkSize });
             }
         }
     }
@@ -88,13 +86,16 @@ void CPUTerrainBackend::requestBrush(const BrushRequest& req)
 
 bool CPUTerrainBackend::tryFetch(std::vector<ChunkUpdate>& OutChunkUpdates)
 {
-	// CPU Terrain¿∫ ¥‹¿œ Chunk.
 	OutChunkUpdates.clear();
-	ChunkUpdate up;
-	up.empty = m_meshData.indices.empty();
-	up.key = { 0,0,0 };
-	up.md = std::move(m_meshData);
-	OutChunkUpdates.push_back(up);
+    for (auto& [key, data] : m_chunkData)
+    {
+        ChunkUpdate up;
+        up.empty = data.indices.empty();
+        up.key = key;
+        up.md = std::move(data);
+        OutChunkUpdates.push_back(up);
+    }
+    m_chunkData.clear();
 
-	return !up.empty;
+    return !OutChunkUpdates.empty();
 }

@@ -1,5 +1,6 @@
 #pragma once
 #include "Core/Geometry/MarchingCubes/ITerrainBackend.h"
+#include <unordered_map>
 
 class CPUTerrainBackend :   public ITerrainBackend
 {
@@ -16,8 +17,7 @@ protected:
 	GridDesc m_gridDesc{};
 	std::shared_ptr<SdfField<float>> m_grd;
 
-	MeshData m_meshData;
+	std::unordered_map<ChunkKey, GeometryData, ChunkKeyHash> m_chunkData;
 	float m_brushDelta = 0.05f;
-	UINT m_chunkSize;
 };
 

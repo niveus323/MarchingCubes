@@ -136,7 +136,7 @@ void GPUMarchingCubesCS::ensurePipeline(ID3D12Device* device)
 
         ComPtr<ID3DBlob> rsBlob, err;
         ThrowIfFailed(D3D12SerializeVersionedRootSignature(&rsDesc, &rsBlob, &err));
-        ThrowIfFailed(device->CreateRootSignature(0, rsBlob->GetBufferPointer(), rsBlob->GetBufferSize(), IID_PPV_ARGS(&m_mcRootSig)));
+        ThrowIfFailed(device->CreateRootSignature(0, rsBlob->GetBufferPointer(), rsBlob->GetBufferSize(), IID_PPV_ARGS(m_mcRootSig.ReleaseAndGetAddressOf())));
     }
 
     if (!m_mcPso)
@@ -155,7 +155,7 @@ void GPUMarchingCubesCS::ensurePipeline(ID3D12Device* device)
         D3D12_COMPUTE_PIPELINE_STATE_DESC pso{};
         pso.pRootSignature = m_mcRootSig.Get();
         pso.CS = { csBlob->GetBufferPointer(), csBlob->GetBufferSize() };
-        ThrowIfFailed(device->CreateComputePipelineState(&pso, IID_PPV_ARGS(&m_mcPso)));
+        ThrowIfFailed(device->CreateComputePipelineState(&pso, IID_PPV_ARGS(m_mcPso.ReleaseAndGetAddressOf())));
     }
 }
 
@@ -168,9 +168,9 @@ void GPUMarchingCubesCS::ensureTable(ID3D12Device* device)
     CD3DX12_HEAP_PROPERTIES uploadHeap(D3D12_HEAP_TYPE_UPLOAD);
     auto bufDesc = CD3DX12_RESOURCE_DESC::Buffer(tableSize);
 
-    device->CreateCommittedResource(&defaultHeap, D3D12_HEAP_FLAG_NONE, &bufDesc, D3D12_RESOURCE_STATE_COMMON, nullptr, IID_PPV_ARGS(&m_triDefault));
+    device->CreateCommittedResource(&defaultHeap, D3D12_HEAP_FLAG_NONE, &bufDesc, D3D12_RESOURCE_STATE_COMMON, nullptr, IID_PPV_ARGS(m_triDefault.ReleaseAndGetAddressOf()));
     NAME_D3D12_OBJECT(m_triDefault);
-    device->CreateCommittedResource(&uploadHeap, D3D12_HEAP_FLAG_NONE, &bufDesc, D3D12_RESOURCE_STATE_GENERIC_READ, nullptr, IID_PPV_ARGS(&m_triUpload));
+    device->CreateCommittedResource(&uploadHeap, D3D12_HEAP_FLAG_NONE, &bufDesc, D3D12_RESOURCE_STATE_GENERIC_READ, nullptr, IID_PPV_ARGS(m_triUpload.ReleaseAndGetAddressOf()));
     NAME_D3D12_OBJECT(m_triUpload);
 
     void* p = nullptr;

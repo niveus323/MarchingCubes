@@ -1,8 +1,6 @@
 #include "pch.h"
 #include "DXHelper.h"
 
-UploadRing* g_uploadRing = nullptr;
-
 std::wstring GetShaderFullPath(LPCWSTR shaderName)
 {
     return GetFullPath(AssetType::Shader, shaderName);
@@ -330,7 +328,7 @@ namespace DescriptorHelper
         desc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
         desc.NumDescriptors = m_staticCount + descriptorsPerFrame * m_ringCount;
         desc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
-        ThrowIfFailed(device->CreateDescriptorHeap(&desc, IID_PPV_ARGS(&m_heap)));
+        ThrowIfFailed(device->CreateDescriptorHeap(&desc, IID_PPV_ARGS(m_heap.ReleaseAndGetAddressOf())));
         NAME_D3D12_OBJECT(m_heap);
         
         m_inc = device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
@@ -485,7 +483,7 @@ namespace ConstantBufferHelper
 
         auto desc = CD3DX12_RESOURCE_DESC::Buffer(totalBytes);
         auto hpUpload = CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD);
-        ThrowIfFailed(device->CreateCommittedResource(&hpUpload, D3D12_HEAP_FLAG_NONE, &desc, D3D12_RESOURCE_STATE_GENERIC_READ, nullptr, IID_PPV_ARGS(&m_buffer)));
+        ThrowIfFailed(device->CreateCommittedResource(&hpUpload, D3D12_HEAP_FLAG_NONE, &desc, D3D12_RESOURCE_STATE_GENERIC_READ, nullptr, IID_PPV_ARGS(m_buffer.ReleaseAndGetAddressOf())));
 
         ThrowIfFailed(m_buffer->Map(0, nullptr, reinterpret_cast<void**>(&m_cpu)));
         m_baseGPU = m_buffer->GetGPUVirtualAddress();
@@ -530,7 +528,7 @@ namespace ConstantBufferHelper
         ThrowIfFailed(device->CreateCommittedResource(
             &CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD),
             D3D12_HEAP_FLAG_NONE, &desc,
-            D3D12_RESOURCE_STATE_GENERIC_READ, nullptr, IID_PPV_ARGS(&tmp)));
+            D3D12_RESOURCE_STATE_GENERIC_READ, nullptr, IID_PPV_ARGS(tmp.ReleaseAndGetAddressOf())));
         void* p = nullptr;
         ThrowIfFailed(tmp->Map(0, nullptr, &p));
         std::memcpy(p, src, sizeBytes);

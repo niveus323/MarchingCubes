@@ -1,5 +1,7 @@
 #pragma once
-#include "Core/Geometry/MarchingCubes/TerrainChunkRenderer.h"
+#include "Core/Geometry/Mesh/MeshChunkRenderer.h"
+
+class RenderSystem;
 
 class TerrainSystem
 {
@@ -13,15 +15,17 @@ public:
 	void requestRemesh(const RemeshRequest& r);
 	void requestBrush(const BrushRequest& r);
 
-	void tryFetch(ID3D12Device* device, ID3D12Fence* graphicsFence, std::vector<ComPtr<ID3D12Resource>>* sink);
+	void tryFetch(ID3D12Device* device, RenderSystem* renderSystem, const std::string& psoName);
 
 	// ChunkRenderer
-	TerrainChunkRenderer* GetRenderer() { return m_chunkRenderer.get(); }
+	MeshChunkRenderer* GetRenderer() { return m_chunkRenderer.get(); }
 	void ResetRenderer() { m_chunkRenderer->Clear(); }
-	void UploadRendererData(ID3D12Device* device, ID3D12GraphicsCommandList* cmd, std::vector<std::pair<UINT64, UINT64>>& outAllocations);
 
 	//Debug
-	void MakeDebugCell(MeshData& outMeshData);
+#ifdef _DEBUG
+	void MakeDebugCell(GeometryData& outMeshData, bool bDrawFullCell);
+	void EraseChunk(RenderSystem* renderSystem);
+#endif // _DEBUG
 
 private:
 	void initializeField(ID3D12Device* device, std::shared_ptr<SdfField<float>> grid, const GridDesc& desc);
@@ -33,6 +37,6 @@ private:
 
 	std::unique_ptr<ITerrainBackend> m_backend;
 
-	std::unique_ptr<TerrainChunkRenderer> m_chunkRenderer;
+	std::unique_ptr<MeshChunkRenderer> m_chunkRenderer;
 };
 

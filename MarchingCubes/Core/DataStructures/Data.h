@@ -10,9 +10,16 @@ struct Vertex
 	DirectX::XMFLOAT4 color;
 };
 
-struct MeshData
+struct GeometryData
 {
 	std::vector<Vertex> vertices = {};
 	std::vector<uint32_t> indices = {};
 	D3D_PRIMITIVE_TOPOLOGY topology = D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST;
+};
+
+static UINT kMaxLights = 256u;
+struct LightBlobView
+{
+	const void* data;
+	size_t size;
 };

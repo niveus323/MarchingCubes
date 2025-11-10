@@ -1,5 +1,4 @@
 #pragma once
-//#include <MC33_c/marching_cubes_33.h>
 #include <Core/Geometry/MarchingCubes/SdfField.h>
 #include "Core/DataStructures/Data.h"
 #include <set>
@@ -15,6 +14,7 @@ struct GridDesc
 	DirectX::XMUINT3 cells;
 	float cellsize;
 	DirectX::XMFLOAT3 origin;
+	UINT chunkSize;
 };
 
 struct ChunkKey
@@ -34,10 +34,16 @@ struct ChunkKey
 	}
 };
 
+struct ChunkKeyHash {
+	size_t operator()(const ChunkKey& k) const noexcept {
+		return (size_t)k.x ^ ((size_t)k.y << 21) ^ ((size_t)k.z << 42);
+	}
+};
+
 struct ChunkUpdate
 {
 	ChunkKey key{};
-	MeshData md{};
+	GeometryData md{};
 	bool empty = true;
 };
 
@@ -63,5 +69,5 @@ struct ITerrainBackend
 	virtual void setFieldPtr(std::shared_ptr<SdfField<float>> grid) = 0;			// GPU: density3D 갱신 / CPU: 내부 GRD 보관
 	virtual void requestBrush(const BrushRequest&) = 0;
 	virtual void requestRemesh(const RemeshRequest&) = 0;
-	virtual bool tryFetch(std::vector<ChunkUpdate>& OutChunkUpdates) = 0;  // GPU : readback / CPU : MeshData -> MeshBuffer Commit
+	virtual bool tryFetch(std::vector<ChunkUpdate>& OutChunkUpdates) = 0;  // GPU : readback / CPU : GeometryData -> GeometryBuffer Commit
 };
