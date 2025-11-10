@@ -95,30 +95,15 @@ LRESULT Win32Application::WindowProc(HWND hWnd, UINT message, WPARAM wParam, LPA
         switch (message)
         {
             case WM_KEYDOWN:
-            {
-                pAppBase->OnKeyDown(wParam);
-                return 0;
-            }
             case WM_KEYUP:
-            {
-                pAppBase->OnKeyUp(wParam);
-                return 0;
-            }
             case WM_MOUSEMOVE:
-            {
-                pAppBase->OnMouseMove(GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam), wParam);
-                return 0;
-            }
             case WM_LBUTTONDOWN:
             case WM_RBUTTONDOWN:
-            {
-                pAppBase->OnMouseBtnDown(GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam), (message == WM_LBUTTONDOWN) ? VK_LBUTTON : VK_RBUTTON);
-                return 0;
-            }
             case WM_LBUTTONUP:
             case WM_RBUTTONUP:
+            case WM_INPUT:
             {
-                pAppBase->OnMouseBtnUp(GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam), (message == WM_LBUTTONUP) ? VK_LBUTTON : VK_RBUTTON);
+                pAppBase->OnPlatformEvent(message, wParam, lParam);
                 return 0;
             }
         }

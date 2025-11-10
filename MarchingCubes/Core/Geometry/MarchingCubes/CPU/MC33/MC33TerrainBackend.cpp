@@ -2,48 +2,68 @@
 #include "MC33TerrainBackend.h"
 #include <MC33_c/marching_cubes_33.h>
 
-
 void MC33TerrainBackend::requestRemesh(const RemeshRequest& req)
 {
-    m_meshData.vertices.clear();
-    m_meshData.indices.clear();
+    m_chunkData.clear();
+
+    int chunkSize = m_gridDesc.chunkSize;
+    const int totalX = m_grd->sx();
+    const int totalY = m_grd->sy();
+    const int totalZ = m_grd->sz();
 
     _GRD* grd = new _GRD{};
-    grd->N[0] = m_gridDesc.cells.x;
-    grd->N[1] = m_gridDesc.cells.y;
-    grd->N[2] = m_gridDesc.cells.z;
+    for (auto& chunkKey : req.chunkset)
+    {
+        const int baseX = chunkKey.x * chunkSize;
+        const int baseY = chunkKey.y * chunkSize;
+        const int baseZ = chunkKey.z * chunkSize;
 
-    grd->d[0] = m_gridDesc.cellsize;
-    grd->d[1] = m_gridDesc.cellsize;
-    grd->d[2] = m_gridDesc.cellsize;
-    
-    grd->r0[0] = m_gridDesc.origin.x;
-    grd->r0[1] = m_gridDesc.origin.y;
-    grd->r0[2] = m_gridDesc.origin.z;
+        grd->N[0] = chunkSize;
+        grd->N[1] = chunkSize;
+        grd->N[2] = chunkSize;
 
-    grd->nonortho = 0;
-    grd->periodic = 0;
+        grd->d[0] = m_gridDesc.cellsize;
+        grd->d[1] = m_gridDesc.cellsize;
+        grd->d[2] = m_gridDesc.cellsize;
 
-    grd->F = reinterpret_cast<GRD_data_type***>(static_cast<float***>(*m_grd.get()));;
+        grd->r0[0] = m_gridDesc.origin.x + static_cast<float>(baseX) * m_gridDesc.cellsize;
+        grd->r0[1] = m_gridDesc.origin.y + static_cast<float>(baseY) * m_gridDesc.cellsize;
+        grd->r0[2] = m_gridDesc.origin.z + static_cast<float>(baseZ) * m_gridDesc.cellsize;
 
-    MC33* M = create_MC33(grd);
-    surface* S = calculate_isosurface(M, req.isoValue);
+        grd->nonortho = 0;
+        grd->periodic = 0;
 
-    m_meshData.vertices.reserve(S->nV);
-    for (unsigned i = 0; i < S->nV; ++i) {
-        float* p = S->V[i];
-        float* n = S->N[i];
-        m_meshData.vertices.push_back({ { p[0], p[1], p[2] }, { n[0], n[1], n[2] }, {1.0f, 1.0f, 1.0f, 1.0f} });
+        SdfField<float> chunk(chunkSize+1, chunkSize+1, chunkSize+1);
+        
+        for (int z = 0; z <= chunkSize; ++z)
+        {
+            for (int y = 0; y <= chunkSize; ++y)
+            {
+                const float* srcRow = m_grd->rowPtr(baseY + y, baseZ + z) + baseX;
+                float* dstRow = chunk.rowPtr(y, z);
+                std::memcpy(dstRow, srcRow, static_cast<size_t>(chunkSize+1) * sizeof(float));
+            }
+        }
+        grd->F = reinterpret_cast<GRD_data_type***>(static_cast<float***>(chunk));
+
+        MC33* M = create_MC33(grd);
+        surface* S = calculate_isosurface(M, req.isoValue);
+
+        m_chunkData[chunkKey].vertices.reserve(S->nV);
+        for (unsigned i = 0; i < S->nV; ++i) {
+            float* p = S->V[i];
+            float* n = S->N[i];
+            m_chunkData[chunkKey].vertices.push_back({ { p[0], p[1], p[2] }, { n[0], n[1], n[2] }, {1.0f, 1.0f, 1.0f, 1.0f} });
+        }
+        m_chunkData[chunkKey].indices.reserve(S->nT * 3);
+        for (unsigned t = 0; t < S->nT; ++t) {
+            m_chunkData[chunkKey].indices.push_back(S->T[t][0]);
+            m_chunkData[chunkKey].indices.push_back(S->T[t][1]);
+            m_chunkData[chunkKey].indices.push_back(S->T[t][2]);
+        }
+
+        free_surface_memory(S);
+        free_MC33(M);
     }
-    m_meshData.indices.reserve(S->nT * 3);
-    for (unsigned t = 0; t < S->nT; ++t) {
-        m_meshData.indices.push_back(S->T[t][0]);
-        m_meshData.indices.push_back(S->T[t][1]);
-        m_meshData.indices.push_back(S->T[t][2]);
-    }
-
-    free_surface_memory(S);
-    free_MC33(M);
-
     delete grd;
 }

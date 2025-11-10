@@ -27,7 +27,7 @@
     <ClCompile Include="App\Editor\MCTerraformEditor.cpp">
       <Filter>소스 파일</Filter>
     </ClCompile>
-    <ClCompile Include="Core\Geometry\Mesh.cpp">
+    <ClCompile Include="Core\Geometry\Mesh\Mesh.cpp">
       <Filter>소스 파일</Filter>
     </ClCompile>
     <ClCompile Include="Core\Rendering\BundleRecorder.cpp">
@@ -81,7 +81,7 @@
     <ClCompile Include="Core\Geometry\MarchingCubes\GPU\GPUTerrainBackend.cpp">
       <Filter>소스 파일</Filter>
     </ClCompile>
-    <ClCompile Include="Core\Geometry\MarchingCubes\TerrainChunkRenderer.cpp">
+    <ClCompile Include="Core\Geometry\Mesh\MeshChunkRenderer.cpp">
       <Filter>소스 파일</Filter>
     </ClCompile>
     <ClCompile Include="Core\Geometry\MarchingCubes\CPU\CPUTerrainBackend.cpp">
@@ -93,7 +93,37 @@
     <ClCompile Include="ThirdParty\mc33_impl.cpp">
       <Filter>소스 파일</Filter>
     </ClCompile>
-    <ClCompile Include="Core\Geometry\UploadRing.cpp">
+    <ClCompile Include="Core\Rendering\Memory\UploadRing.cpp">
+      <Filter>소스 파일</Filter>
+    </ClCompile>
+    <ClCompile Include="Core\Geometry\FluidSystem.cpp">
+      <Filter>소스 파일</Filter>
+    </ClCompile>
+    <ClCompile Include="App\Editor\Interface\EditorApp.cpp">
+      <Filter>소스 파일</Filter>
+    </ClCompile>
+    <ClCompile Include="Core\Rendering\PSO\PSOSpec.cpp">
+      <Filter>소스 파일</Filter>
+    </ClCompile>
+    <ClCompile Include="Core\Rendering\PSO\PSOList.cpp">
+      <Filter>소스 파일</Filter>
+    </ClCompile>
+    <ClCompile Include="Core\Rendering\RenderSystem.cpp">
+      <Filter>소스 파일</Filter>
+    </ClCompile>
+    <ClCompile Include="Core\DataStructures\Drawable.cpp">
+      <Filter>소스 파일</Filter>
+    </ClCompile>
+    <ClCompile Include="Core\Rendering\Memory\GPUBufferPool.cpp">
+      <Filter>소스 파일</Filter>
+    </ClCompile>
+    <ClCompile Include="Core\Rendering\Memory\GpuAllocator.cpp">
+      <Filter>소스 파일</Filter>
+    </ClCompile>
+    <ClCompile Include="Core\Rendering\Memory\StaticBufferRegistry.cpp">
+      <Filter>소스 파일</Filter>
+    </ClCompile>
+    <ClCompile Include="Core\Utils\Profiler.cpp">
       <Filter>소스 파일</Filter>
     </ClCompile>
   </ItemGroup>
@@ -113,7 +143,7 @@
     <ClInclude Include="App\Editor\MCTerraformEditor.h">
       <Filter>헤더 파일</Filter>
     </ClInclude>
-    <ClInclude Include="Core\Geometry\Mesh.h">
+    <ClInclude Include="Core\Geometry\Mesh\Mesh.h">
       <Filter>헤더 파일</Filter>
     </ClInclude>
     <ClInclude Include="Core\DataStructures\Data.h">
@@ -129,9 +159,6 @@
       <Filter>헤더 파일</Filter>
     </ClInclude>
     <ClInclude Include="Core\Input\InputState.h">
-      <Filter>헤더 파일</Filter>
-    </ClInclude>
-    <ClInclude Include="App\Editor\Interfaces\EditorInterfaces.h">
       <Filter>헤더 파일</Filter>
     </ClInclude>
     <ClInclude Include="Core\Utils\Timer.h">
@@ -185,7 +212,7 @@
     <ClInclude Include="Core\Geometry\MarchingCubes\GPU\GPUMarchingCubesShared.h">
       <Filter>헤더 파일</Filter>
     </ClInclude>
-    <ClInclude Include="Core\Geometry\MarchingCubes\TerrainChunkRenderer.h">
+    <ClInclude Include="Core\Geometry\Mesh\MeshChunkRenderer.h">
       <Filter>헤더 파일</Filter>
     </ClInclude>
     <ClInclude Include="Core\Geometry\MarchingCubes\CPU\CPUTerrainBackend.h">
@@ -194,7 +221,7 @@
     <ClInclude Include="Core\Geometry\MarchingCubes\CPU\MC33\MC33TerrainBackend.h">
       <Filter>헤더 파일</Filter>
     </ClInclude>
-    <ClInclude Include="Core\Geometry\UploadRing.h">
+    <ClInclude Include="Core\Rendering\Memory\UploadRing.h">
       <Filter>헤더 파일</Filter>
     </ClInclude>
     <ClInclude Include="Core\Utils\Log.h">
@@ -203,29 +230,54 @@
     <ClInclude Include="Core\Geometry\MarchingCubes\SdfField.h">
       <Filter>헤더 파일</Filter>
     </ClInclude>
+    <ClInclude Include="Core\Geometry\FluidSystem.h">
+      <Filter>헤더 파일</Filter>
+    </ClInclude>
+    <ClInclude Include="App\Editor\Interface\EditorApp.h">
+      <Filter>헤더 파일</Filter>
+    </ClInclude>
+    <ClInclude Include="Core\Rendering\PSO\PSOSpec.h">
+      <Filter>헤더 파일</Filter>
+    </ClInclude>
+    <ClInclude Include="Core\Rendering\PSO\PSOList.h">
+      <Filter>헤더 파일</Filter>
+    </ClInclude>
+    <ClInclude Include="Core\Rendering\PSO\PSOEnumLUT.h">
+      <Filter>헤더 파일</Filter>
+    </ClInclude>
+    <ClInclude Include="Core\Rendering\RenderSystem.h">
+      <Filter>헤더 파일</Filter>
+    </ClInclude>
+    <ClInclude Include="Core\DataStructures\Drawable.h">
+      <Filter>헤더 파일</Filter>
+    </ClInclude>
+    <ClInclude Include="Core\Rendering\Memory\GPUBufferPool.h">
+      <Filter>헤더 파일</Filter>
+    </ClInclude>
+    <ClInclude Include="Core\Rendering\Memory\GpuAllocator.h">
+      <Filter>헤더 파일</Filter>
+    </ClInclude>
+    <ClInclude Include="Core\Rendering\Memory\StaticBufferRegistry.h">
+      <Filter>헤더 파일</Filter>
+    </ClInclude>
+    <ClInclude Include="Core\Rendering\Memory\CommonMemory.h">
+      <Filter>헤더 파일</Filter>
+    </ClInclude>
+    <ClInclude Include="Core\Utils\Profiler.h">
+      <Filter>헤더 파일</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <None Include="..\Directory.Builds.targets" />
     <None Include="Assets\Shaders\Common.hlsli" />
     <None Include="Assets\Shaders\PBR.hlsli" />
     <None Include="packages.config" />
-    <None Include="$(MSBuildThisFileDirectory)..\..\runtimes\win-x64\native\onnxruntime.dll" />
-    <None Include="$(MSBuildThisFileDirectory)..\..\runtimes\win-x64\native\onnxruntime_providers_shared.dll" />
-    <None Include="$(MSBuildThisFileDirectory)..\..\runtimes\win-x64\native\onnxruntime.dll" />
-    <None Include="$(MSBuildThisFileDirectory)..\..\runtimes\win-x64\native\onnxruntime_providers_shared.dll" />
-    <None Include="$(MSBuildThisFileDirectory)..\..\runtimes\win-x64\native\onnxruntime.dll" />
-    <None Include="$(MSBuildThisFileDirectory)..\..\runtimes\win-x64\native\onnxruntime_providers_shared.dll" />
-    <None Include="$(MSBuildThisFileDirectory)..\..\runtimes\win-x64\native\onnxruntime.dll" />
-    <None Include="$(MSBuildThisFileDirectory)..\..\runtimes\win-x64\native\onnxruntime_providers_shared.dll" />
-    <None Include="$(MSBuildThisFileDirectory)..\..\runtimes\win-x64\native\onnxruntime.dll" />
-    <None Include="$(MSBuildThisFileDirectory)..\..\runtimes\win-x64\native\onnxruntime_providers_shared.dll" />
-    <None Include="$(MSBuildThisFileDirectory)..\..\runtimes\win-x64\native\onnxruntime.dll" />
-    <None Include="$(MSBuildThisFileDirectory)..\..\runtimes\win-x64\native\onnxruntime_providers_shared.dll" />
+    <None Include="App\Editor\EditorAppPSO.json" />
   </ItemGroup>
   <ItemGroup>
-    <FxCompile Include="Assets\Shaders\shaders.hlsl" />
+    <FxCompile Include="Assets\Shaders\MainVS.hlsl" />
     <FxCompile Include="Assets\Shaders\HighlightPS.hlsl" />
-    <FxCompile Include="Assets\Shaders\LineShaders.hlsl" />
+    <FxCompile Include="Assets\Shaders\LinePS.hlsl" />
     <FxCompile Include="Assets\Shaders\MainPS.hlsl" />
     <FxCompile Include="Assets\Shaders\MarchingCubesCS.hlsl" />
     <FxCompile Include="Assets\Shaders\BrushCS.hlsl" />

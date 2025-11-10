@@ -59,7 +59,5 @@ public:
 
 	std::unordered_map<ActionKey, WPARAM> m_keyMap;
 	std::unordered_map<WPARAM, ActionKeyState> m_keyState;
-
-
 };
 

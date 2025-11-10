@@ -1,6 +1,6 @@
 #include "pch.h"
 #include "GPUTerrainBackend.h"
-#include "Core/Geometry/MarchingCubes/TerrainChunkRenderer.h"
+#include "Core/Geometry/Mesh/MeshChunkRenderer.h"
 #include "Core/Geometry/MarchingCubes/GPU/SDFVolume3D.h"
 #include "Core/Geometry/MarchingCubes/GPU/GPUBrushCS.h"
 #include "Core/Geometry/MarchingCubes/GPU/GPUMarchingCubesCS.h"
@@ -38,23 +38,23 @@ GPUTerrainBackend::GPUTerrainBackend(ID3D12Device* device, const GridDesc& gridD
     queueDesc.Flags = D3D12_COMMAND_QUEUE_FLAG_NONE;
     queueDesc.Type = D3D12_COMMAND_LIST_TYPE_COMPUTE;
 
-    ThrowIfFailed(m_device->CreateCommandQueue(&queueDesc, IID_PPV_ARGS(&m_commandQueue)));
+    ThrowIfFailed(m_device->CreateCommandQueue(&queueDesc, IID_PPV_ARGS(m_commandQueue.ReleaseAndGetAddressOf())));
     NAME_D3D12_OBJECT(m_commandQueue);
 
     for (UINT n = 0; n < kRBFrameCount; ++n)
     {
-        ThrowIfFailed(m_device->CreateCommandAllocator(D3D12_COMMAND_LIST_TYPE_COMPUTE, IID_PPV_ARGS(&m_commandAllocator[n])));
+        ThrowIfFailed(m_device->CreateCommandAllocator(D3D12_COMMAND_LIST_TYPE_COMPUTE, IID_PPV_ARGS(m_commandAllocator[n].ReleaseAndGetAddressOf())));
         NAME_D3D12_OBJECT_INDEXED(m_commandAllocator, n);
     }
 
-    ThrowIfFailed(m_device->CreateFence(0, D3D12_FENCE_FLAG_NONE, IID_PPV_ARGS(&m_fence)));
+    ThrowIfFailed(m_device->CreateFence(0, D3D12_FENCE_FLAG_NONE, IID_PPV_ARGS(m_fence.ReleaseAndGetAddressOf())));
     NAME_D3D12_OBJECT(m_fence);
     m_fenceValues = 1;
     m_lastSubmitFenceValues = 0;
     
     //m_fenceEvent = CreateEvent(nullptr, FALSE, FALSE, nullptr);
 
-    ThrowIfFailed(m_device->CreateCommandList(0, D3D12_COMMAND_LIST_TYPE_COMPUTE, m_commandAllocator[m_rbCursor].Get(), nullptr, IID_PPV_ARGS(&m_commandList)));
+    ThrowIfFailed(m_device->CreateCommandList(0, D3D12_COMMAND_LIST_TYPE_COMPUTE, m_commandAllocator[m_rbCursor].Get(), nullptr, IID_PPV_ARGS(m_commandList.ReleaseAndGetAddressOf())));
     ThrowIfFailed(m_commandList->Close());
 }
 
@@ -329,7 +329,7 @@ bool GPUTerrainBackend::tryFetch(std::vector<ChunkUpdate>& OutChunkUpdates)
 
         UINT baseIndex = static_cast<UINT>(up.md.vertices.size());
 
-        MeshData& md = up.md;
+        GeometryData& md = up.md;
         md.vertices.push_back({ tri.A.position, tri.A.normal, {1,1,1,1} });
         md.vertices.push_back({ tri.B.position, tri.B.normal, {1,1,1,1} });
         md.vertices.push_back({ tri.C.position, tri.C.normal, {1,1,1,1} });
@@ -392,7 +392,7 @@ void GPUTerrainBackend::ensureRBSlot(UINT slot)
             &desc,
             D3D12_RESOURCE_STATE_COPY_DEST,
             nullptr,
-            IID_PPV_ARGS(&r.rbTriangles)));
+            IID_PPV_ARGS(r.rbTriangles.ReleaseAndGetAddressOf())));
         NAME_D3D12_OBJECT(r.rbTriangles);
     }
 
@@ -405,7 +405,7 @@ void GPUTerrainBackend::ensureRBSlot(UINT slot)
             &desc,
             D3D12_RESOURCE_STATE_COPY_DEST,
             nullptr,
-            IID_PPV_ARGS(&r.rbCount)));
+            IID_PPV_ARGS(r.rbCount.ReleaseAndGetAddressOf())));
         NAME_D3D12_OBJECT(r.rbCount);
     }
 }

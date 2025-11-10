@@ -1,10 +1,9 @@
 #include "pch.h"
 #include "Camera.h"
-#include <algorithm>
 #include "Core/DataStructures/Data.h"
 #include "Core/Input/InputState.h"
-#include "Core/DataStructures/ShaderTypes.h"
 #include "Material.h"
+#include <algorithm>
 
 Camera::Camera(float viewportWidth, float viewportHeight, float fov, float zNear, float zFar)
 	: m_position(0.0f, 0.0f, -100.0f),
@@ -16,8 +15,7 @@ Camera::Camera(float viewportWidth, float viewportHeight, float fov, float zNear
 	m_nearZ(zNear),
 	m_farZ(zFar),
 	m_aspect(viewportWidth / viewportHeight),
-	m_fov(fov),
-	m_mappedDataCB(nullptr)
+	m_fov(fov)
 {
 	UpdateViewMatrix();
 	UpdateProjMatrix();
@@ -25,12 +23,6 @@ Camera::Camera(float viewportWidth, float viewportHeight, float fov, float zNear
 
 Camera::~Camera()
 {
-	if (m_mappedDataCB)
-	{
-		m_cameraBuffer->Unmap(0, nullptr);
-		m_mappedDataCB = nullptr;
-	}
-	m_cameraBuffer.Reset();
 }
 
 void Camera::SetPosition(float x, float y, float z)
@@ -86,37 +78,13 @@ void Camera::UpdateProjMatrix()
 	XMStoreFloat4x4(&m_projMatrix, XMMatrixPerspectiveFovLH(m_fov, m_aspect, m_nearZ, m_farZ));
 }
 
-void Camera::CreateConstantBuffer(ID3D12Device* device)
-{
-	static const UINT cameraBufferSize = AlignUp(sizeof(CameraConstants), D3D12_CONSTANT_BUFFER_DATA_PLACEMENT_ALIGNMENT);
-
-	ThrowIfFailed(device->CreateCommittedResource(
-		&CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD),
-		D3D12_HEAP_FLAG_NONE,
-		&CD3DX12_RESOURCE_DESC::Buffer(cameraBufferSize),
-		D3D12_RESOURCE_STATE_GENERIC_READ,
-		nullptr,
-		IID_PPV_ARGS(&m_cameraBuffer)
-	));
-	NAME_D3D12_OBJECT(m_cameraBuffer);
-
-	// Map & CreateUploadBuffer Constant Buffer
-	CD3DX12_RANGE readRAnge(0, 0);
-	ThrowIfFailed(m_cameraBuffer->Map(0, &readRAnge, reinterpret_cast<void**>(&m_mappedDataCB)));
-}
-
-void Camera::UpdateConstantBuffer()
+CameraConstants Camera::BuildCameraConstants() const
 {
 	CameraConstants cb{};
 	XMMATRIX vp = GetViewProjMatrix();
 	XMStoreFloat4x4(&cb.viewProjMatrix, XMMatrixTranspose(vp));
 	cb.cameraPosition = m_position;
-	memcpy(m_mappedDataCB, &cb, sizeof(cb));
-}
-
-void Camera::BindConstantBuffer(ID3D12GraphicsCommandList* cmdList, UINT rootIndex)
-{
-	cmdList->SetGraphicsRootConstantBufferView(rootIndex, m_cameraBuffer->GetGPUVirtualAddress());
+	return cb;
 }
 
 void Camera::Rotate(float deltaX, float deltaY)

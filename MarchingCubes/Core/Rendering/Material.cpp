@@ -20,7 +20,7 @@ void Material::CreateConstantBuffer(ID3D12Device* device)
         &CD3DX12_RESOURCE_DESC::Buffer(size),
         D3D12_RESOURCE_STATE_GENERIC_READ,
         nullptr,
-        IID_PPV_ARGS(&m_buffer)
+        IID_PPV_ARGS(m_buffer.ReleaseAndGetAddressOf())
     ));
     NAME_D3D12_OBJECT_ALIAS(m_buffer, L"Material");
 

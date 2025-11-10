@@ -1,5 +1,5 @@
 #pragma once
-#include "Core/Geometry/Mesh.h"
+#include "Core/Geometry/Mesh/Mesh.h"
 #include "Core/Utils/DXHelper.h"
 #include "Core/Geometry/MarchingCubes/ITerrainBackend.h"
 

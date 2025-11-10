@@ -2,7 +2,6 @@
 #include <stdexcept>
 #include <DirectXMath.h>
 #include <span>
-#include <Core/Geometry/UploadRing.h>
 
 // Note that while ComPtr is used to manage the lifetime of resources on the CPU,
 // it has no understanding of the lifetime of resources on the GPU. Apps must account
@@ -10,8 +9,6 @@
 // referenced by the GPU.
 using Microsoft::WRL::ComPtr;
 using namespace DirectX;
-
-extern UploadRing* g_uploadRing;
 
 inline std::string HrToString(HRESULT hr)
 {
@@ -177,31 +174,6 @@ void ResetUniquePtrArray(T* uniquePtrArray)
 #ifndef GET_Y_LPARAM
 #define GET_Y_LPARAM(lp) ((int)(short)HIWORD(lp))
 #endif
-
-#define PIPELINEMODE_LIST \
-    X(Filled)             \
-    X(Line)               \
-    X(Wire)
-
-enum class PipelineMode
-{
-#define X(name) name,
-    PIPELINEMODE_LIST
-#undef X 
-    Count
-};
-
-inline LPCWSTR ToLPCWSTR(PipelineMode mode)
-{
-    switch (mode)
-    {
-#define X(name) case PipelineMode::name: return L#name;
-        PIPELINEMODE_LIST
-#undef X
-    default:
-        return L"<Unknown PipelineMode>";
-    }
-}
 
 inline XMVECTOR ToQuatFromEuler(const XMFLOAT3& euler)
 {

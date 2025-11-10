@@ -5,7 +5,7 @@
 
 namespace MeshGenerator
 {
-	MeshData CreateSphereMeshData(float radius, const DirectX::XMFLOAT4& color = { 1,1,1,1 }, UINT sliceCount = 12, UINT stackCount = 6);
-	MeshData GenerateCubeGrid(int rows, int cols, int layers);
+	GeometryData CreateSphereMeshData(float radius, const DirectX::XMFLOAT4& color = { 1,1,1,1 }, UINT sliceCount = 12, UINT stackCount = 6);
+	GeometryData GenerateCubeGrid(int rows, int cols, int layers);
 	
 }

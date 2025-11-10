@@ -1,5 +1,5 @@
 ﻿#pragma once
-#include "Core/Geometry/Mesh.h"
+#include "Core/Geometry/Mesh/Mesh.h"
 #include <stdexcept>
 #include <DirectXMath.h>
 
@@ -49,9 +49,9 @@ namespace PhysicsUtil
 		XMVECTOR hitLocal = XMVectorZero();
 		bool hitFound = false;
 
-		const MeshData& meshData = mesh.GetMeshData();
+		const GeometryData* meshData = mesh.GetCPUData();
 		const auto& bounds = mesh.GetBounds();
-		const auto& I = meshData.indices;
+		const auto& I = meshData->indices;
 		size_t triCount = I.size() / 3;
 
 		for (size_t t = 0; t < triCount; ++t)
@@ -64,9 +64,9 @@ namespace PhysicsUtil
 				continue;  // 이 삼각형은 볼 필요 없음
 			}
 
-			XMVECTOR v0 = XMLoadFloat3(&meshData.vertices[I[3 * t + 0]].pos);
-			XMVECTOR v1 = XMLoadFloat3(&meshData.vertices[I[3 * t + 1]].pos);
-			XMVECTOR v2 = XMLoadFloat3(&meshData.vertices[I[3 * t + 2]].pos);
+			XMVECTOR v0 = XMLoadFloat3(&meshData->vertices[I[3 * t + 0]].pos);
+			XMVECTOR v1 = XMLoadFloat3(&meshData->vertices[I[3 * t + 1]].pos);
+			XMVECTOR v2 = XMLoadFloat3(&meshData->vertices[I[3 * t + 2]].pos);
 
 			float dist;
 			if (IntersectTriangle(rayOriginLocal, rayDirLocal, v0, v1, v2, dist) && dist < closestDist)
@@ -90,7 +90,7 @@ namespace PhysicsUtil
 	* 여러 MeshData의 집합체에 대한 RayCast
 	* NOTE : 좌표계 통일 할 것
 	*/
-	static bool IsHit(const XMVECTOR& rayOrigin, const XMVECTOR& rayDir, const std::vector<const MeshData*>& meshData, const std::vector<BoundingBox>& bounds, XMFLOAT3& outHitpos)
+	static bool IsHit(const XMVECTOR& rayOrigin, const XMVECTOR& rayDir, const std::vector<const GeometryData*>& meshData, const std::vector<BoundingBox>& bounds, XMFLOAT3& outHitpos)
 	{
 		float closestDist = FLT_MAX;
 		XMVECTOR hitLocal = XMVectorZero();
@@ -105,7 +105,7 @@ namespace PhysicsUtil
 				continue;  // 이 MeshData는 볼 필요 없음
 			}
 
-			const MeshData* md = meshData[i];
+			const GeometryData* md = meshData[i];
 			const auto& I = md->indices;
 			size_t triCount = I.size() / 3;
 

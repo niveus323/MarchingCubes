@@ -5,9 +5,9 @@ namespace MeshGenerator
 {
 	using namespace DirectX;
 
-	MeshData CreateSphereMeshData(float radius, const DirectX::XMFLOAT4& color, UINT sliceCount, UINT stackCount)
+	GeometryData CreateSphereMeshData(float radius, const DirectX::XMFLOAT4& color, UINT sliceCount, UINT stackCount)
 	{
-		MeshData result;
+		GeometryData result;
 		result.topology = D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST;
 
 		result.vertices.push_back({ {0.0f, radius, 0.0f}, {0.0f, 1.0f, 0.0f}, color });
@@ -73,13 +73,13 @@ namespace MeshGenerator
 		return result;
 	}
 
-	MeshData GenerateCubeGrid(int rows, int cols, int layers)
+	GeometryData GenerateCubeGrid(int rows, int cols, int layers)
 	{
 		int X = rows + 1;
 		int Y = cols + 1;
 		int Z = layers + 1;
 
-		MeshData result;
+		GeometryData result;
 		result.topology = D3D10_PRIMITIVE_TOPOLOGY_LINELIST;
 
 		result.vertices.clear();

@@ -138,7 +138,7 @@ void GPUBrushCS::ensurePipelines(ID3D12Device* device)
         D3D12_COMPUTE_PIPELINE_STATE_DESC d{};
         d.pRootSignature = m_brushRootSignature.Get();
         d.CS = { brushCS->GetBufferPointer(), brushCS->GetBufferSize() };
-        ThrowIfFailed(device->CreateComputePipelineState(&d, IID_PPV_ARGS(&m_brushPso)));
+        ThrowIfFailed(device->CreateComputePipelineState(&d, IID_PPV_ARGS(m_brushPso.ReleaseAndGetAddressOf())));
     }
 
 }

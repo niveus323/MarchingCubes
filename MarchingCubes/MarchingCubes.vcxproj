@@ -172,22 +172,31 @@
     <ClCompile Include="Core\Geometry\MarchingCubes\GPU\GPUBrushCS.cpp" />
     <ClCompile Include="Core\Geometry\MarchingCubes\GPU\GPUMarchingCubesCS.cpp" />
     <ClCompile Include="Core\Geometry\MarchingCubes\GPU\GPUTerrainBackend.cpp" />
+    <ClCompile Include="Core\Geometry\FluidSystem.cpp" />
+    <ClCompile Include="App\Editor\Interface\EditorApp.cpp" />
+    <ClCompile Include="Core\DataStructures\Drawable.cpp" />
+    <ClCompile Include="Core\Rendering\Memory\GPUBufferPool.cpp" />
+    <ClCompile Include="Core\Rendering\Memory\GpuAllocator.cpp" />
     <ClCompile Include="main.cpp" />
-    <ClCompile Include="Core\Geometry\Mesh.cpp" />
+    <ClCompile Include="Core\Geometry\Mesh\Mesh.cpp" />
     <ClCompile Include="Core\Utils\Timer.cpp" />
     <ClCompile Include="Core\Rendering\UploadContext.cpp" />
     <ClCompile Include="Core\Geometry\MarchingCubesTables.cpp" />
     <ClCompile Include="Core\Rendering\Material.cpp" />
     <ClCompile Include="Core\Geometry\MarchingCubes\TerrainSystem.cpp" />
     <ClCompile Include="Core\Geometry\MarchingCubes\GPU\SDFVolume3D.cpp" />
-    <ClCompile Include="Core\Geometry\MarchingCubes\TerrainChunkRenderer.cpp" />
+    <ClCompile Include="Core\Geometry\Mesh\MeshChunkRenderer.cpp" />
     <ClCompile Include="Core\Geometry\MarchingCubes\CPU\MC33\MC33TerrainBackend.cpp" />
+    <ClCompile Include="Core\Rendering\PSO\PSOSpec.cpp" />
+    <ClCompile Include="Core\Rendering\PSO\PSOList.cpp" />
+    <ClCompile Include="Core\Rendering\RenderSystem.cpp" />
+    <ClCompile Include="Core\Rendering\Memory\StaticBufferRegistry.cpp" />
+    <ClCompile Include="Core\Utils\Profiler.cpp" />
     <ClCompile Include="ThirdParty\mc33_impl.cpp" />
-    <ClCompile Include="Core\Geometry\UploadRing.cpp" />
+    <ClCompile Include="Core\Rendering\Memory\UploadRing.cpp" />
     <ClCompile Include="Win32Application.cpp" />
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="App\Editor\Interfaces\EditorInterfaces.h" />
     <ClInclude Include="Core\DataStructures\ShaderTypes.h" />
     <ClInclude Include="Core\Geometry\MarchingCubes\GPU\GPUMarchingCubesShared.h" />
     <ClInclude Include="Core\Geometry\MarchingCubes\ITerrainBackend.h" />
@@ -197,12 +206,14 @@
     <ClInclude Include="Core\Rendering\Camera.h" />
     <ClInclude Include="Core\Rendering\BundleRecorder.h" />
     <ClInclude Include="Core\DataStructures\Data.h" />
+    <ClInclude Include="Core\Rendering\Memory\CommonMemory.h" />
+    <ClInclude Include="Core\Rendering\PSO\PSOEnumLUT.h" />
     <ClInclude Include="Core\Rendering\RenderUtils.h" />
     <ClInclude Include="Core\Geometry\MarchingCubes\CPU\CPUTerrainBackend.h" />
     <ClInclude Include="App\Editor\MCTerraformEditor.h" />
     <ClInclude Include="App\Common\DXAppBase.h" />
     <ClInclude Include="Core\Utils\DXHelper.h" />
-    <ClInclude Include="Core\Geometry\Mesh.h" />
+    <ClInclude Include="Core\Geometry\Mesh\Mesh.h" />
     <ClInclude Include="Core\Input\InputState.h" />
     <ClInclude Include="Core\UI\ImGUIRenderer.h" />
     <ClInclude Include="Core\Geometry\MarchingCubesTables.h" />
@@ -213,18 +224,29 @@
     <ClInclude Include="Core\Geometry\MarchingCubes\GPU\GPUTerrainBackend.h" />
     <ClInclude Include="Core\Geometry\MarchingCubes\CPU\MC33\MC33TerrainBackend.h" />
     <ClInclude Include="Core\Utils\Log.h" />
+    <ClInclude Include="Core\Geometry\FluidSystem.h" />
+    <ClInclude Include="App\Editor\Interface\EditorApp.h" />
+    <ClInclude Include="Core\DataStructures\Drawable.h" />
+    <ClInclude Include="Core\Rendering\Memory\GPUBufferPool.h" />
+    <ClInclude Include="Core\Rendering\Memory\GpuAllocator.h" />
     <ClInclude Include="pch.h" />
     <ClInclude Include="Core\Utils\Timer.h" />
     <ClInclude Include="Core\Rendering\UploadContext.h" />
     <ClInclude Include="Core\UI\UIRenderer.h" />
     <ClInclude Include="Core\Geometry\MarchingCubes\TerrainSystem.h" />
     <ClInclude Include="Core\Geometry\MarchingCubes\GPU\SDFVolume3D.h" />
-    <ClInclude Include="Core\Geometry\MarchingCubes\TerrainChunkRenderer.h" />
-    <ClInclude Include="Core\Geometry\UploadRing.h" />
+    <ClInclude Include="Core\Geometry\Mesh\MeshChunkRenderer.h" />
+    <ClInclude Include="Core\Rendering\Memory\UploadRing.h" />
+    <ClInclude Include="Core\Rendering\PSO\PSOSpec.h" />
+    <ClInclude Include="Core\Rendering\PSO\PSOList.h" />
+    <ClInclude Include="Core\Rendering\RenderSystem.h" />
+    <ClInclude Include="Core\Rendering\Memory\StaticBufferRegistry.h" />
+    <ClInclude Include="Core\Utils\Profiler.h" />
     <ClInclude Include="Win32Application.h" />
   </ItemGroup>
   <ItemGroup>
     <None Include="..\Directory.Builds.targets" />
+    <None Include="App\Editor\EditorAppPSO.json" />
     <None Include="Assets\Shaders\Common.hlsli">
       <FileType>Document</FileType>
       <EntryPointName Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
@@ -242,7 +264,7 @@
       <ShaderModel Condition="'$(Configuration)|$(Platform)'=='Release|x64'">4.0</ShaderModel>
       <EntryPointName Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">BrushCS</EntryPointName>
     </FxCompile>
-    <FxCompile Include="Assets\Shaders\LineShaders.hlsl">
+    <FxCompile Include="Assets\Shaders\LinePS.hlsl">
       <ShaderType Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">Pixel</ShaderType>
       <ShaderType Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">Pixel</ShaderType>
       <ShaderType Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">Pixel</ShaderType>
@@ -298,7 +320,7 @@
       <ShaderModel Condition="'$(Configuration)|$(Platform)'=='Release|x64'">4.0</ShaderModel>
       <EntryPointName Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">GSMain</EntryPointName>
     </FxCompile>
-    <FxCompile Include="Assets\Shaders\shaders.hlsl">
+    <FxCompile Include="Assets\Shaders\MainVS.hlsl">
       <ShaderModel Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">5.0</ShaderModel>
       <EntryPointName Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">VSMain</EntryPointName>
       <ShaderType Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">Vertex</ShaderType>
@@ -307,11 +329,13 @@
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">
     <Import Project="..\packages\WinPixEventRuntime.1.0.240308001\build\WinPixEventRuntime.targets" Condition="Exists('..\packages\WinPixEventRuntime.1.0.240308001\build\WinPixEventRuntime.targets')" />
+    <Import Project="..\packages\nlohmann.json.3.12.0\build\native\nlohmann.json.targets" Condition="Exists('..\packages\nlohmann.json.3.12.0\build\native\nlohmann.json.targets')" />
   </ImportGroup>
   <Target Name="EnsureNuGetPackageBuildImports" BeforeTargets="PrepareForBuild">
     <PropertyGroup>
       <ErrorText>이 프로젝트는 이 컴퓨터에 없는 NuGet 패키지를 참조합니다. 해당 패키지를 다운로드하려면 NuGet 패키지 복원을 사용하십시오. 자세한 내용은 http://go.microsoft.com/fwlink/?LinkID=322105를 참조하십시오. 누락된 파일은 {0}입니다.</ErrorText>
     </PropertyGroup>
     <Error Condition="!Exists('..\packages\WinPixEventRuntime.1.0.240308001\build\WinPixEventRuntime.targets')" Text="$([System.String]::Format('$(ErrorText)', '..\packages\WinPixEventRuntime.1.0.240308001\build\WinPixEventRuntime.targets'))" />
+    <Error Condition="!Exists('..\packages\nlohmann.json.3.12.0\build\native\nlohmann.json.targets')" Text="$([System.String]::Format('$(ErrorText)', '..\packages\nlohmann.json.3.12.0\build\native\nlohmann.json.targets'))" />
   </Target>
 </Project>
