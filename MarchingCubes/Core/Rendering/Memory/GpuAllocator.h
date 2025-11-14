@@ -19,21 +19,30 @@ struct AllocDesc
 		LONG
 	}lifetime = LifeTime::SHORT;
 
-	UINT64 size = 0;
-	UINT64 align = D3D12_CONSTANT_BUFFER_DATA_PLACEMENT_ALIGNMENT;
+	uint32_t size = 0;
+	uint32_t align = D3D12_CONSTANT_BUFFER_DATA_PLACEMENT_ALIGNMENT;
 	const char* owner = "";
+};
+
+struct GpuAllocatorInitInfo
+{
+	uint64_t cbRingBytes = 2ull << 20;
+	uint64_t stagingRingBytes = 32ull << 20;
+	uint64_t vbPoolBytes = 32ull << 20;
+	uint64_t ibPoolBytes = 16ull << 20;
 };
 
 class GpuAllocator
 {
 public:
-	GpuAllocator(ID3D12Device* device, UINT64 cbRingBytes = 2ull << 20, UINT64 stagingRingBytes = 32ull << 20, UINT64 vbPoolBytes = 32ull << 20, UINT64 ibPoolBytes = 16ull << 20);
+	explicit GpuAllocator(ID3D12Device* device, GpuAllocatorInitInfo info);
+	GpuAllocator(ID3D12Device* device, uint64_t cbRingBytes = 2ull << 20, uint64_t stagingRingBytes = 32ull << 20, uint64_t vbPoolBytes = 32ull << 20, uint64_t ibPoolBytes = 16ull << 20);
 	~GpuAllocator() = default;
 
-	void Alloc(ID3D12Device* device, const AllocDesc & desc, ResourceSlice& outSlice);
-	void FreeLater(ResourceSlice& slice, UINT64 fence);
-	void TagFence(UINT64 fenceValue);
-	void Reclaim(UINT64 completedFenceValue);
+	void Alloc(ID3D12Device* device, const AllocDesc & desc, BufferHandle& outHandle);
+	void FreeLater(BufferHandle& handle, uint64_t fence);
+	void TagFence(uint64_t fenceValue);
+	void Reclaim(uint64_t completedFenceValue);
 
 #ifdef _DEBUG
 	struct PoolInfo {
@@ -51,7 +60,7 @@ public:
 
 
 private:
-	void AllocFromFallback(ID3D12Device* device, const AllocDesc& desc, ResourceSlice& outSlice);
+	void AllocFromFallback(ID3D12Device* device, const AllocDesc& desc, BufferHandle& outHandle);
 
 private:
 	std::unique_ptr<UploadRing> m_cbRing;
@@ -68,21 +77,21 @@ private:
 		AllocDesc desc;
 		ComPtr<ID3D12Resource> res;
 		uint8_t* ptr = nullptr;
-		UINT64 fenceValue = 0;
-		UINT refCount = 0;
+		uint64_t fenceValue = 0;
+		uint32_t refCount = 0;
 	};
 	std::vector<Fallback> m_fallbackUploads;
 
 	// Promoted Default Resource
-	struct PromotedSlice
+	struct PromotedResource
 	{
 		ComPtr<ID3D12Resource> res;
-		UINT64 offset = 0;
-		UINT64 size = 0;
-		UINT64 fenceValue = 0;
-		UINT64 refCount = 0;
+		uint64_t offset = 0;
+		uint64_t size = 0;
+		uint64_t fenceValue = 0;
+		uint64_t refCount = 0;
 	};
-	std::vector<PromotedSlice> m_promotedResources;
-	UINT64 m_lastCompletedFenceValue = 0;
+	std::vector<PromotedResource> m_promotedResources;
+	uint64_t m_lastCompletedFenceValue = 0;
 };
 

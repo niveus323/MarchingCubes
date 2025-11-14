@@ -13,7 +13,7 @@ Material::~Material()
 
 void Material::CreateConstantBuffer(ID3D12Device* device)
 {
-    UINT size = AlignUp(sizeof(MaterialConstants), D3D12_CONSTANT_BUFFER_DATA_PLACEMENT_ALIGNMENT);
+    uint32_t size = AlignUp(sizeof(MaterialConstants), D3D12_CONSTANT_BUFFER_DATA_PLACEMENT_ALIGNMENT);
     ThrowIfFailed(device->CreateCommittedResource(
         &CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD),
         D3D12_HEAP_FLAG_NONE,

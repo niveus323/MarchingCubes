@@ -39,11 +39,9 @@ public:
 	virtual ~IUIRenderer() = default;
 
 	virtual bool Initialize(const UI::InitContext & context) = 0;
-	virtual void BeginFrame() = 0;
-	virtual void EndFrame(ID3D12GraphicsCommandList* commandList) = 0;
 	virtual void RenderFrame(ID3D12GraphicsCommandList* commandList) = 0;
 	virtual void ShutDown() = 0;
-	virtual LRESULT WndMsgProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) = 0;
+	virtual LRESULT WndMsgProc(HWND hWnd, uint32_t msg, WPARAM wParam, LPARAM lParam) = 0;
 	virtual bool IsCapturingUI() = 0;
 	std::wstring GetLastErrorMsg() const { return m_lastErrorMessage; };
 
@@ -88,13 +86,13 @@ protected:
 	std::wstring m_lastErrorMessage;
 	struct UIEntry
 	{
-		UI::FrameCallbackToken token;
-		UI::FrameRenderCallback callback;
-		int priority;
-		std::atomic<bool> enabled;
-		int rateHz;
-		uint64_t lastTimestamp;
-		std::string id;
+		UI::FrameCallbackToken token = 0;
+		UI::FrameRenderCallback callback = nullptr;
+		int priority = 0;
+		std::atomic<bool> enabled = false;
+		int rateHz = 0;
+		uint64_t lastTimestamp = 0ull;
+		std::string id = "";
 	};
 	std::vector<std::shared_ptr<UIEntry>> m_entries;
 	std::mutex m_entriesMutex;

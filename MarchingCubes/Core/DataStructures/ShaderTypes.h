@@ -3,7 +3,7 @@
 using namespace DirectX;
 
 // alignment
-static constexpr UINT CB_ALIGN = D3D12_CONSTANT_BUFFER_DATA_PLACEMENT_ALIGNMENT;
+static constexpr uint32_t CB_ALIGN = D3D12_CONSTANT_BUFFER_DATA_PLACEMENT_ALIGNMENT;
 
 struct alignas(16) CameraConstants
 {
@@ -16,6 +16,7 @@ struct alignas(16) ObjectConstants
 {
 	XMFLOAT4X4 worldMatrix;
 	XMFLOAT4X4 worldInvMatrix;
+	uint32_t materialIndex = 0;
 };
 
 enum class EShadingModel : uint32_t

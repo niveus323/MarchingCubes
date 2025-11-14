@@ -1,13 +1,13 @@
 #include "pch.h"
 #include "LightManager.h"
 
-LightManager::LightManager(ID3D12Device* device, UINT rootParamIndex)
+LightManager::LightManager(ID3D12Device* device, uint32_t rootParamIndex)
 {
 	m_lights.reserve(kMaxLights);
 
-	//m_headerSizeAligned = static_cast<UINT>(sizeof(LightConstantsHeader));
+	//m_headerSizeAligned = static_cast<uint32_t>(sizeof(LightConstantsHeader));
 
-	//UINT lightsSize = sizeof(Light) * maxLights;
+	//uint32_t lightsSize = sizeof(Light) * maxLights;
 	//m_uploadBufferSize = AlignUp(m_headerSizeAligned + lightsSize, D3D12_CONSTANT_BUFFER_DATA_PLACEMENT_ALIGNMENT);
 	//
 	//CreateUploadBuffer(device);

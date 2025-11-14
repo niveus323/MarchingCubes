@@ -7,7 +7,7 @@ using Microsoft::WRL::ComPtr;
 class DXAppBase
 {
 public:
-    DXAppBase(UINT width, UINT height, std::wstring name) :
+    DXAppBase(uint32_t width, uint32_t height, std::wstring name) :
         m_width(width),
         m_height(height),
         m_title(name)
@@ -22,12 +22,12 @@ public:
     virtual void OnUpdate(float deltaTime) = 0;
     virtual void OnRender() = 0;
 
-    void OnResize(UINT width, UINT height);
+    void OnResize(uint32_t width, uint32_t height);
     void StartTimer();
     void TickAndUpdate();
     void ParseCommandLineArgs(_In_reads_(argc) WCHAR* argv[], int argc);
 
-    virtual void OnPlatformEvent(UINT msg, WPARAM wParam, LPARAM lParam) = 0;
+    virtual void OnPlatformEvent(uint32_t msg, WPARAM wParam, LPARAM lParam) = 0;
     // Samples override the event handlers to handle specific messages.
     virtual void OnKeyDown(WPARAM key) {}
     virtual void OnKeyUp(WPARAM key) {}
@@ -36,8 +36,8 @@ public:
     virtual void OnMouseBtnUp(int x, int y, WPARAM button) {}
 
     // Accessors.
-    UINT GetWidth() const { return m_width; }
-    UINT GetHeight() const { return m_height; }
+    uint32_t GetWidth() const { return m_width; }
+    uint32_t GetHeight() const { return m_height; }
     const WCHAR* GetTitle() const { return m_title.c_str(); }
     IUIRenderer* GetUIRenderer() const { return m_uiRenderer.get(); }
     ID3D12Resource* CurrentBackbuffer() const { return m_renderTargets[m_frameIndex].Get(); }
@@ -56,7 +56,7 @@ protected:
 	void SetCustomWindowText(LPCWSTR text) const;
     void CreateDevice();
     void CreateSwapChain(HWND hwnd, ID3D12CommandQueue* presentQueue);
-    void CreateBackbuffersAndDefaultDSV(UINT width, UINT height);
+    void CreateBackbuffersAndDefaultDSV(uint32_t width, uint32_t height);
     void DestroyBackbuffersAndDefaultDSV();
     void CreateFenceAndEvent();
     void DestroyFenceAndEvent();
@@ -65,9 +65,9 @@ protected:
     const Timer& GetTimer() const { return m_timer; }
 
 protected:
-    static const UINT kFrameCount = 2;
-	UINT m_width;
-	UINT m_height;
+    static const uint32_t kFrameCount = 2;
+	uint32_t m_width;
+	uint32_t m_height;
 	float m_aspectRatio;
 	bool m_userWarpDevice = false;
 
@@ -77,8 +77,8 @@ protected:
     ComPtr<IDXGISwapChain3> m_swapChain;
     ComPtr<ID3D12DescriptorHeap> m_rtvHeap;
     ComPtr<ID3D12DescriptorHeap> m_dsvHeap;
-    UINT m_rtvDescriptorSize = 0;
-    UINT m_dsvDescriptorSize = 0;
+    uint32_t m_rtvDescriptorSize = 0;
+    uint32_t m_dsvDescriptorSize = 0;
 
     ComPtr<ID3D12Resource> m_renderTargets[kFrameCount];
     ComPtr<ID3D12Resource> m_depthStencil;
@@ -88,9 +88,9 @@ protected:
 
     ComPtr<ID3D12Fence> m_swapChainFence;
     HANDLE m_fenceEvent = nullptr;
-    UINT64 m_fenceValues[kFrameCount];
-    UINT64 m_nextFenceValue = 0;
-    UINT m_frameIndex = 0u;
+    uint64_t m_fenceValues[kFrameCount];
+    uint64_t m_nextFenceValue = 0;
+    uint32_t m_frameIndex = 0u;
 
     BOOL m_tearingSupported = FALSE;
 

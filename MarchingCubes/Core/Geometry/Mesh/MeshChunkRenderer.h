@@ -15,7 +15,7 @@ public:
 	void Clear();
 
 	// Constants
-	void SetMaterial(std::shared_ptr<Material> mat) { m_material = std::move(mat); }
+	void SetMaterial(uint32_t index) { m_objectCBData.materialIndex = index; }
 	inline XMMATRIX GetWorldMatrix() const { return m_worldMat; }
 	inline XMMATRIX GetWorldInvMatrix() const { return DirectX::XMMatrixInverse(nullptr, m_worldMat); }
 
@@ -32,9 +32,6 @@ public:
 			if (chunk) chunk->SetDebugName(m_debugName);
 		}
 	}
-
-private:
-	void CreateObjectConstantsBuffer(ID3D12Device* device);
 
 private:
 	// inner class
@@ -117,11 +114,7 @@ private:
 	// Object Constants Buffer
 	DirectX::XMMATRIX m_worldMat;
 	ObjectConstants m_objectCBData{}; // GPU Object Constants
-	ComPtr<ID3D12Resource> m_objectCB;
 	UINT8* m_mappedObjectCB;
-
-	// Material
-	std::shared_ptr<Material> m_material; // Material은 App 클래스에서 공유받아 bind만 해준다.
 
 	// Debug
 	std::string m_debugName = "MeshChunk";

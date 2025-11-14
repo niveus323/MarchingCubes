@@ -17,7 +17,7 @@ struct GeometryData
 	D3D_PRIMITIVE_TOPOLOGY topology = D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST;
 };
 
-static UINT kMaxLights = 256u;
+static uint32_t kMaxLights = 256u;
 struct LightBlobView
 {
 	const void* data;

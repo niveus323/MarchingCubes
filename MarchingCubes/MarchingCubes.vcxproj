@@ -177,6 +177,9 @@
     <ClCompile Include="Core\DataStructures\Drawable.cpp" />
     <ClCompile Include="Core\Rendering\Memory\GPUBufferPool.cpp" />
     <ClCompile Include="Core\Rendering\Memory\GpuAllocator.cpp" />
+    <ClCompile Include="App\Editor\GeometryEditor.cpp" />
+    <ClCompile Include="Core\Rendering\PSO\DescriptorRing.cpp" />
+    <ClCompile Include="Core\Rendering\PSO\DescriptorAllocator.cpp" />
     <ClCompile Include="main.cpp" />
     <ClCompile Include="Core\Geometry\Mesh\Mesh.cpp" />
     <ClCompile Include="Core\Utils\Timer.cpp" />
@@ -229,6 +232,9 @@
     <ClInclude Include="Core\DataStructures\Drawable.h" />
     <ClInclude Include="Core\Rendering\Memory\GPUBufferPool.h" />
     <ClInclude Include="Core\Rendering\Memory\GpuAllocator.h" />
+    <ClInclude Include="App\Editor\GeometryEditor.h" />
+    <ClInclude Include="Core\Rendering\PSO\DescriptorRing.h" />
+    <ClInclude Include="Core\Rendering\PSO\DescriptorAllocator.h" />
     <ClInclude Include="pch.h" />
     <ClInclude Include="Core\Utils\Timer.h" />
     <ClInclude Include="Core\Rendering\UploadContext.h" />

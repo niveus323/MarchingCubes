@@ -26,32 +26,6 @@ BundleRecorder::BundleRecorder(ID3D12Device* device, ID3D12RootSignature* rootSi
 	}
 }
 
-ID3D12GraphicsCommandList* BundleRecorder::CreateBundleFor(const std::vector<IDrawable*>& drawables, const std::string& psoName)
-{
-	int psoIndex = m_psoList->IndexOf(psoName);
-	ID3D12PipelineState* pso = m_psoList->Get(psoIndex);
-	ContextPool& pool = m_pools[size_t(psoIndex)];
-
-	size_t& idx = pool.nextIndex;
-	Context& context = pool.contexts[idx];
-	idx = (idx + 1) % pool.contexts.size();
-
-	context.allocator->Reset();
-
-    ID3D12GraphicsCommandList* cmd = context.bundle.Get();
-	cmd->Reset(context.allocator.Get(), pso);
-	cmd->SetGraphicsRootSignature(m_rootSignature);
-	cmd->SetPipelineState(pso);
-
-    for (auto& drawable : drawables)
-    {
-        RecordDrawItem(cmd, drawable);
-    }
-
-    cmd->Close();
-    return cmd;
-}
-
 // 핫 리로드된 PSOList에 맞춰서 Pool 재구성
 bool BundleRecorder::SyncWithPSOList(const PSOList* psoList)
 {
@@ -98,4 +72,29 @@ bool BundleRecorder::SyncWithPSOList(const PSOList* psoList)
     }
     m_psoList = psoList;
 	return true;
+}
+
+ID3D12GraphicsCommandList* BundleRecorder::RecordBundle(std::vector<ID3D12DescriptorHeap*>& heaps, const std::vector<DrawBindingInfo>& bindings, int psoIndex)
+{
+    ID3D12PipelineState* pso = m_psoList->Get(psoIndex);
+    ContextPool& pool = m_pools[size_t(psoIndex)];
+
+    size_t& idx = pool.nextIndex;
+    Context& context = pool.contexts[idx];
+    idx = (idx + 1) % pool.contexts.size();
+
+    context.allocator->Reset();
+
+    ID3D12GraphicsCommandList* cmd = context.bundle.Get();
+    cmd->Reset(context.allocator.Get(), pso);
+    cmd->SetGraphicsRootSignature(m_rootSignature);
+    cmd->SetPipelineState(pso);
+
+    for (auto& bi : bindings)
+    {
+        RecordDrawItem(cmd, bi);
+    }
+
+    cmd->Close();
+    return cmd;
 }

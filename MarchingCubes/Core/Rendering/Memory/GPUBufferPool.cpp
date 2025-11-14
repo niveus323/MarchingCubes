@@ -3,7 +3,7 @@
 #include <algorithm>
 #include "StaticBufferRegistry.h"
 
-GPUBufferPool::GPUBufferPool(ID3D12Device* device, UINT64 totalSize, const wchar_t* debugName)
+GPUBufferPool::GPUBufferPool(ID3D12Device* device, uint64_t totalSize, const wchar_t* debugName)
 {
 	assert(device && "GPUBufferPool : Invalid Device!!!!");
 
@@ -27,18 +27,18 @@ GPUBufferPool::~GPUBufferPool()
 }
 
 // 서브할당 & 복사 헬퍼
-bool GPUBufferPool::SubAlloc(ID3D12Device* device, UINT64 bytes, UINT64 align, ResourceSlice& out, const char* owner)
+bool GPUBufferPool::SubAlloc(ID3D12Device* device, uint64_t bytes, uint64_t align, BufferHandle& out, const char* owner)
 {
 	bytes = AlignUp64(bytes, align);
 	for (size_t i = 0; i < m_free.size(); ++i)
 	{
-		const UINT64 blockOffset = m_free[i].offset;
-		const UINT64 blockSize = m_free[i].size;
-		const UINT64 offset = AlignUp64(blockOffset, align);
-		UINT64 padding = offset - blockOffset;
+		const uint64_t blockOffset = m_free[i].offset;
+		const uint64_t blockSize = m_free[i].size;
+		const uint64_t offset = AlignUp64(blockOffset, align);
+		uint64_t padding = offset - blockOffset;
 		if (blockSize < padding) continue; // 오프셋 정렬로 인해 free 공간을 벗어나면 continue.
 
-		UINT64 remain = blockSize - padding; // 실제 할당 가능한 남은 공간
+		uint64_t remain = blockSize - padding; // 실제 할당 가능한 남은 공간
 		if (remain < bytes) continue; // 가용공간 확인
 
 		out.res = m_buffer.Get();
@@ -60,8 +60,8 @@ bool GPUBufferPool::SubAlloc(ID3D12Device* device, UINT64 bytes, UINT64 align, R
 		}
 
 		// 뒷 공간 추가
-		UINT64 tailOffset = offset + bytes;
-		UINT64 tailSize = (blockOffset + blockSize) - tailOffset;
+		uint64_t tailOffset = offset + bytes;
+		uint64_t tailSize = (blockOffset + blockSize) - tailOffset;
 		if (tailSize > 0) m_free.push_back(BufferBlock(tailOffset, tailSize));
 		MergeFree();
 		return true;
@@ -70,7 +70,7 @@ bool GPUBufferPool::SubAlloc(ID3D12Device* device, UINT64 bytes, UINT64 align, R
 	return false;
 }
 
-void GPUBufferPool::FreeLater(const ResourceSlice& r, UINT64 fence)
+void GPUBufferPool::FreeLater(const BufferHandle& r, uint64_t fence)
 {
 	if (r.size == 0) return;
 
@@ -105,7 +105,7 @@ void GPUBufferPool::FreeLater(const ResourceSlice& r, UINT64 fence)
 	}
 }
 
-void GPUBufferPool::Reclaim(UINT64 completedFence)
+void GPUBufferPool::Reclaim(uint64_t completedFence)
 {
 	bool bErased = false;
 	for (auto it = m_retired.begin(); it != m_retired.end();)

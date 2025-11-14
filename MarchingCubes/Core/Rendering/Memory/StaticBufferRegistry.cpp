@@ -2,23 +2,29 @@
 #include "StaticBufferRegistry.h"
 #include <algorithm>
 
-StaticBufferRegistry::StaticBufferRegistry(ID3D12Device* device, UINT64 vbBytes, UINT64 ibBytes) :
-    m_vbCapacity(vbBytes),
-    m_ibCapacity(ibBytes)
+StaticBufferRegistry::StaticBufferRegistry(ID3D12Device* device, StaticRegistryInitInfo info):
+	m_vbCapacity(info.vbSize),
+	m_ibCapacity(info.ibSize)
 {
-    D3D12_HEAP_PROPERTIES hp(D3D12_HEAP_TYPE_DEFAULT);
-    ThrowIfFailed(device->CreateHeap(&CD3DX12_HEAP_DESC(m_vbCapacity, hp), IID_PPV_ARGS(&m_VBHeap)));
-    NAME_D3D12_OBJECT_ALIAS(m_VBHeap, L"StaticVBHeap");
+	D3D12_HEAP_PROPERTIES hp(D3D12_HEAP_TYPE_DEFAULT);
+	ThrowIfFailed(device->CreateHeap(&CD3DX12_HEAP_DESC(m_vbCapacity, hp), IID_PPV_ARGS(&m_VBHeap)));
+	NAME_D3D12_OBJECT_ALIAS(m_VBHeap, L"StaticVBHeap");
 	m_vbFreeList.push_back(BufferBlock(0ull, m_vbCapacity));
 
-    ThrowIfFailed(device->CreateHeap(&CD3DX12_HEAP_DESC(m_ibCapacity, hp), IID_PPV_ARGS(&m_IBHeap)));
-    NAME_D3D12_OBJECT_ALIAS(m_IBHeap, L"StaticIBHeap");
+	ThrowIfFailed(device->CreateHeap(&CD3DX12_HEAP_DESC(m_ibCapacity, hp), IID_PPV_ARGS(&m_IBHeap)));
+	NAME_D3D12_OBJECT_ALIAS(m_IBHeap, L"StaticIBHeap");
 	m_ibFreeList.push_back(BufferBlock(0ull, m_ibCapacity));
+
 }
 
-UINT StaticBufferRegistry::CreateStatic(ID3D12Device* device, UINT64 vbBytes, UINT64 ibBytes, UINT vertexStride, DXGI_FORMAT ibFormat, ResourceSlice* outVB, ResourceSlice* outIB, const char* debugName)
+StaticBufferRegistry::StaticBufferRegistry(ID3D12Device* device, uint64_t vbSize, uint64_t ibSize) :
+	StaticBufferRegistry(device, StaticRegistryInitInfo{.vbSize = vbSize, .ibSize = ibSize })
 {
-	UINT vbHandle = CreateStaticVB(device, vbBytes, vertexStride, debugName);
+}
+
+uint32_t StaticBufferRegistry::CreateStatic(ID3D12Device* device, uint32_t vbBytes, uint32_t ibBytes, uint32_t vertexStride, DXGI_FORMAT ibFormat, BufferHandle* outVB, BufferHandle* outIB, const char* debugName)
+{
+	uint32_t vbHandle = CreateStaticVB(device, vbBytes, vertexStride, debugName);
 	if (outVB)
 	{
 		VBEntry& vbEntry = m_vbEntries[vbHandle];
@@ -31,7 +37,7 @@ UINT StaticBufferRegistry::CreateStatic(ID3D12Device* device, UINT64 vbBytes, UI
 		outVB->gpuVA = vbEntry.res->GetGPUVirtualAddress();
 	}
 	
-	UINT ibHandle = CreateStaticIB(device, ibBytes, ibFormat, debugName);
+	uint32_t ibHandle = CreateStaticIB(device, ibBytes, ibFormat, debugName);
 	IBEntry& ibEntry = m_ibEntries[ibHandle];
 	if (outIB)
 	{
@@ -52,10 +58,10 @@ UINT StaticBufferRegistry::CreateStatic(ID3D12Device* device, UINT64 vbBytes, UI
 	entry.bAlive = true;
 	m_objectEntries.push_back(entry);
 
-	return (UINT)(m_objectEntries.size() - 1);
+	return (uint32_t)(m_objectEntries.size() - 1);
 }
 
-void StaticBufferRegistry::Release(UINT handle)
+void StaticBufferRegistry::Release(uint32_t handle)
 {
 	if (m_objectEntries.size() >= handle)
 	{
@@ -78,11 +84,11 @@ void StaticBufferRegistry::Release(UINT handle)
 	}
 }
 
-UINT StaticBufferRegistry::CreateStaticVB(ID3D12Device* device, UINT64 vbBytes, UINT vertexStride, const char* debugName)
+uint32_t StaticBufferRegistry::CreateStaticVB(ID3D12Device* device, uint32_t vbBytes, uint32_t vertexStride, const char* debugName)
 {
 	// 사용 가능한 슬롯이 있으면 사용하고 아니면 새로 추가
-	UINT vbHandle = UINT_MAX;
-	for (UINT i = 0; i < m_vbEntries.size(); ++i)
+	uint32_t vbHandle = UINT_MAX;
+	for (uint32_t i = 0; i < m_vbEntries.size(); ++i)
 	{
 		if (!m_vbEntries[i].bAlive)
 		{
@@ -94,15 +100,13 @@ UINT StaticBufferRegistry::CreateStaticVB(ID3D12Device* device, UINT64 vbBytes, 
 	if (vbHandle == UINT_MAX)
 	{
 		m_vbEntries.push_back(VBEntry());
-		vbHandle = (UINT)(m_vbEntries.size() - 1);
+		vbHandle = (uint32_t)(m_vbEntries.size() - 1);
 	}
 
 	VBEntry& entry = m_vbEntries[vbHandle];
-    UINT64 offset = AllocFromHeap(m_vbFreeList, vbBytes);
-#ifdef _DEBUG
+    uint64_t offset = AllocFromHeap(m_vbFreeList, vbBytes);
 	// 할당이 실패하면 힙 크기를 동적으로 늘릴 지, 초기 힙 크기를 크게 둘 지 선택할 것.
 	assert(offset < UINT64_MAX && "StaticBufferRegistry : VBHeap Overflowed");
-#endif // _DEBUG
     D3D12_RESOURCE_DESC desc = CD3DX12_RESOURCE_DESC::Buffer(vbBytes);
     ThrowIfFailed(device->CreatePlacedResource(m_VBHeap.Get(), offset, &desc, D3D12_RESOURCE_STATE_COMMON, nullptr, IID_PPV_ARGS(&entry.res)));
     entry.stride = vertexStride;
@@ -116,10 +120,10 @@ UINT StaticBufferRegistry::CreateStaticVB(ID3D12Device* device, UINT64 vbBytes, 
     return vbHandle;
 }
 
-UINT StaticBufferRegistry::CreateStaticIB(ID3D12Device* device, UINT ibBytes, DXGI_FORMAT ibFormat, const char* debugName)
+uint32_t StaticBufferRegistry::CreateStaticIB(ID3D12Device* device, uint32_t ibBytes, DXGI_FORMAT ibFormat, const char* debugName)
 {
-	UINT ibHandle = UINT_MAX;
-	for (UINT i = 0; i < m_ibEntries.size(); ++i)
+	uint32_t ibHandle = UINT_MAX;
+	for (uint32_t i = 0; i < m_ibEntries.size(); ++i)
 	{
 		if (!m_ibEntries[i].bAlive)
 		{
@@ -131,16 +135,14 @@ UINT StaticBufferRegistry::CreateStaticIB(ID3D12Device* device, UINT ibBytes, DX
 	if (ibHandle == UINT_MAX)
 	{
 		m_ibEntries.push_back(IBEntry());
-		ibHandle = (UINT)(m_ibEntries.size() - 1);
+		ibHandle = (uint32_t)(m_ibEntries.size() - 1);
 	}
 
 	IBEntry& entry = m_ibEntries[ibHandle];
 	// FreeBlock에서 유효한 Offset을 받아옴
-	UINT64 offset = AllocFromHeap(m_ibFreeList, ibBytes);
-#ifdef _DEBUG
+	uint64_t offset = AllocFromHeap(m_ibFreeList, ibBytes);
 	// 할당이 실패하면 힙 크기를 동적으로 늘릴 지, 초기 힙 크기를 크게 둘 지 선택할 것.
 	assert(offset < UINT64_MAX && "StaticBufferRegistry : IBHeap Overflowed");
-#endif // _DEBUG
 
 	D3D12_RESOURCE_DESC desc = CD3DX12_RESOURCE_DESC::Buffer(ibBytes);
 	ThrowIfFailed(device->CreatePlacedResource(m_IBHeap.Get(), offset, &desc, D3D12_RESOURCE_STATE_COMMON, nullptr, IID_PPV_ARGS(&entry.res)));
@@ -155,19 +157,19 @@ UINT StaticBufferRegistry::CreateStaticIB(ID3D12Device* device, UINT ibBytes, DX
 	return ibHandle;
 }
 
-UINT64 StaticBufferRegistry::AllocFromHeap(std::vector<BufferBlock>& freeList, UINT64 bytes)
+uint64_t StaticBufferRegistry::AllocFromHeap(std::vector<BufferBlock>& freeList, uint32_t bytes)
 {
-	bytes = AlignUp64(bytes, D3D12_DEFAULT_RESOURCE_PLACEMENT_ALIGNMENT);
+	uint64_t alignedBytes = AlignUp64(static_cast<uint64_t>(bytes), D3D12_DEFAULT_RESOURCE_PLACEMENT_ALIGNMENT);
 	for (size_t i = 0; i < freeList.size(); ++i)
 	{
-		const UINT64 blockOffset = freeList[i].offset;
-		const UINT64 blockSize = freeList[i].size;
-		const UINT64 offset = AlignUp64(blockOffset, D3D12_DEFAULT_RESOURCE_PLACEMENT_ALIGNMENT);
-		UINT64 padding = offset - blockOffset;
+		const uint64_t blockOffset = freeList[i].offset;
+		const uint64_t blockSize = freeList[i].size;
+		const uint64_t offset = AlignUp64(blockOffset, D3D12_DEFAULT_RESOURCE_PLACEMENT_ALIGNMENT);
+		uint64_t padding = offset - blockOffset;
 		if (blockSize < padding) continue; // 오프셋 정렬로 인해 free 공간을 벗어나면 continue.
 
-		UINT64 remain = blockSize - padding; // 실제 할당 가능한 남은 공간
-		if (remain < bytes) continue; // 가용공간 확인
+		uint64_t remain = blockSize - padding; // 실제 할당 가능한 남은 공간
+		if (remain < alignedBytes) continue; // 가용공간 확인
 
 		// free 앞 공간 재설정
 		if (padding > 0)
@@ -181,8 +183,8 @@ UINT64 StaticBufferRegistry::AllocFromHeap(std::vector<BufferBlock>& freeList, U
 		}
 
 		// 뒷 공간 추가
-		UINT64 tailOffset = offset + bytes;
-		UINT64 tailSize = (blockOffset + blockSize) - tailOffset;
+		uint64_t tailOffset = offset + alignedBytes;
+		uint64_t tailSize = (blockOffset + blockSize) - tailOffset;
 		if (tailSize > 0) freeList.push_back(BufferBlock(tailOffset, tailSize));
 		MergeFree(freeList);
 		return offset;
@@ -190,7 +192,7 @@ UINT64 StaticBufferRegistry::AllocFromHeap(std::vector<BufferBlock>& freeList, U
 	return UINT64_MAX;
 }
 
-void StaticBufferRegistry::ReleaseVB(UINT vbHandle)
+void StaticBufferRegistry::ReleaseVB(uint32_t vbHandle)
 {
 	VBEntry& vbEntry = m_vbEntries[vbHandle];
 	if (!vbEntry.bAlive) return;
@@ -201,8 +203,8 @@ void StaticBufferRegistry::ReleaseVB(UINT vbHandle)
 	{
 		if (vbEntry.res)
 		{
-			const UINT64 placedBytes = vbEntry.res->GetDesc().Width;
-			UINT64 offset = vbEntry.heapOffset;
+			const uint64_t placedBytes = vbEntry.res->GetDesc().Width;
+			uint64_t offset = vbEntry.heapOffset;
 			if (placedBytes && vbEntry.heapOffset < UINT64_MAX)
 			{
 				Free(m_vbFreeList, m_vbCapacity, vbEntry.heapOffset, placedBytes);
@@ -216,7 +218,7 @@ void StaticBufferRegistry::ReleaseVB(UINT vbHandle)
 
 }
 
-void StaticBufferRegistry::ReleaseIB(UINT ibHandle)
+void StaticBufferRegistry::ReleaseIB(uint32_t ibHandle)
 {
 	IBEntry& ibEntry = m_ibEntries[ibHandle];
 	if (!ibEntry.bAlive) return;
@@ -227,8 +229,8 @@ void StaticBufferRegistry::ReleaseIB(UINT ibHandle)
 	{
 		if (ibEntry.res)
 		{
-			const UINT64 placedBytes = ibEntry.res->GetDesc().Width;
-			const UINT64  offset = ibEntry.heapOffset;
+			const uint64_t placedBytes = ibEntry.res->GetDesc().Width;
+			const uint64_t  offset = ibEntry.heapOffset;
 			if (placedBytes && ibEntry.heapOffset < UINT64_MAX)
 			{
 				Free(m_ibFreeList, m_ibCapacity, ibEntry.heapOffset, placedBytes);
@@ -242,7 +244,7 @@ void StaticBufferRegistry::ReleaseIB(UINT ibHandle)
 
 }
 
-void StaticBufferRegistry::Free(std::vector<BufferBlock>& freeList, UINT64 heapSize, UINT64 offset, UINT64 size)
+void StaticBufferRegistry::Free(std::vector<BufferBlock>& freeList, uint64_t heapSize, uint64_t offset, uint64_t size)
 {
 	if (size == 0) return;
 
@@ -251,7 +253,7 @@ void StaticBufferRegistry::Free(std::vector<BufferBlock>& freeList, UINT64 heapS
 	if (offset + size > heapSize) size = heapSize - offset;
 	if (size == 0) return;
 
-	UINT64 alignment = D3D12_DEFAULT_RESOURCE_PLACEMENT_ALIGNMENT;
+	uint64_t alignment = D3D12_DEFAULT_RESOURCE_PLACEMENT_ALIGNMENT;
 	uint64_t end = offset + size;
 	uint64_t alignedOff = (offset / alignment) * alignment;
 	uint64_t alignedEnd = ((end + alignment - 1) / alignment) * alignment;

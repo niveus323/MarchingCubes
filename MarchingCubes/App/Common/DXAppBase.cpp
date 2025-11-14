@@ -34,7 +34,7 @@ void DXAppBase::OnDestroy()
 	m_width = m_height = 0;
 }
 
-void DXAppBase::OnResize(UINT width, UINT height)
+void DXAppBase::OnResize(uint32_t width, uint32_t height)
 {
 	if (!m_swapChain) return;
 	if (width == 0 || height == 0) return;
@@ -90,7 +90,7 @@ void DXAppBase::GetHawrdwardAdapter(IDXGIFactory1* pFactory, IDXGIAdapter1** ppA
 	
 	if (SUCCEEDED(pFactory->QueryInterface(IID_PPV_ARGS(&factory6))))
 	{
-		for (UINT adapterIndex = 0; SUCCEEDED(factory6->EnumAdapterByGpuPreference(adapterIndex, requestHightPerformanceAdapter == true ? DXGI_GPU_PREFERENCE_HIGH_PERFORMANCE : DXGI_GPU_PREFERENCE_UNSPECIFIED, IID_PPV_ARGS(&adapter))); ++adapterIndex)
+		for (uint32_t adapterIndex = 0; SUCCEEDED(factory6->EnumAdapterByGpuPreference(adapterIndex, requestHightPerformanceAdapter == true ? DXGI_GPU_PREFERENCE_HIGH_PERFORMANCE : DXGI_GPU_PREFERENCE_UNSPECIFIED, IID_PPV_ARGS(&adapter))); ++adapterIndex)
 		{
 			DXGI_ADAPTER_DESC1 desc;
 			adapter->GetDesc1(&desc);
@@ -109,7 +109,7 @@ void DXAppBase::GetHawrdwardAdapter(IDXGIFactory1* pFactory, IDXGIAdapter1** ppA
 
 	if (adapter.Get() == nullptr)
 	{
-		for (UINT adapterIndex = 0; SUCCEEDED(pFactory->EnumAdapters1(adapterIndex, &adapter)); ++adapterIndex)
+		for (uint32_t adapterIndex = 0; SUCCEEDED(pFactory->EnumAdapters1(adapterIndex, &adapter)); ++adapterIndex)
 		{
 			DXGI_ADAPTER_DESC1 desc;
 			adapter->GetDesc1(&desc);
@@ -137,7 +137,7 @@ void DXAppBase::SetCustomWindowText(LPCWSTR text) const
 
 void DXAppBase::CreateDevice()
 {
-	UINT dxgiFactoryFlags = 0;
+	uint32_t dxgiFactoryFlags = 0;
 #if defined(_DEBUG)
 	{
 		ComPtr<ID3D12Debug> debugController;
@@ -190,7 +190,7 @@ void DXAppBase::CreateSwapChain(HWND hwnd, ID3D12CommandQueue* presentQueue)
 	ThrowIfFailed(m_factory->MakeWindowAssociation(Win32Application::GetHwnd(), DXGI_MWA_NO_ALT_ENTER));
 }
 
-void DXAppBase::CreateBackbuffersAndDefaultDSV(UINT width, UINT height)
+void DXAppBase::CreateBackbuffersAndDefaultDSV(uint32_t width, uint32_t height)
 {
 	//Descriptor Heap »ý¼º
 	D3D12_DESCRIPTOR_HEAP_DESC rtvHeapDesc{};
@@ -203,7 +203,7 @@ void DXAppBase::CreateBackbuffersAndDefaultDSV(UINT width, UINT height)
 	m_rtvDescriptorSize = m_device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_RTV);
 	
 	CD3DX12_CPU_DESCRIPTOR_HANDLE rtvHandle(m_rtvHeap->GetCPUDescriptorHandleForHeapStart());
-	for (UINT n = 0; n < kFrameCount; n++)
+	for (uint32_t n = 0; n < kFrameCount; n++)
 	{
 		ThrowIfFailed(m_swapChain->GetBuffer(n, IID_PPV_ARGS(&m_renderTargets[n])));
 		m_device->CreateRenderTargetView(m_renderTargets[n].Get(), nullptr, rtvHandle);

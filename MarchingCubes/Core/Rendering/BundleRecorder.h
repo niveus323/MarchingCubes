@@ -5,28 +5,26 @@
 #include <unordered_set>
 #include <unordered_map>
 
-struct StaticRenderItem
+// TODO : Instancing 추가 시 수정.
+
+struct BundleKey
 {
+	Material* material;
+	D3D12_VERTEX_BUFFER_VIEW vbv;
+	D3D12_INDEX_BUFFER_VIEW ibv;
+	D3D12_PRIMITIVE_TOPOLOGY topology;
+	uint32_t indexCount;
+};
+
+struct BundleGroup
+{
+	std::vector<DrawBindingInfo> bindings;
 	ID3D12GraphicsCommandList* bundle = nullptr;
-	std::vector<IDrawable*> objects; // 번들에 들어가는 object 리스트
+	bool bDirty = true;
 };
-
-struct PendingDeleteItem
-{
-	UINT64 fenceValue = 0; // 삭제 요청 시점의 fence 값
-	std::vector<ComPtr<ID3D12Resource>> resources;
-};
-
-void RecordDrawItem(ID3D12GraphicsCommandList* cmdList, const IDrawable* drawable);
 
 class BundleRecorder
 {
-public:
-	BundleRecorder(ID3D12Device* device, ID3D12RootSignature* rootSignature, const PSOList* psoList, size_t contextsPerPSO = 2);
-
-	ID3D12GraphicsCommandList* CreateBundleFor(const std::vector<IDrawable*>& drawables, const std::string& psoName);
-	bool SyncWithPSOList(const PSOList* psoList);
-private:
 	struct Context {
 		ComPtr<ID3D12CommandAllocator> allocator;
 		ComPtr<ID3D12GraphicsCommandList> bundle;
@@ -36,7 +34,12 @@ private:
 		std::vector<Context> contexts;
 		size_t nextIndex = 0;
 	};
+public:
+	BundleRecorder(ID3D12Device* device, ID3D12RootSignature* rootSignature, const PSOList* psoList, size_t contextsPerPSO = 2);
+	bool SyncWithPSOList(const PSOList* psoList);
+	ID3D12GraphicsCommandList* RecordBundle(std::vector<ID3D12DescriptorHeap*>& heaps, const std::vector<DrawBindingInfo>& bindings, int psoIndex);
 
+private:
 	ID3D12Device* m_device = nullptr;
 	ID3D12RootSignature* m_rootSignature = nullptr;
 	const PSOList* m_psoList = nullptr;

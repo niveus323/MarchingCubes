@@ -7,15 +7,14 @@
 class MCTerraformEditor : public EditorApp
 {
 public:
-    MCTerraformEditor(UINT width, UINT height, std::wstring name) : EditorApp(width, height, name) {};
+    MCTerraformEditor(uint32_t width, uint32_t height, std::wstring name) : EditorApp(width, height, name) {}
     
 	virtual void OnDestroy() override;
 protected:
     virtual void InitScene(ID3D12GraphicsCommandList* cmd) override;
     virtual void InitUI() override;
     virtual void UpdateScene(float deltaTime) override;
-    virtual void UpdateUI(float deltaTime) override;
-    virtual void BeforeDraw(ID3D12GraphicsCommandList* cmd) override;
+    virtual void SyncGpu(ID3D12GraphicsCommandList* cmd) override;
     virtual void DrawScene(ID3D12GraphicsCommandList* cmd) override;
 
 private:
@@ -30,9 +29,10 @@ private:
     std::unique_ptr<TerrainSystem> m_terrain;
 #ifdef _DEBUG
     std::unique_ptr<Mesh> m_debugBrush;
+    std::unique_ptr<Mesh> m_debugCellMesh;
 #endif // _DEBUG
     DirectX::XMFLOAT3 m_gridOrigin = { 0,0,0 };
-    std::array<int, 3> m_gridSize = { 1,1,1 };
+    int m_gridTiles = 100;
     int m_cellSize = 1;
     float m_brushRadius = 3.0f;
     float m_brushStrength = 5.0f;
@@ -42,7 +42,6 @@ private:
     // UI
     UI::FrameCallbackToken cameraUIToken = 0;
     UI::FrameCallbackToken marchingCubesUIToken = 0;
-    bool m_gridRenewRequested = false;
     
 #ifdef _DEBUG
     // Debug

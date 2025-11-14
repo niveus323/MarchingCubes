@@ -11,8 +11,9 @@ public:
 
 	void setMode(ID3D12Device* device, TerrainMode mode);
 	void setGridDesc(ID3D12Device* deivce, const GridDesc& d);
-	
+	void setField(ID3D12Device* device, std::shared_ptr<SdfField<float>> grid);
 	void requestRemesh(const RemeshRequest& r);
+	void requestRemesh(float isoValue = 0.0f); // ÀüÃ¼ Remesh
 	void requestBrush(const BrushRequest& r);
 
 	void tryFetch(ID3D12Device* device, RenderSystem* renderSystem, const std::string& psoName);
@@ -26,9 +27,6 @@ public:
 	void MakeDebugCell(GeometryData& outMeshData, bool bDrawFullCell);
 	void EraseChunk(RenderSystem* renderSystem);
 #endif // _DEBUG
-
-private:
-	void initializeField(ID3D12Device* device, std::shared_ptr<SdfField<float>> grid, const GridDesc& desc);
 	
 private:
 	TerrainMode				m_mode{ TerrainMode::GPU_ORIGINAL };

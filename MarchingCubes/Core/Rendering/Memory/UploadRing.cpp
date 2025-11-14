@@ -1,7 +1,7 @@
 #include "pch.h"
 #include "UploadRing.h"
 
-UploadRing::UploadRing(ID3D12Device* device, UINT64 totalSize, UINT64 align)
+UploadRing::UploadRing(ID3D12Device* device, uint64_t totalSize, uint64_t align)
 {
 	assert(device);
 	m_totalSize = totalSize;
@@ -26,10 +26,10 @@ UploadRing::~UploadRing()
 }
 
 // 업로드 할 공간 할당
-uint8_t* UploadRing::Allocate(UINT64 size, UINT64& outOffset, UINT64 align)
+uint8_t* UploadRing::Allocate(uint64_t size, uint64_t& outOffset, uint64_t align)
 {
-	UINT64 alignment = align ? align : m_align;
-	const UINT64 alignedSize = AlignUp64(size, alignment);
+	uint64_t alignment = align ? align : m_align;
+	const uint64_t alignedSize = AlignUp64(size, alignment);
 
 	// 할당 크기가 가능한 전체 크기보다 클 경우 무조건 실패
 	if (alignedSize > m_totalSize) {
@@ -51,10 +51,10 @@ uint8_t* UploadRing::Allocate(UINT64 size, UINT64& outOffset, UINT64 align)
 	// 새 할당이 기존 공간을 침범하지 않는지 확인
 	for (const auto& a : m_inFlight)
 	{
-		UINT64 aStart = a.offset;
-		UINT64 aEnd = a.offset + a.size;
-		UINT64 rStart = m_head;
-		UINT64 rEnd = m_head + alignedSize;
+		uint64_t aStart = a.offset;
+		uint64_t aEnd = a.offset + a.size;
+		uint64_t rStart = m_head;
+		uint64_t rEnd = m_head + alignedSize;
 		bool overlap = !(rEnd <= aStart || rStart >= aEnd);
 		if (overlap) {
 			outOffset = UINT64_MAX;
@@ -75,21 +75,8 @@ uint8_t* UploadRing::Allocate(UINT64 size, UINT64& outOffset, UINT64 align)
 	return cpuPtr; // 할당 가능한 공간의 포인터 주소 반환
 }
 
-void UploadRing::TrackAllocation(UINT64 offset, UINT64 size, UINT64 fenceValue)
-{
-	UploadAllocation a{};
-	a.offset = offset;
-	a.size = size;
-	a.fenceValue = fenceValue;
-
-	if (fenceValue != 0)
-		m_inFlight.push_back(a);
-	else
-		m_unframed.push_back(a);
-}
-
 // 이번 프레임에 할당된 공간들에 대해 펜스 값을 설정
-void UploadRing::TagFence(UINT64 fenceValue)
+void UploadRing::TagFence(uint64_t fenceValue)
 {
 	if (m_unframed.empty()) return;
 	for (auto& alloced : m_unframed)
@@ -100,7 +87,7 @@ void UploadRing::TagFence(UINT64 fenceValue)
 	m_unframed.clear();
 }
 
-void UploadRing::ReclaimCompleted(UINT64 completedFenceValue)
+void UploadRing::Reclaim(uint64_t completedFenceValue)
 {
 	// 완료한 Upload 데이터는 제거
 	while (!m_inFlight.empty() && m_inFlight.front().fenceValue !=0 && m_inFlight.front().fenceValue <= completedFenceValue)

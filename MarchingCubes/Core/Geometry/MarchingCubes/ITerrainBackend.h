@@ -14,14 +14,14 @@ struct GridDesc
 	DirectX::XMUINT3 cells;
 	float cellsize;
 	DirectX::XMFLOAT3 origin;
-	UINT chunkSize;
+	uint32_t chunkSize;
 };
 
 struct ChunkKey
 {
-	UINT x = 0;
-	UINT y = 0;
-	UINT z = 0;
+	uint32_t x = 0;
+	uint32_t y = 0;
+	uint32_t z = 0;
 
 	inline bool operator==(const ChunkKey& key) const noexcept
 	{

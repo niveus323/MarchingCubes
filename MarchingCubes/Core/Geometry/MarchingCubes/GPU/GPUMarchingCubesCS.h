@@ -7,7 +7,7 @@ struct alignas(16) GridCBData {
 	XMFLOAT3 chunkOrigin;
 	float isoValue;
 	XMUINT3 numChunkAxis;
-	UINT chunkCubes;
+	uint32_t chunkCubes;
 	XMUINT3 regionMin;
 	int _padding0;
 	XMUINT3 regionMax;

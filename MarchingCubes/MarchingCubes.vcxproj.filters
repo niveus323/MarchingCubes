@@ -126,6 +126,15 @@
     <ClCompile Include="Core\Utils\Profiler.cpp">
       <Filter>소스 파일</Filter>
     </ClCompile>
+    <ClCompile Include="App\Editor\GeometryEditor.cpp">
+      <Filter>소스 파일</Filter>
+    </ClCompile>
+    <ClCompile Include="Core\Rendering\PSO\DescriptorRing.cpp">
+      <Filter>소스 파일</Filter>
+    </ClCompile>
+    <ClCompile Include="Core\Rendering\PSO\DescriptorAllocator.cpp">
+      <Filter>소스 파일</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="pch.h">
@@ -264,6 +273,15 @@
       <Filter>헤더 파일</Filter>
     </ClInclude>
     <ClInclude Include="Core\Utils\Profiler.h">
+      <Filter>헤더 파일</Filter>
+    </ClInclude>
+    <ClInclude Include="App\Editor\GeometryEditor.h">
+      <Filter>헤더 파일</Filter>
+    </ClInclude>
+    <ClInclude Include="Core\Rendering\PSO\DescriptorRing.h">
+      <Filter>헤더 파일</Filter>
+    </ClInclude>
+    <ClInclude Include="Core\Rendering\PSO\DescriptorAllocator.h">
       <Filter>헤더 파일</Filter>
     </ClInclude>
   </ItemGroup>

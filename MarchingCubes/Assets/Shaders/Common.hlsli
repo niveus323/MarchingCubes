@@ -16,21 +16,7 @@ cbuffer ObjectBuffer : register(b1)
 {
     matrix gWorld;
     matrix gWorldInv;
-};
-
-cbuffer MaterialBuffer : register(b2)
-{
-    float3 gAlbedo; // default color
-    float gMetalic; // [0,1]
-    
-    float gSpecularStrength; // [0,1], default = 0.5
-    float gRoughness; // [0,1]
-    float gAmbientOcclusion; // [0,1]
-    float gIOR; // Dielectric 전용
-    
-    uint gShadingModel; //0 - Default, 1 - Dielectric, 2 - Translucent    
-    float gOpacity; // [0,1], Default - 1
-    float2 _padding_Mat;
+    uint gMaterialIndex;
 };
 
 struct Light
@@ -46,11 +32,26 @@ struct Light
     float spotParam2;
 };
 
-cbuffer LightBuffer : register(b3)
+cbuffer LightBuffer : register(b2)
 {
     uint g_NumLights;
     uint3 padding;
     Light g_Lights[128];
 };
 
+struct MaterialBuffer
+{
+    float3 albedo; // default color
+    float metalic; // [0,1]
+    
+    float specularStrength; // [0,1], default = 0.5
+    float roughness; // [0,1]
+    float ambientOcclusion; // [0,1]
+    float IOR; // Dielectric 전용
+    
+    uint shadingModel; //0 - Default, 1 - Dielectric, 2 - Translucent    
+    float opacity; // [0,1], Default - 1
+    float2 _padding_Mat;
+};
+StructuredBuffer<MaterialBuffer> gMaterials : register(t0);
 #endif // COMMON_HLSLI

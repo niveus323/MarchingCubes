@@ -2,6 +2,14 @@
 #include "Core/DataStructures/ShaderTypes.h"
 using Microsoft::WRL::ComPtr;
 
+struct MaterialGPU
+{
+	MaterialConstants constants;
+	// Texture Index, Sampler Index, Flags µî
+};
+
+using MaterialHandle = uint32_t;
+
 class Material
 {
 public:
