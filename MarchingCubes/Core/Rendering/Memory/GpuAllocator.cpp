@@ -5,7 +5,7 @@
 GpuAllocator::GpuAllocator(ID3D12Device* device, GpuAllocatorInitInfo info)
 {
 	m_cbRing = std::make_unique<UploadRing>(device, info.cbRingBytes, D3D12_CONSTANT_BUFFER_DATA_PLACEMENT_ALIGNMENT);
-	m_stagingRing = std::make_unique<UploadRing>(device, info.stagingRingBytes, D3D12_CONSTANT_BUFFER_DATA_PLACEMENT_ALIGNMENT);
+	m_stagingRing = std::make_unique<UploadRing>(device, info.stagingRingBytes, 4u);
 
 	uint64_t vbSmallSize = info.vbPoolBytes >> 2;
 	uint64_t vbLargeSize = info.vbPoolBytes - vbSmallSize;
@@ -33,9 +33,8 @@ void GpuAllocator::Alloc(ID3D12Device* device, const AllocDesc& desc, BufferHand
 
 	auto AllocFromRing = [](UploadRing* ring, ID3D12Device* device, const AllocDesc& desc, BufferHandle& outHandle) {
 		uint64_t offset = UINT64_MAX;
-		uint8_t* cpuPtr = ring->Allocate(desc.size, offset, desc.align);
-		if (!cpuPtr || offset == UINT64_MAX)
-			return false;
+		uint8_t* cpuPtr = nullptr;
+		if (!ring->Allocate(desc.size, offset, cpuPtr)) return false;
 
 		outHandle.res = ring->GetResource();
 		outHandle.offset = offset;
@@ -113,20 +112,12 @@ void GpuAllocator::Alloc(ID3D12Device* device, const AllocDesc& desc, BufferHand
 				return pool && pool->SubAlloc(device, desc.size, desc.align, outHandle, desc.owner);
 			};
 
-			bool ok = false;
 			const uint64_t cutOffMin = isVB ? m_vbPool->GetCapacity() >> 4 : m_ibPool->GetCapacity() >> 4;
 			const uint64_t cutOffMax = cutOffMin << 2;
 			const uint32_t cutoff = std::clamp<uint64_t>(static_cast<uint64_t>(isVB ? 2 * PROMOTE_VB_MIN : 2 * PROMOTE_IB_MIN), cutOffMin, cutOffMax);
-			if (desc.size <= cutoff)
-			{
-				// Small ¡æ Large ¡æ Promote
-				ok = tryPool(pool_small, device, desc, outHandle) || tryPool(pool_large, device, desc, outHandle);
-			}
-			else 
-			{
-				// Large ¡æ Small ¡æ Promote
-				ok = tryPool(pool_large, device, desc, outHandle) || tryPool(pool_small, device, desc, outHandle);
-			}
+			bool ok = (desc.size > cutoff) ?
+				tryPool(pool_large, device, desc, outHandle) || tryPool(pool_small, device, desc, outHandle) : 
+				tryPool(pool_small, device, desc, outHandle) || tryPool(pool_large, device, desc, outHandle);
 
 			if (!ok) 
 			{

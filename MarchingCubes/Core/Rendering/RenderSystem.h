@@ -35,7 +35,7 @@ public:
 	bool GetPsoEnabled(int psoIndex) { return m_passEnabled[psoIndex]; }
 	inline void SetPsoEnabled(const std::string& psoName, bool bEnabled) { m_passEnabled[GetPSOIndex(psoName)] = bEnabled; }
 
-	void PrepareRender(ID3D12GraphicsCommandList* cmd, UploadContext& uploadContext, const CameraConstants& cameraData, const LightBlobView& lightData, uint32_t frameIndex);
+	void PrepareRender(UploadContext& uploadContext, DescriptorAllocator& descriptorAllocator, const CameraConstants& cameraData, const LightBlobView& lightData, uint32_t frameIndex);
 	void RenderFrame(ID3D12GraphicsCommandList* cmd);
 	bool IsDynamicRegistered(IDrawable* drawable, const std::string& psoName);
 	bool RegisterStatic(IDrawable* drawable, const std::string& psoName, uint32_t frameIndex);
@@ -49,10 +49,6 @@ public:
 #endif // _DEBUG
 
 private:
-	void UploadCameraConstants(const CameraConstants& cameraData);
-	void UploadLightConstants(const LightBlobView& lightBlobView);
-
-private:
 	RenderSystemInitInfo m_info;
 
 	std::unique_ptr<PSOList> m_psoList;
@@ -61,14 +57,9 @@ private:
 	std::vector<PSOBucket> m_buckets;
 	std::vector<bool> m_passEnabled;
 
-	// camera
-	ComPtr<ID3D12Resource> m_cameraCB;
-	uint8_t* m_cameraCBMapped = nullptr;
-
-	// lights
-	ComPtr<ID3D12Resource> m_lightCB;
-	uint8_t* m_lightCBMapped = nullptr;
-	uint32_t m_lightCBSize = 0;
+	BufferHandle m_cameraBuf;
+	BufferHandle m_lightsBuf;
+	D3D12_GPU_DESCRIPTOR_HANDLE m_lightsGpu;
 
 #ifdef _DEBUG
 	bool m_wireViewEnabled = false;

@@ -14,7 +14,7 @@ public:
     UploadRing(ID3D12Device* device, uint64_t totalSize, uint64_t align = 256ull);
     ~UploadRing();
 
-    uint8_t* Allocate(uint64_t size, uint64_t& outOffset, uint64_t align = 0);
+    bool Allocate(uint64_t size, uint64_t& outOffset, uint8_t*& outPtr);
     void TagFence(uint64_t fenceValue);
     void Reclaim(uint64_t completedFenceValue);
 

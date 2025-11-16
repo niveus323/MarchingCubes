@@ -149,7 +149,8 @@ void EditorApp::OnInitPipelines()
 		ZeroMemory(rootParams, sizeof(rootParams));
 		rootParams[0].InitAsConstantBufferView(0); // b0
 		rootParams[1].InitAsConstantBufferView(1); // b1
-		rootParams[2].InitAsConstantBufferView(2); // b2
+		//rootParams[2].InitAsConstantBufferView(2); // b2
+		rootParams[2].InitAsDescriptorTable(1, &CD3DX12_DESCRIPTOR_RANGE1(D3D12_DESCRIPTOR_RANGE_TYPE_CBV, 1, 2)); // b2
 		rootParams[3].InitAsDescriptorTable(1, &CD3DX12_DESCRIPTOR_RANGE1(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 0)); // t0
 		rootParams[4].InitAsDescriptorTable(1, &CD3DX12_DESCRIPTOR_RANGE1(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 1)); // t1
 
@@ -343,7 +344,7 @@ void EditorApp::BeforeDraw(ID3D12GraphicsCommandList* cmd)
 
 	CameraConstants commonCameraData = m_mainCamera->BuildCameraConstants();
 	LightBlobView commonLightData = m_lightManager->BuildLightConstants();
-	m_renderSystem->PrepareRender(cmd, *m_uploadContext, commonCameraData, commonLightData, m_frameIndex);
+	m_renderSystem->PrepareRender(*m_uploadContext, *m_descriptorAllocator,commonCameraData, commonLightData, m_frameIndex);
 	m_uploadContext->Execute(cmd);
 
 	// 렌더 타겟 생성됨, Back Buffer를 RenderTarget 상태로 전환
@@ -392,6 +393,7 @@ void EditorApp::MoveToNextFrame()
 		ThrowIfFailed(m_swapChainFence->SetEventOnCompletion(lastFenceValue, m_fenceEvent));
 		WaitForSingleObjectEx(m_fenceEvent, INFINITE, FALSE);
 	}
+	m_descriptorAllocator->ResetDynamicSlots(m_frameIndex);
 
 	// GPU TimeStamp Readback
 	const double gpuMs = ComputeGpuFrameMsAfterCompleted(m_frameIndex);

@@ -145,7 +145,7 @@ void UploadContext::UploadDrawable(IDrawable* drawable, uint64_t completedFenceV
 	AllocDesc desc{
 		.kind = AllocDesc::Kind::Staging,
 		.size = totalBytes,
-		.align = 4ull, 
+		.align = 4, 
 		.owner = drawable->GetDebugName()
 	};
 	m_allocator->Alloc(m_device, desc, stagingHandle);
@@ -211,7 +211,7 @@ void UploadContext::UploadStatic(IDrawable* drawable, uint64_t completedFenceVal
 	AllocDesc desc{
 		.kind = AllocDesc::Kind::Staging,
 		.size = totalBytes,
-		.align = 4ull,
+		.align = 4,
 		.owner = drawable->GetDebugName()
 	};
 	m_allocator->Alloc(m_device, desc, stagingHandle);
@@ -288,6 +288,20 @@ void UploadContext::UploadStructuredBuffer(ID3D12GraphicsCommandList* cmd, const
 	std::memcpy(staging.cpuPtr, srcData, byteSize);
 
 	cmd->CopyBufferRegion(buffer, dstOffset, staging.res, staging.offset, byteSize);
+}
+
+void UploadContext::UploadContstants(uint32_t frameIndex, const void* srcData, uint32_t size, BufferHandle& outHandle)
+{
+	const uint32_t alignedSize = AlignUp(size, CB_ALIGN);
+	AllocDesc desc{
+		.kind = AllocDesc::Kind::CB,
+		.size = alignedSize,
+		.align = CB_ALIGN
+	};
+
+	m_allocator->Alloc(m_device, desc, outHandle);
+	assert(outHandle.cpuPtr && "Handle Ptr is Invalid!!!!");
+	memcpy(outHandle.cpuPtr, srcData, size);
 }
 
 void UploadContext::EnsureDefaultVB(GeometryBuffer* buf, uint32_t neededSize, const char* debugName)

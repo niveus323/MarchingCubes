@@ -33,38 +33,6 @@ RenderSystem::RenderSystem(RenderSystemInitInfo init_info) :
 
 	m_bundleRecorder = std::make_unique<BundleRecorder>(device, rootSignature, m_psoList.get(), 2);
 	m_passEnabled.resize(m_psoList->Count(), true);
-
-	// Initialize Camera Resource
-	{
-		static const uint32_t cameraBufferSize = AlignUp(sizeof(CameraConstants), CB_ALIGN);
-
-		ThrowIfFailed(device->CreateCommittedResource(
-			&CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD),
-			D3D12_HEAP_FLAG_NONE,
-			&CD3DX12_RESOURCE_DESC::Buffer(cameraBufferSize),
-			D3D12_RESOURCE_STATE_GENERIC_READ,
-			nullptr,
-			IID_PPV_ARGS(m_cameraCB.ReleaseAndGetAddressOf())
-		));
-		NAME_D3D12_OBJECT(m_cameraCB);
-
-		// Map & CreateUploadBuffer Constant Buffer
-		CD3DX12_RANGE readRAnge(0, 0);
-		ThrowIfFailed(m_cameraCB->Map(0, &readRAnge, reinterpret_cast<void**>(&m_cameraCBMapped)));
-	}
-
-	// Initialize Light Resource
-	{
-		const uint32_t rawBytes = sizeof(LightConstantsHeader) + kMaxLights * sizeof(Light);
-
-		m_lightCBSize = AlignUp(rawBytes, CB_ALIGN);
-
-		D3D12_HEAP_PROPERTIES heapProps = CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD);
-		D3D12_RESOURCE_DESC bufDesc = CD3DX12_RESOURCE_DESC::Buffer(m_lightCBSize);
-		ThrowIfFailed(device->CreateCommittedResource(&heapProps, D3D12_HEAP_FLAG_NONE, &bufDesc, D3D12_RESOURCE_STATE_GENERIC_READ, nullptr, IID_PPV_ARGS(m_lightCB.ReleaseAndGetAddressOf())));
-
-		ThrowIfFailed(m_lightCB->Map(0, nullptr, reinterpret_cast<void**>(&m_lightCBMapped)));
-	}
 }
 
 RenderSystem::RenderSystem(ID3D12Device* device, ID3D12RootSignature* rootSignature, const D3D12_INPUT_LAYOUT_DESC& inputLayout, const std::vector<std::wstring>& psoFiles) :
@@ -83,22 +51,10 @@ RenderSystem::~RenderSystem()
 		bucket.dynamicItems.clear();
 		bucket.staticItems.clear();
 	}
-
-	if (m_lightCB)
-	{
-		m_lightCB->Unmap(0, nullptr);
-		m_lightCBMapped = nullptr;
-	}
-
-	if (m_cameraCB)
-	{
-		m_cameraCB->Unmap(0, nullptr);
-		m_cameraCBMapped = nullptr;
-	}
 }
 
 // 업로드 준비
-void RenderSystem::PrepareRender(ID3D12GraphicsCommandList* cmd, UploadContext& uploadContext, const CameraConstants& cameraData, const LightBlobView& lightData, uint32_t frameIndex)
+void RenderSystem::PrepareRender(UploadContext& uploadContext, DescriptorAllocator& descriptorAllocator, const CameraConstants& cameraData, const LightBlobView& lightData, uint32_t frameIndex)
 {
 	// Upload Per-Object Constants
 	for (int i = 0; i < m_buckets.size(); ++i)
@@ -125,16 +81,27 @@ void RenderSystem::PrepareRender(ID3D12GraphicsCommandList* cmd, UploadContext& 
 		}
 	}
 
-	UploadCameraConstants(cameraData);
-	UploadLightConstants(lightData);
+	uploadContext.UploadContstants(frameIndex, &cameraData, sizeof(CameraConstants), m_cameraBuf);
+	
+	const uint32_t lightCBSize = AlignUp(sizeof(LightConstantsHeader) + kMaxLights * sizeof(Light), CB_ALIGN);
+	const size_t blobSizeToCopy = (lightData.size <= lightCBSize) ? lightData.size : static_cast<size_t>(lightCBSize);
+	uploadContext.UploadContstants(frameIndex, lightData.data, blobSizeToCopy, m_lightsBuf);
+	uint32_t lightsSlot = descriptorAllocator.AllocateDynamic(frameIndex);
+	D3D12_CPU_DESCRIPTOR_HANDLE lightsCpu = descriptorAllocator.GetDynamicCpu(frameIndex, lightsSlot);
+	D3D12_CONSTANT_BUFFER_VIEW_DESC desc = {};
+	desc.BufferLocation = m_lightsBuf.gpuVA;
+	desc.SizeInBytes = m_lightsBuf.size;
+	m_info.device->CreateConstantBufferView(&desc, lightsCpu);
+	m_lightsGpu = descriptorAllocator.GetDynamicGpu(frameIndex, lightsSlot);
 }
 
 // 렌더링 
 void RenderSystem::RenderFrame(ID3D12GraphicsCommandList* cmd)
 {
 	// Bind Common RootCBV
-	cmd->SetGraphicsRootConstantBufferView(0, m_cameraCB->GetGPUVirtualAddress());
-	cmd->SetGraphicsRootConstantBufferView(2, m_lightCB->GetGPUVirtualAddress());
+	cmd->SetGraphicsRootConstantBufferView(0, m_cameraBuf.gpuVA);
+	//cmd->SetGraphicsRootConstantBufferView(2, m_lightsBuf.gpuVA);
+	cmd->SetGraphicsRootDescriptorTable(2, m_lightsGpu);
 
 	// PSO 별로 Draw Command 실행
 	for (int i = 0; i < m_psoList->Count(); ++i) {
@@ -259,27 +226,22 @@ bool RenderSystem::UpdateDynamic(IDrawable* drawable, const GeometryData& data)
 	// 없었다면 등록하도록 유도
 	return found;
 }
-
-void RenderSystem::UploadCameraConstants(const CameraConstants& cameraData)
-{
-	memcpy(m_cameraCBMapped, &cameraData, sizeof(CameraConstants));
-
-	/*BufferHandle camHandle;
-	m_gpuAllocator->Alloc(m_device, AllocDesc{ .kind = AllocDesc::Kind::CB, .lifetime = AllocDesc::LifeTime::LONG, .size = sizeof(CameraConstants) ,.align = CB_ALIGN, .owner = "Camera" }, camHandle);
-	memcpy(camHandle.cpuPtr, &cameraData, sizeof(CameraConstants));
-	m_gpuAllocator->FreeLater(camHandle, ...);*/
-}
-
-void RenderSystem::UploadLightConstants(const LightBlobView& lightData)
-{
-	assert(lightData.size <= m_lightCBSize && "Excetion : LightData Overflowing");
-	const size_t blobSizeToCopy = (lightData.size <= m_lightCBSize) ? lightData.size : static_cast<size_t>(m_lightCBSize);
-
-	// m_lightCBMapped는 Init에서 Map해둔 업로드 힙 메모리 시작 주소
-	std::memcpy(m_lightCBMapped, lightData.data, blobSizeToCopy);
-	size_t remain = m_lightCBSize - blobSizeToCopy;
-	if (remain > 0)
-	{
-		std::memset(m_lightCBMapped + blobSizeToCopy, 0, remain);
-	}
-}
+//
+//void RenderSystem::UploadCameraConstants(const CameraConstants& cameraData)
+//{
+//	memcpy(m_cameraCBMapped, &cameraData, sizeof(CameraConstants));
+//}
+//
+//void RenderSystem::UploadLightConstants(const LightBlobView& lightData)
+//{
+//	assert(lightData.size <= m_lightCBSize && "Excetion : LightData Overflowing");
+//	const size_t blobSizeToCopy = (lightData.size <= m_lightCBSize) ? lightData.size : static_cast<size_t>(m_lightCBSize);
+//
+//	// m_lightCBMapped는 Init에서 Map해둔 업로드 힙 메모리 시작 주소
+//	std::memcpy(m_lightCBMapped, lightData.data, blobSizeToCopy);
+//	size_t remain = m_lightCBSize - blobSizeToCopy;
+//	if (remain > 0)
+//	{
+//		std::memset(m_lightCBMapped + blobSizeToCopy, 0, remain);
+//	}
+//}
