@@ -53,7 +53,11 @@ void MC33TerrainBackend::requestRemesh(const RemeshRequest& req)
         for (unsigned i = 0; i < S->nV; ++i) {
             float* p = S->V[i];
             float* n = S->N[i];
-            m_chunkData[chunkKey].vertices.push_back({ { p[0], p[1], p[2] }, { n[0], n[1], n[2] }, {1.0f, 1.0f, 1.0f, 1.0f} });
+            m_chunkData[chunkKey].vertices.push_back(Vertex{ 
+                .pos = { p[0], p[1], p[2] }, 
+                .normal = { n[0], n[1], n[2] }, 
+                .color = {1.0f, 1.0f, 1.0f, 1.0f} 
+            });
         }
         m_chunkData[chunkKey].indices.reserve(S->nT * 3);
         for (unsigned t = 0; t < S->nT; ++t) {

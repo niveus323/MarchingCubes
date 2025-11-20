@@ -1,13 +1,12 @@
 #include "pch.h"
 #include "UploadRing.h"
 
-UploadRing::UploadRing(ID3D12Device* device, uint64_t totalSize, uint64_t align)
+UploadRing::UploadRing(ID3D12Device* device, uint64_t totalSize)
 {
 	assert(device);
 	m_totalSize = totalSize;
 	m_head = 0;
 	m_tail = m_totalSize;
-	m_align = align;
 
 	D3D12_HEAP_PROPERTIES hpUpload = CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD);
 	D3D12_RESOURCE_DESC desc = CD3DX12_RESOURCE_DESC::Buffer(totalSize);
@@ -26,16 +25,22 @@ UploadRing::~UploadRing()
 }
 
 // 업로드 할 공간 할당
-bool UploadRing::Allocate(uint64_t size, uint64_t& outOffset, uint8_t*& outPtr)
+bool UploadRing::Allocate(const uint64_t alignedSize, uint64_t& outOffset, uint8_t*& outPtr)
 {
-	const uint64_t alignedSize = AlignUp64(size, m_align);
-
 	// 할당 크기가 가능한 전체 크기보다 클 경우 무조건 실패
-	if (alignedSize > m_totalSize) return false;
+	if (alignedSize > m_totalSize)
+	{
+		Log::Print("UploadRing", "Allocated Failed. total : %llu, trying : %llu", m_totalSize, alignedSize);
+		return false;
+	}
 
 	uint64_t used = (m_head < m_tail) ? (m_totalSize - m_tail) + m_head : m_head - m_tail;
 	// 남은 공간에 할당 가능한지 체크
-	if (alignedSize > m_totalSize - used - 1) return false;
+	if (alignedSize > m_totalSize - used - 1)
+	{
+		Log::Print("UploadRing", "Allocated Failed. remain : %llu, trying : %llu", m_totalSize - used - 1, alignedSize);
+		return false;
+	}
 
 	if (m_head < m_tail)
 	{
@@ -45,7 +50,11 @@ bool UploadRing::Allocate(uint64_t size, uint64_t& outOffset, uint8_t*& outPtr)
 	}
 	else if (alignedSize > m_totalSize - m_head)
 	{
-		if (alignedSize > m_tail) return false;
+		if (alignedSize > m_tail)
+		{
+			Log::Print("UplaodRing", "Allocated Failed. trying %llu > tail %llu", alignedSize, m_tail);
+			return false;
+		}
 
 		// [0, tail)
 		outOffset = 0;
@@ -89,7 +98,7 @@ void UploadRing::Reclaim(uint64_t completedFenceValue)
 
 		uint64_t end = front.offset + front.size;
 		if (end >= m_totalSize)	end -= m_totalSize; // warp
-		m_tail = end;
+		m_tail = (end == 0) ? m_totalSize : end;
 
 		m_inFlight.pop_front();
 	}

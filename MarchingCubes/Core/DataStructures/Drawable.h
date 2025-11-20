@@ -1,7 +1,7 @@
 #pragma once
 #include "Core/DataStructures/Data.h"
 #include "Core/Rendering/Memory/CommonMemory.h"
-#include "Core/Rendering/Material.h"
+#include "Core/Assets/Material.h"
 
 struct DrawBindingInfo
 {

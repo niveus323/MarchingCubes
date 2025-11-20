@@ -54,7 +54,7 @@
     <ClCompile Include="Core\Geometry\MeshGenerator.cpp">
       <Filter>소스 파일</Filter>
     </ClCompile>
-    <ClCompile Include="Core\Rendering\Material.cpp">
+    <ClCompile Include="Core\Assets\Material.cpp">
       <Filter>소스 파일</Filter>
     </ClCompile>
     <ClCompile Include="Core\Rendering\LightManager.cpp">
@@ -123,7 +123,7 @@
     <ClCompile Include="Core\Rendering\Memory\StaticBufferRegistry.cpp">
       <Filter>소스 파일</Filter>
     </ClCompile>
-    <ClCompile Include="Core\Utils\Profiler.cpp">
+    <ClCompile Include="Core\Trace\Profiler.cpp">
       <Filter>소스 파일</Filter>
     </ClCompile>
     <ClCompile Include="App\Editor\GeometryEditor.cpp">
@@ -133,6 +133,15 @@
       <Filter>소스 파일</Filter>
     </ClCompile>
     <ClCompile Include="Core\Rendering\PSO\DescriptorAllocator.cpp">
+      <Filter>소스 파일</Filter>
+    </ClCompile>
+    <ClCompile Include="Core\Assets\ResourceManager.cpp">
+      <Filter>소스 파일</Filter>
+    </ClCompile>
+    <ClCompile Include="Core\Assets\TextureRegistry.cpp">
+      <Filter>소스 파일</Filter>
+    </ClCompile>
+    <ClCompile Include="Core\Assets\MaterialRegistry.cpp">
       <Filter>소스 파일</Filter>
     </ClCompile>
   </ItemGroup>
@@ -191,7 +200,7 @@
     <ClInclude Include="Core\Rendering\RenderUtils.h">
       <Filter>헤더 파일</Filter>
     </ClInclude>
-    <ClInclude Include="Core\Rendering\Material.h">
+    <ClInclude Include="Core\Assets\Material.h">
       <Filter>헤더 파일</Filter>
     </ClInclude>
     <ClInclude Include="Core\Rendering\LightManager.h">
@@ -233,7 +242,7 @@
     <ClInclude Include="Core\Rendering\Memory\UploadRing.h">
       <Filter>헤더 파일</Filter>
     </ClInclude>
-    <ClInclude Include="Core\Utils\Log.h">
+    <ClInclude Include="Core\Trace\Log.h">
       <Filter>헤더 파일</Filter>
     </ClInclude>
     <ClInclude Include="Core\Geometry\MarchingCubes\SdfField.h">
@@ -272,7 +281,7 @@
     <ClInclude Include="Core\Rendering\Memory\CommonMemory.h">
       <Filter>헤더 파일</Filter>
     </ClInclude>
-    <ClInclude Include="Core\Utils\Profiler.h">
+    <ClInclude Include="Core\Trace\Profiler.h">
       <Filter>헤더 파일</Filter>
     </ClInclude>
     <ClInclude Include="App\Editor\GeometryEditor.h">
@@ -284,6 +293,15 @@
     <ClInclude Include="Core\Rendering\PSO\DescriptorAllocator.h">
       <Filter>헤더 파일</Filter>
     </ClInclude>
+    <ClInclude Include="Core\Assets\ResourceManager.h">
+      <Filter>헤더 파일</Filter>
+    </ClInclude>
+    <ClInclude Include="Core\Assets\TextureRegistry.h">
+      <Filter>헤더 파일</Filter>
+    </ClInclude>
+    <ClInclude Include="Core\Assets\MaterialRegistry.h">
+      <Filter>헤더 파일</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <None Include="..\Directory.Builds.targets" />
@@ -291,10 +309,10 @@
     <None Include="Assets\Shaders\PBR.hlsli" />
     <None Include="packages.config" />
     <None Include="App\Editor\EditorAppPSO.json" />
+    <None Include="Assets\Shaders\Texture.hlsli" />
   </ItemGroup>
   <ItemGroup>
     <FxCompile Include="Assets\Shaders\MainVS.hlsl" />
-    <FxCompile Include="Assets\Shaders\HighlightPS.hlsl" />
     <FxCompile Include="Assets\Shaders\LinePS.hlsl" />
     <FxCompile Include="Assets\Shaders\MainPS.hlsl" />
     <FxCompile Include="Assets\Shaders\MarchingCubesCS.hlsl" />

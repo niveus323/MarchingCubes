@@ -7,6 +7,7 @@
     <ProjectRoot>$([System.String]::Copy('$(MSBuildProjectDirectory)').Replace('\','/').TrimEnd('/'))</ProjectRoot>
     <AssetsRoot>$(ProjectRoot)/Assets</AssetsRoot>
     <ShadersRoot>$(AssetsRoot)/Shaders</ShadersRoot>
+    <TexturesRoot>$(AssetsRoot)/Texture</TexturesRoot>
     <ThirdPartyRoot>$(SolutionRoot)/ThirdParty/</ThirdPartyRoot>
   </PropertyGroup>
   <PropertyGroup>
@@ -14,9 +15,7 @@
   </PropertyGroup>
   <ItemDefinitionGroup>
     <ClCompile>
-      <PreprocessorDefinitions>
-        ASSETS_ROOT=L"$(AssetsRoot)";SHADERS_ROOT=L"$(ShadersRoot)";THIRDPARTY_ROOT=L"$(ThirdPartyRoot)";%(PreprocessorDefinitions)
-      </PreprocessorDefinitions>
+      <PreprocessorDefinitions>ASSETS_ROOT=L"$(AssetsRoot)";SHADERS_ROOT=L"$(ShadersRoot)";TEXTURES_ROOT=L"$(TexturesRoot)";THIRDPARTY_ROOT=L"$(ThirdPartyRoot)";%(PreprocessorDefinitions)</PreprocessorDefinitions>
     </ClCompile>
   </ItemDefinitionGroup>
   <ItemGroup>
@@ -31,6 +30,9 @@
     </BuildMacro>
     <BuildMacro Include="ThirdPartyRoot">
       <Value>$(ThirdPartyRoot)</Value>
+    </BuildMacro>
+    <BuildMacro Include="TexturesRoot">
+        <Value>$(TexturesRoot)</Value>
     </BuildMacro>
   </ItemGroup>
 

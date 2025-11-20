@@ -4,23 +4,22 @@
 #include "Core/UI/UIRenderer.h"
 using Microsoft::WRL::ComPtr;
 
+class ResourceManager;
+class GpuAllocator;
+class StaticBufferRegistry;
+class UploadContext;
+class DescriptorAllocator;
+
 class DXAppBase
 {
 public:
-    DXAppBase(uint32_t width, uint32_t height, std::wstring name) :
-        m_width(width),
-        m_height(height),
-        m_title(name)
-    {
-        m_aspectRatio = static_cast<float>(width) / static_cast<float>(height);
-        std::fill(std::begin(m_fenceValues), std::end(m_fenceValues), 0ull);
-    }
-    virtual ~DXAppBase() = default;
+    DXAppBase(uint32_t width, uint32_t height, std::wstring name);
+    virtual ~DXAppBase();
 
-    void OnInit(); 
+    void OnInit();
     virtual void OnDestroy();
     virtual void OnUpdate(float deltaTime) = 0;
-    virtual void OnRender() = 0;
+    void Render();
 
     void OnResize(uint32_t width, uint32_t height);
     void StartTimer();
@@ -43,26 +42,46 @@ public:
     ID3D12Resource* CurrentBackbuffer() const { return m_renderTargets[m_frameIndex].Get(); }
 
 protected:
-    virtual void CreateQueues() = 0;
-    virtual ID3D12CommandQueue* GetPresentQueue() const = 0;
-
     // 파생 클래스가 선택적으로 구현
-    virtual void OnAfterSwapchainCreated() {}     // 오프스크린/힙/업로드/프레임 자원
-    virtual void OnInitPipelines() {}             // 공통 루트시그니처/PSO
-    virtual void OnBuildInitialScene() {}         // 초기 씬 구성
+    virtual void OnUpload(ID3D12GraphicsCommandList* cmd) {};                           // Fence기반 해제/버퍼 업로드
+    virtual void OnRender() {};                                                         // 프레임 렌더링
+    virtual void OnAfterSwapchainCreated() {}                                           // 오프스크린/힙/업로드/프레임 자원
+    virtual void OnInitSubSystems() {}                                                  // 서브 시스템
+    virtual void OnInitPipelines() {}                                                   // 공통 루트시그니처/PSO
+    virtual void OnBuildInitialScene(ID3D12GraphicsCommandList* initCommand) {}         // 초기 씬 구성
+    virtual void OnAfterChainSwaped() {}
 
 	std::wstring GetAssetFullPath(LPCWSTR assetName);
 	void GetHawrdwardAdapter(_In_ IDXGIFactory1* pFactory, _Outptr_result_maybenull_ IDXGIAdapter1** ppAdapter, bool requestHightPerformanceAdapter = false);
 	void SetCustomWindowText(LPCWSTR text) const;
+
+protected:
+    Timer& GetTimer() { return m_timer; }
+    const Timer& GetTimer() const { return m_timer; }
+    ID3D12Device* GetDevice() { return m_device.Get(); }
+    ID3D12CommandQueue* GetPresentQueue() const { return m_commandQueue.Get(); }
+    ID3D12Fence* GetSwapChainFence() { return m_swapChainFence.Get(); }
+    UINT64 GetSwapChainFenceValue() { return m_swapChainFence->GetCompletedValue(); }
+    GpuAllocator* GetGpuAllocator() { return m_gpuAllocator.get(); }
+    UploadContext* GetUploadContext() { return m_uploadContext.get(); }
+    StaticBufferRegistry* GetStaticBufferRegistry() { return m_staticBufferRegistry.get(); }
+    DescriptorAllocator* GetDescriptorAllocator() { return m_descriptorAllocator.get(); }
+    ResourceManager* GetResourceManager() { return m_resourceManager.get(); }
+
+private:
     void CreateDevice();
+    void CreateCommandQueue();
     void CreateSwapChain(HWND hwnd, ID3D12CommandQueue* presentQueue);
+    void CreateCommandObjects();
     void CreateBackbuffersAndDefaultDSV(uint32_t width, uint32_t height);
+    void CreateSubsystems();
+    void InitializeScene();
     void DestroyBackbuffersAndDefaultDSV();
     void CreateFenceAndEvent();
     void DestroyFenceAndEvent();
-    void UpdateFrameIndexFromSwapchain();
-    Timer& GetTimer() { return m_timer; }
-    const Timer& GetTimer() const { return m_timer; }
+    void PrepareRender();
+    void MoveToNextFrame();
+    void WaitForGpu();
 
 protected:
     static const uint32_t kFrameCount = 2;
@@ -74,7 +93,10 @@ protected:
     // DirectX12 Common
     ComPtr<ID3D12Device> m_device;
     ComPtr<IDXGIFactory6> m_factory;
-    ComPtr<IDXGISwapChain3> m_swapChain;
+    ComPtr<IDXGISwapChain3> m_swapChain; 
+    ComPtr<ID3D12CommandAllocator> m_commandAllocators[kFrameCount];
+    ComPtr<ID3D12CommandQueue> m_commandQueue;
+    ComPtr<ID3D12GraphicsCommandList> m_commandList;
     ComPtr<ID3D12DescriptorHeap> m_rtvHeap;
     ComPtr<ID3D12DescriptorHeap> m_dsvHeap;
     uint32_t m_rtvDescriptorSize = 0;
@@ -100,5 +122,14 @@ protected:
 private:
 	std::wstring m_title;
     Timer m_timer;
+
+    // Memory
+    std::unique_ptr<GpuAllocator> m_gpuAllocator;
+    std::unique_ptr<UploadContext> m_uploadContext;
+    std::unique_ptr<StaticBufferRegistry> m_staticBufferRegistry;
+    std::unique_ptr<DescriptorAllocator> m_descriptorAllocator;
+
+    //Subsystems
+    std::unique_ptr<ResourceManager> m_resourceManager;
 };
 

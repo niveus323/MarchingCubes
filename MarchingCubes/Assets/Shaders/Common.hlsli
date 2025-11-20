@@ -19,6 +19,13 @@ cbuffer ObjectBuffer : register(b1)
     uint gMaterialIndex;
 };
 
+struct ELightType
+{
+    static const uint DIRECTIONAL = 0;
+    static const uint POINT = 1;
+    static const uint SPOT = 1;
+};
+
 struct Light
 {
     uint type;
@@ -39,6 +46,37 @@ cbuffer LightBuffer : register(b2)
     Light g_Lights[128];
 };
 
+struct EShadingModel
+{
+    static const uint DEFAULT_LIT = 0;
+    static const uint DIELECTRIC = 1;
+    static const uint TRANSLUCENT = 2;
+};
+
+struct ETextureMappingType
+{
+    static const uint DEFAULT_UV = 0;
+    static const uint TRIPLANAR = 1;
+    static const uint SPHERICAL = 2;
+};
+
+struct TriplanarParams
+{
+    float scale;
+    float sharpness;
+    uint2 _padding0;
+};
+
+struct TextureParams
+{
+    uint texIndex;
+    uint mappingType; // 0 - Default UV, 1 - Triplanar, 2 - Spherical ...
+    uint2 _padding0;
+    
+    // Triplanar
+    TriplanarParams triplanar;
+};
+
 struct MaterialBuffer
 {
     float3 albedo; // default color
@@ -51,7 +89,9 @@ struct MaterialBuffer
     
     uint shadingModel; //0 - Default, 1 - Dielectric, 2 - Translucent    
     float opacity; // [0,1], Default - 1
-    float2 _padding_Mat;
+    uint2 _padding0;
+    
+    TextureParams diffuse;
 };
 StructuredBuffer<MaterialBuffer> gMaterials : register(t0);
 #endif // COMMON_HLSLI

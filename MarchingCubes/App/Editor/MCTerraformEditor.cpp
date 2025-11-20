@@ -52,7 +52,7 @@ void MCTerraformEditor::InitScene(ID3D12GraphicsCommandList* cmd)
 		m_debugCellMesh->SetDebugName("TerrainCell");
 
 		m_renderSystem->RegisterStatic(m_debugCellMesh.get(), "Line", m_frameIndex);
-		m_uploadContext->UploadStatic(m_debugCellMesh.get(), m_swapChainFence->GetCompletedValue());
+		GetUploadContext()->UploadStatic(m_debugCellMesh.get(), m_swapChainFence->GetCompletedValue());
 
 	}
 
@@ -162,9 +162,9 @@ void MCTerraformEditor::UpdateScene(float deltaTime)
 	m_terrain->tryFetch(m_device.Get(), m_renderSystem.get(), "Filled");
 }
 
-void MCTerraformEditor::SyncGpu(ID3D12GraphicsCommandList* cmd)
+void MCTerraformEditor::OnUpload(ID3D12GraphicsCommandList* cmd)
 {
-	EditorApp::SyncGpu(cmd);
+	EditorApp::OnUpload(cmd);
 	uint64_t completed = m_swapChainFence->GetCompletedValue();
 
 	auto& terrainChunks = m_terrain->GetRenderer()->GetChunkDrawables();
@@ -172,18 +172,18 @@ void MCTerraformEditor::SyncGpu(ID3D12GraphicsCommandList* cmd)
 	{
 		if (chunk->IsUploadPending())
 		{
-			m_uploadContext->UploadDrawable(chunk, completed);
+			GetUploadContext()->UploadDrawable(chunk, completed);
 		}
 	}
 
 	if (m_debugBrush->IsUploadPending())
 	{
-		m_uploadContext->UploadDrawable(m_debugBrush.get(), completed);
+		GetUploadContext()->UploadDrawable(m_debugBrush.get(), completed);
 	}
 
 	if (m_debugCellMesh->IsUploadPending())
 	{
-		m_uploadContext->UploadDrawable(m_debugCellMesh.get(), completed);
+		GetUploadContext()->UploadDrawable(m_debugCellMesh.get(), completed);
 	}
 }
 

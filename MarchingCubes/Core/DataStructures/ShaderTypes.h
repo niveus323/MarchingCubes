@@ -3,13 +3,12 @@
 using namespace DirectX;
 
 // alignment
-static constexpr uint32_t CB_ALIGN = D3D12_CONSTANT_BUFFER_DATA_PLACEMENT_ALIGNMENT;
+static constexpr uint32_t CB_ALIGN = 256u;
 
 struct alignas(16) CameraConstants
 {
 	XMFLOAT4X4 viewProjMatrix;
 	XMFLOAT3 cameraPosition;
-	float _padding;
 };
 
 struct alignas(16) ObjectConstants
@@ -17,14 +16,37 @@ struct alignas(16) ObjectConstants
 	XMFLOAT4X4 worldMatrix;
 	XMFLOAT4X4 worldInvMatrix;
 	uint32_t materialIndex = 0;
+	bool bUseTriplanar = false;
 };
 
 enum class EShadingModel : uint32_t
 {
 	DefaultLit = 0,
 	Dielectric,
-	Translucent,
-	_Count
+	Translucent
+};
+
+enum class ETextureMappingTypes : uint32_t
+{
+	DefaultUV = 0,
+	Triplanar,
+	Spherical
+};
+
+struct alignas(16) TriplanarParams
+{
+	float scale = 1.0f;
+	float sharpness = 1.0f;
+	uint32_t _padding[2];
+};
+
+struct alignas(16) TextureParams
+{
+	uint32_t texIndex = UINT32_MAX;
+	ETextureMappingTypes mappingType = ETextureMappingTypes::DefaultUV;
+	uint32_t _padding[2];
+
+	TriplanarParams triplanar;
 };
 
 struct alignas(16) MaterialConstants
@@ -37,17 +59,18 @@ struct alignas(16) MaterialConstants
 	float ao;					 // AmbientOcclusion
 	float ior;					 // Dielectric ¸ðµ¨ Àü¿ë ±¼Àý·ü
 
-	EShadingModel shadingModel;	 // ¹Ý»ç ¸ðµ¨¸µ Å¸ÀÔ
+	EShadingModel shadingModel = EShadingModel::DefaultLit;	 // ¹Ý»ç ¸ðµ¨¸µ Å¸ÀÔ
 	float opacity = 1.0f;
-	float _padding[2];
+	uint32_t _padding[2];
+
+	TextureParams diffuse;
 };
 
 enum class ELightType : uint32_t
 {
 	Directional = 0,
-	Point = 1,
-	Spot = 2,
-	_Count
+	Point,
+	Spot
 };
 
 /*

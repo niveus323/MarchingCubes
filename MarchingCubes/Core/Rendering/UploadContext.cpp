@@ -130,11 +130,11 @@ void UploadContext::UploadDrawable(IDrawable* drawable, uint64_t completedFenceV
 	GeometryBuffer* buf = drawable->GetGPUBuffer();
 	if (!cpuData || !buf) return;
 
-	const uint32_t vbBytes = static_cast<uint32_t>(cpuData->vertices.size() * sizeof(Vertex));
-	const uint32_t ibBytes = static_cast<uint32_t>(cpuData->indices.size() * sizeof(uint32_t));
-	uint32_t vbAligned = AlignUp(vbBytes, 4u); // 4byte 정렬
-	uint32_t ibAligned = AlignUp(ibBytes, 4u); // R32_UINT 사용하므로 4bytes 정렬
-	uint32_t totalBytes = vbAligned + ibAligned;
+	const uint64_t vbBytes = cpuData->vertices.size() * sizeof(Vertex);
+	const uint64_t ibBytes = cpuData->indices.size() * sizeof(uint32_t);
+	uint64_t vbAligned = AlignUp64(vbBytes, 4ull); // 4byte 정렬
+	uint64_t ibAligned = AlignUp64(ibBytes, 4ull); // R32_UINT 사용하므로 4bytes 정렬
+	uint64_t totalBytes = vbAligned + ibAligned;
 
 	// Default VB/IB 바인딩되어있는지 확인하고 없으면 할당받는다.
 	EnsureDefaultVB(buf, vbBytes, drawable->GetDebugName());
@@ -271,7 +271,7 @@ void UploadContext::UploadObjectConstants(uint32_t frameIndex, GeometryBuffer* b
 	if (handle.res) FreeBufferHandle(handle);
 }
 
-void UploadContext::UploadStructuredBuffer(ID3D12GraphicsCommandList* cmd, const void* srcData, uint32_t byteSize, ID3D12Resource* buffer, uint64_t dstOffset, const char* debugName)
+void UploadContext::UploadStructuredBuffer(ID3D12GraphicsCommandList* cmd, const void* srcData, uint64_t byteSize, ID3D12Resource* buffer, uint64_t dstOffset, const char* debugName)
 {
 	if (!srcData || !buffer || byteSize == 0) return;
 	assert(m_device && m_allocator && "UploadStructuredBuffer : Invalid state");
@@ -304,7 +304,12 @@ void UploadContext::UploadContstants(uint32_t frameIndex, const void* srcData, u
 	memcpy(outHandle.cpuPtr, srcData, size);
 }
 
-void UploadContext::EnsureDefaultVB(GeometryBuffer* buf, uint32_t neededSize, const char* debugName)
+void UploadContext::UploadTexture2D(ID3D12GraphicsCommandList* cmd, ID3D12Resource* pDestinationResource, const std::vector<D3D12_SUBRESOURCE_DATA>& subResources, const char* debugName)
+{
+	UploadTexture2D_Internal(cmd, pDestinationResource, subResources, D3D12_RESOURCE_STATE_COMMON, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE, debugName);
+}
+
+void UploadContext::EnsureDefaultVB(GeometryBuffer* buf, uint64_t neededSize, const char* debugName)
 {
 	BufferHandle curVB = buf->GetCurrentVBHandle();
 	if (curVB.size < neededSize)
@@ -324,7 +329,7 @@ void UploadContext::EnsureDefaultVB(GeometryBuffer* buf, uint32_t neededSize, co
 	}
 }
 
-void UploadContext::EnsureDefaultIB(GeometryBuffer* buf, uint32_t neededSize, const char* debugName)
+void UploadContext::EnsureDefaultIB(GeometryBuffer* buf, uint64_t neededSize, const char* debugName)
 {
 	BufferHandle curIB = buf->GetCurrentIBHandle();
 	if (curIB.size < neededSize)
@@ -353,4 +358,28 @@ void UploadContext::FreeBufferHandle(const BufferHandle& handle)
 		}
 	}
 	m_reclaimed.push_back(handle);
+}
+
+void UploadContext::UploadTexture2D_Internal(
+	ID3D12GraphicsCommandList* cmd, 
+	ID3D12Resource* pDestinationResource, 
+	const std::vector<D3D12_SUBRESOURCE_DATA>& subResources, 
+	D3D12_RESOURCE_STATES before, 
+	D3D12_RESOURCE_STATES after, 
+	const char* debugName)
+{
+	UINT64 size = GetRequiredIntermediateSize(pDestinationResource, 0, static_cast<UINT>(subResources.size()));
+	BufferHandle handle {};
+	AllocDesc desc {
+		.kind = AllocDesc::Kind::Staging,
+		.lifetime = AllocDesc::LifeTime::LONG,
+		.size = size,
+		.align = D3D12_TEXTURE_DATA_PLACEMENT_ALIGNMENT,
+		.owner = debugName
+	};
+	m_allocator->Alloc(m_device, desc, handle);
+	assert(handle.res != nullptr && "UploadTexture2D : Failed to Allocate!!!!");
+	cmd->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(pDestinationResource, before, D3D12_RESOURCE_STATE_COPY_DEST));
+	UpdateSubresources(cmd, pDestinationResource, handle.res, handle.offset, 0, static_cast<UINT>(subResources.size()), subResources.data());
+	cmd->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(pDestinationResource, D3D12_RESOURCE_STATE_COPY_DEST, after));
 }

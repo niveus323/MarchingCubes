@@ -28,11 +28,7 @@ public:
 	uint32_t AllocateStaticSlot();
 	void ResetDynamicSlots(uint32_t frameIdx);
 	
-	D3D12_CPU_DESCRIPTOR_HANDLE GetStaticCpu(uint32_t slot) const { return m_ring->StaticCpuAt(slot); }
-	D3D12_GPU_DESCRIPTOR_HANDLE GetStaticGpu(uint32_t slot) const { return m_ring->StaticGpuAt(slot); }
-	D3D12_CPU_DESCRIPTOR_HANDLE GetDynamicCpu(uint32_t frameIdx, uint32_t slot) const { return m_ring->CpuAt(frameIdx, slot); }
-	D3D12_GPU_DESCRIPTOR_HANDLE GetDynamicGpu(uint32_t frameIdx, uint32_t slot) const { return m_ring->GpuAt(frameIdx, slot); }
-	D3D12_CPU_DESCRIPTOR_HANDLE GetSamplerCpu(uint32_t slot) const 
+	D3D12_CPU_DESCRIPTOR_HANDLE GetSamplerCpu(uint32_t slot) const
 	{
 		assert(slot < m_samplerCount);
 		D3D12_CPU_DESCRIPTOR_HANDLE h = m_samplerCpuBase;
@@ -46,6 +42,10 @@ public:
 		h.ptr += static_cast<UINT64>(slot) * m_samplerInc;
 		return h;
 	}
+	D3D12_CPU_DESCRIPTOR_HANDLE GetDynamicCpu(uint32_t frameIdx, uint32_t slot) const { return m_ring->CpuAt(frameIdx, slot); }
+	D3D12_GPU_DESCRIPTOR_HANDLE GetDynamicGpu(uint32_t frameIdx, uint32_t slot) const { return m_ring->GpuAt(frameIdx, slot); }
+	D3D12_CPU_DESCRIPTOR_HANDLE GetStaticCpu(uint32_t slot) const { return m_ring->StaticCpuAt(slot); }
+	D3D12_GPU_DESCRIPTOR_HANDLE GetStaticGpu(uint32_t slot) const { return m_ring->StaticGpuAt(slot); }
 
 	ID3D12DescriptorHeap* GetRTVHeap(uint32_t slot) const { return m_rtvHeaps[slot].Get(); }
 	ID3D12DescriptorHeap* GetDSVHeap(uint32_t slot) const { return m_dsvHeaps[slot].Get(); }

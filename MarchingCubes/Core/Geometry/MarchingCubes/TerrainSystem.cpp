@@ -12,7 +12,7 @@ TerrainSystem::TerrainSystem(ID3D12Device* device, std::shared_ptr<SdfField<floa
 	{
 		m_chunkRenderer.reset();
 	}
-	m_chunkRenderer = std::make_unique<MeshChunkRenderer>(device);
+	m_chunkRenderer = std::make_unique<MeshChunkRenderer>();
 	setMode(device, mode);
 	setField(device, grd);
 }
@@ -123,24 +123,18 @@ void TerrainSystem::MakeDebugCell(GeometryData& outMeshData, bool bDrawFullCell)
 			}
 
 			uint32_t index = static_cast<uint32_t>(outMeshData.indices.size());
-			Vertex A{};
-			A.pos = { 
-				m_desc.origin.x + x * m_desc.cellsize, 
-				m_desc.origin.y + y * m_desc.cellsize,
-				m_desc.origin.z 
+			Vertex A{
+				.pos = { m_desc.origin.x + x * m_desc.cellsize, m_desc.origin.y + y * m_desc.cellsize, m_desc.origin.z },
+				.normal = { 0.0f, 0.0f, 1.0f },
+				.color = { 1.0f, 1.0f, 1.0f, 1.0f }
 			};
-			A.normal = { 0.0f, 0.0f, 1.0f };
-			A.color = { 1.0f, 1.0f, 1.0f, 1.0f };
-
-			Vertex B{};
-			B.pos = { 
-				A.pos.x, 
-				A.pos.y, 
-				A.pos.z + m_desc.cells.z * m_desc.cellsize 
+			
+			Vertex B{
+				.pos = { A.pos.x, A.pos.y, A.pos.z + m_desc.cells.z * m_desc.cellsize },
+				.normal = { 0.0f, 0.0f, 1.0f },
+				.color = { 1.0f, 1.0f, 1.0f, 1.0f }
 			};
-			B.normal = { 0.0f, 0.0f, 1.0f };
-			B.color = { 1.0f, 1.0f, 1.0f, 1.0f };
-
+			
 			outMeshData.vertices.push_back(A);
 			outMeshData.vertices.push_back(B);
 			outMeshData.indices.push_back(index);
@@ -167,24 +161,18 @@ void TerrainSystem::MakeDebugCell(GeometryData& outMeshData, bool bDrawFullCell)
 			}
 
 			uint32_t index = static_cast<uint32_t>(outMeshData.indices.size());
-			Vertex A{};
-			A.pos = {
-				m_desc.origin.x + x * m_desc.cellsize,
-				m_desc.origin.y,
-				m_desc.origin.z + z * m_desc.cellsize
+			Vertex A{
+				.pos = { m_desc.origin.x + x * m_desc.cellsize, m_desc.origin.y, m_desc.origin.z + z * m_desc.cellsize },
+				.normal = { 0.0f, 1.0f, 0.0f },
+				.color = { 1.0f, 1.0f, 1.0f, 1.0f }
 			};
-			A.normal = { 0.0f, 1.0f, 0.0f };
-			A.color = { 1.0f, 1.0f, 1.0f, 1.0f };
-
-			Vertex B{};
-			B.pos = {
-				A.pos.x,
-				A.pos.y + m_desc.cells.y * m_desc.cellsize ,
-				A.pos.z 
+			
+			Vertex B{
+				.pos = { A.pos.x, A.pos.y + m_desc.cells.y * m_desc.cellsize , A.pos.z },
+				.normal = { 0.0f, 0.0f, 0.0f },
+				.color = { 1.0f, 1.0f, 1.0f, 1.0f }
 			};
-			B.normal = { 0.0f, 0.0f, 0.0f };
-			B.color = { 1.0f, 1.0f, 1.0f, 1.0f };
-
+			
 			outMeshData.vertices.push_back(A);
 			outMeshData.vertices.push_back(B);
 			outMeshData.indices.push_back(index);
@@ -210,24 +198,18 @@ void TerrainSystem::MakeDebugCell(GeometryData& outMeshData, bool bDrawFullCell)
 			}
 
 			uint32_t index = static_cast<uint32_t>(outMeshData.indices.size());
-			Vertex A{};
-			A.pos = {
-				m_desc.origin.x,
-				m_desc.origin.y + y * m_desc.cellsize,
-				m_desc.origin.z + z * m_desc.cellsize
+			Vertex A{
+				.pos = { m_desc.origin.x, m_desc.origin.y + y * m_desc.cellsize, m_desc.origin.z + z * m_desc.cellsize },
+				.normal = { 0.0f, 0.0f, 0.0f },
+				.color = { 1.0f, 1.0f, 1.0f, 1.0f }
 			};
-			A.normal = { 0.0f, 0.0f, 0.0f };
-			A.color = { 1.0f, 1.0f, 1.0f, 1.0f };
-
-			Vertex B{};
-			B.pos = {
-				A.pos.x + m_desc.cells.x * m_desc.cellsize ,
-				A.pos.y,
-				A.pos.z
+			
+			Vertex B{
+				.pos = { A.pos.x + m_desc.cells.x * m_desc.cellsize , A.pos.y, A.pos.z },
+				.normal = { 0.0f, 0.0f, 0.0f },
+				.color = { 1.0f, 1.0f, 1.0f, 1.0f }
 			};
-			B.normal = { 0.0f, 0.0f, 0.0f };
-			B.color = { 1.0f, 1.0f, 1.0f, 1.0f };
-
+			
 			outMeshData.vertices.push_back(A);
 			outMeshData.vertices.push_back(B);
 			outMeshData.indices.push_back(index);

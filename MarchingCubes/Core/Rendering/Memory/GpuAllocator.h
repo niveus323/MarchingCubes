@@ -19,7 +19,7 @@ struct AllocDesc
 		LONG
 	}lifetime = LifeTime::SHORT;
 
-	uint32_t size = 0;
+	uint64_t size = 0;
 	uint32_t align = D3D12_CONSTANT_BUFFER_DATA_PLACEMENT_ALIGNMENT;
 	const char* owner = "";
 };

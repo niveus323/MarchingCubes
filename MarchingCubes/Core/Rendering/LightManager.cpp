@@ -66,9 +66,7 @@ LightBlobView LightManager::BuildLightConstants() const
 	uint32_t count = (uint32_t)m_lights.size(); // 여기서 m_lights는 "씬의 현재 라이트" 목록
 
 	// 2) 필요한 총 바이트 수 계산
-	size_t totalBytes =
-		sizeof(LightConstantsHeader) +
-		sizeof(Light) * count;
+	size_t totalBytes = sizeof(LightConstantsHeader) + sizeof(Light) * count;
 
 	// 3) 내부 임시 버퍼 사이즈 맞추기
 	m_scratch.resize(totalBytes);
@@ -91,6 +89,6 @@ LightBlobView LightManager::BuildLightConstants() const
 	// 7) 뷰 리턴
 	LightBlobView view{};
 	view.data = m_scratch.data();
-	view.size = totalBytes;
+	view.size = static_cast<uint32_t>(totalBytes);
 	return view;
 }

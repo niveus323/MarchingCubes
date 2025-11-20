@@ -11,10 +11,10 @@ struct UploadAllocation {
 class UploadRing
 {
 public:
-    UploadRing(ID3D12Device* device, uint64_t totalSize, uint64_t align = 256ull);
+    UploadRing(ID3D12Device* device, uint64_t totalSize);
     ~UploadRing();
 
-    bool Allocate(uint64_t size, uint64_t& outOffset, uint8_t*& outPtr);
+    bool Allocate(const uint64_t alignedSize, uint64_t& outOffset, uint8_t*& outPtr);
     void TagFence(uint64_t fenceValue);
     void Reclaim(uint64_t completedFenceValue);
 
@@ -28,7 +28,6 @@ private:
     uint64_t m_totalSize = 0;
     uint64_t m_head = 0;
     uint64_t m_tail = 0;
-    uint64_t m_align = 256ull;
     std::deque<UploadAllocation> m_inFlight; // 완료 대기 중인 공간들
     std::vector<UploadAllocation> m_unframed; // 새로 할당되어 fence 값이 지정되지 않은 공간들
 };

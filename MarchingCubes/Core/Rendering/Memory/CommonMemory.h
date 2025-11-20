@@ -7,7 +7,7 @@ struct BufferHandle
 {
 	ID3D12Resource* res = nullptr;
 	uint64_t offset = 0;
-	uint32_t size = 0;
+	uint64_t size = 0;
 	uint64_t retireFence = 0;
 	D3D12_GPU_VIRTUAL_ADDRESS gpuVA = 0; // For CB
 	uint8_t* cpuPtr = nullptr; // For CB & Staging

@@ -2,7 +2,6 @@
 #include "Camera.h"
 #include "Core/DataStructures/Data.h"
 #include "Core/Input/InputState.h"
-#include "Material.h"
 #include <algorithm>
 
 Camera::Camera(float viewportWidth, float viewportHeight, float fov, float zNear, float zFar)

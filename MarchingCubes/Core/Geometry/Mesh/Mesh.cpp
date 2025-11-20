@@ -25,7 +25,7 @@ DrawBindingInfo Mesh::GetDrawBinding() const
 	const BufferHandle& vb = m_buffer.GetCurrentVBHandle();
 	info.vbv = {
 		.BufferLocation = vb.res ? vb.res->GetGPUVirtualAddress() + vb.offset : 0,
-		.SizeInBytes = vb.size,
+		.SizeInBytes = static_cast<UINT>(vb.size),
 		.StrideInBytes = static_cast<UINT>(sizeof(Vertex)),
 	};
 

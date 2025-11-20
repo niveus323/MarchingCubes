@@ -14,7 +14,7 @@ protected:
     virtual void InitScene(ID3D12GraphicsCommandList* cmd) override;
     virtual void InitUI() override;
     virtual void UpdateScene(float deltaTime) override;
-    virtual void SyncGpu(ID3D12GraphicsCommandList* cmd) override;
+    virtual void OnUpload(ID3D12GraphicsCommandList* cmd) override;
     virtual void DrawScene(ID3D12GraphicsCommandList* cmd) override;
 
 private:

@@ -1,5 +1,10 @@
 #include "pch.h"
 #include "DXAppBase.h"
+#include "Core/Assets/ResourceManager.h"
+#include "Core/Rendering/Memory/GpuAllocator.h"
+#include "Core/Rendering/Memory/StaticBufferRegistry.h"
+#include "Core/Rendering/UploadContext.h"
+#include "Core/Rendering/PSO/DescriptorAllocator.h"
 using namespace Microsoft::WRL;
 
 static inline bool IsTearingSupported(IDXGIFactory6* factory) {
@@ -10,16 +15,30 @@ static inline bool IsTearingSupported(IDXGIFactory6* factory) {
 	return !!allowTearing;
 }
 
+DXAppBase::DXAppBase(uint32_t width, uint32_t height, std::wstring name) : 
+	m_width(width),
+	m_height(height),
+	m_aspectRatio(static_cast<float>(width) / static_cast<float>(height)),
+	m_userWarpDevice(false),
+	m_title(name)
+{
+	std::fill(std::begin(m_fenceValues), std::end(m_fenceValues), 0ull);
+}
+
+DXAppBase::~DXAppBase() = default;
+
 void DXAppBase::OnInit()
 {
 	CreateDevice();
-	CreateQueues();
+	CreateCommandQueue();
 	CreateSwapChain(Win32Application::GetHwnd(), GetPresentQueue());
 	CreateBackbuffersAndDefaultDSV(m_width, m_height);  
-	CreateFenceAndEvent();                          
+	CreateFenceAndEvent();
+	CreateCommandObjects();
+	CreateSubsystems();
 	OnAfterSwapchainCreated();                      
-	OnInitPipelines();                              
-	OnBuildInitialScene();                          
+	OnInitPipelines();
+	InitializeScene();
 }
 
 void DXAppBase::OnDestroy()
@@ -34,6 +53,32 @@ void DXAppBase::OnDestroy()
 	m_width = m_height = 0;
 }
 
+void DXAppBase::Render()
+{
+	ThrowIfFailed(m_commandAllocators[m_frameIndex]->Reset());
+	ThrowIfFailed(m_commandList->Reset(m_commandAllocators[m_frameIndex].Get(), nullptr));
+	PrepareRender();
+	OnRender();
+
+	// 렌더링 끝났음. Present 상태로 전환
+	m_commandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(CurrentBackbuffer(), D3D12_RESOURCE_STATE_RENDER_TARGET, D3D12_RESOURCE_STATE_PRESENT));
+
+	ThrowIfFailed(m_commandList->Close());
+	ID3D12CommandList* ppCommandLists[] = { m_commandList.Get() };
+	m_commandQueue->ExecuteCommandLists(_countof(ppCommandLists), ppCommandLists);
+
+	uint32_t syncInterval = 1;
+	uint32_t flags = 0;
+	if (m_tearingSupported)
+	{
+		syncInterval = 0;
+		flags = DXGI_PRESENT_ALLOW_TEARING;
+	}
+	ThrowIfFailed(m_swapChain->Present(syncInterval, flags));
+
+	MoveToNextFrame();
+}
+
 void DXAppBase::OnResize(uint32_t width, uint32_t height)
 {
 	if (!m_swapChain) return;
@@ -44,7 +89,7 @@ void DXAppBase::OnResize(uint32_t width, uint32_t height)
 
 	DestroyBackbuffersAndDefaultDSV();
 	ThrowIfFailed(m_swapChain->ResizeBuffers( kFrameCount, width, height, m_backbufferFormat, m_tearingSupported ? DXGI_SWAP_CHAIN_FLAG_ALLOW_TEARING : 0));
-	UpdateFrameIndexFromSwapchain();
+	m_frameIndex = m_swapChain->GetCurrentBackBufferIndex();
 	CreateBackbuffersAndDefaultDSV(width, height);
 	OnAfterSwapchainCreated(); // 파생: 오프스크린 리소스 재생성 등
 }
@@ -169,6 +214,16 @@ void DXAppBase::CreateDevice()
 	NAME_D3D12_OBJECT(m_device);
 }
 
+void DXAppBase::CreateCommandQueue()
+{
+	D3D12_COMMAND_QUEUE_DESC queueDesc = {};
+	queueDesc.Flags = D3D12_COMMAND_QUEUE_FLAG_NONE;
+	queueDesc.Type = D3D12_COMMAND_LIST_TYPE_DIRECT;
+
+	ThrowIfFailed(m_device->CreateCommandQueue(&queueDesc, IID_PPV_ARGS(m_commandQueue.ReleaseAndGetAddressOf())));
+	NAME_D3D12_OBJECT_ALIAS(m_commandQueue, L"Main_Graphics_Queue");
+}
+
 void DXAppBase::CreateSwapChain(HWND hwnd, ID3D12CommandQueue* presentQueue)
 {
 	DXGI_SWAP_CHAIN_DESC1 swapChainDesc = {};
@@ -188,6 +243,24 @@ void DXAppBase::CreateSwapChain(HWND hwnd, ID3D12CommandQueue* presentQueue)
 
 	//FullScreen Support Setting
 	ThrowIfFailed(m_factory->MakeWindowAssociation(Win32Application::GetHwnd(), DXGI_MWA_NO_ALT_ENTER));
+}
+
+// CommandAllocator, CommandList 생성, 초기 FenceValue 세팅
+void DXAppBase::CreateCommandObjects()
+{
+	m_nextFenceValue = m_swapChainFence->GetCompletedValue();
+	for (uint32_t n = 0; n < kFrameCount; n++)
+	{
+		m_fenceValues[n] = m_nextFenceValue;
+		//CommandAllocator 생성
+		ThrowIfFailed(m_device->CreateCommandAllocator(D3D12_COMMAND_LIST_TYPE_DIRECT, IID_PPV_ARGS(m_commandAllocators[n].ReleaseAndGetAddressOf())));
+		NAME_D3D12_OBJECT_INDEXED(m_commandAllocators, n);
+	}
+
+	// Create CommandList.
+	ThrowIfFailed(m_device->CreateCommandList(0, D3D12_COMMAND_LIST_TYPE_DIRECT, m_commandAllocators[m_frameIndex].Get(), nullptr, IID_PPV_ARGS(m_commandList.ReleaseAndGetAddressOf())));
+	NAME_D3D12_OBJECT(m_commandList);
+	ThrowIfFailed(m_commandList->Close());
 }
 
 void DXAppBase::CreateBackbuffersAndDefaultDSV(uint32_t width, uint32_t height)
@@ -241,6 +314,32 @@ void DXAppBase::CreateBackbuffersAndDefaultDSV(uint32_t width, uint32_t height)
 	m_device->CreateDepthStencilView(m_depthStencil.Get(), nullptr, m_dsvHeap->GetCPUDescriptorHandleForHeapStart());
 }
 
+
+void DXAppBase::CreateSubsystems()
+{
+	m_gpuAllocator = std::make_unique<GpuAllocator>(m_device.Get());
+	m_staticBufferRegistry = std::make_unique<StaticBufferRegistry>(m_device.Get());
+	m_descriptorAllocator = std::make_unique<DescriptorAllocator>(m_device.Get());
+	m_uploadContext = std::make_unique<UploadContext>(m_device.Get(), m_gpuAllocator.get(), m_staticBufferRegistry.get(), m_descriptorAllocator.get());
+	m_resourceManager = std::make_unique<ResourceManager>(m_device.Get(), m_uploadContext.get(), m_descriptorAllocator.get());
+	OnInitSubSystems();
+}
+
+void DXAppBase::InitializeScene()
+{
+	ThrowIfFailed(m_commandAllocators[0]->Reset());
+	ThrowIfFailed(m_commandList->Reset(m_commandAllocators[0].Get(), nullptr));
+	OnBuildInitialScene(m_commandList.Get());
+	if (m_resourceManager) m_resourceManager->BuildTables(m_commandList.Get());
+	// Close CommandList
+	ThrowIfFailed(m_commandList->Close());
+
+	ID3D12CommandList* ppCommandLists[] = { m_commandList.Get() };
+	m_commandQueue->ExecuteCommandLists(_countof(ppCommandLists), ppCommandLists);
+
+	WaitForGpu();
+}
+
 void DXAppBase::DestroyBackbuffersAndDefaultDSV()
 {
 	for (auto& rt : m_renderTargets)
@@ -269,7 +368,60 @@ void DXAppBase::DestroyFenceAndEvent()
 	}
 }
 
-void DXAppBase::UpdateFrameIndexFromSwapchain()
+void DXAppBase::PrepareRender()
 {
+	// 이번 프레임에 할당 가능한 공간 체크
+	m_uploadContext->Reclaim(m_swapChainFence->GetCompletedValue());
+	m_gpuAllocator->Reclaim(m_swapChainFence->GetCompletedValue());
+	OnUpload(m_commandList.Get());
+	m_resourceManager->syncGpu(m_commandList.Get());
+	m_uploadContext->Execute(m_commandList.Get());
+}
+
+void DXAppBase::MoveToNextFrame()
+{
+	const uint32_t prevIndex = m_frameIndex;
+	const uint64_t fenceToSignal = ++m_nextFenceValue;
+
+	if (fenceToSignal > 0) ThrowIfFailed(GetPresentQueue()->Signal(m_swapChainFence.Get(), fenceToSignal));
+
+	m_uploadContext->TrackPendingAllocations(fenceToSignal);
+	m_fenceValues[prevIndex] = fenceToSignal;
+	// 체인 스왑
 	m_frameIndex = m_swapChain->GetCurrentBackBufferIndex();
+
+	// 체인 스왑 전에 완료하지 못한 작업은 대기
+	uint64_t lastFenceValue = m_fenceValues[m_frameIndex];
+	if (lastFenceValue > 0 && m_swapChainFence->GetCompletedValue() < lastFenceValue)
+	{
+		ThrowIfFailed(m_swapChainFence->SetEventOnCompletion(lastFenceValue, m_fenceEvent));
+		WaitForSingleObjectEx(m_fenceEvent, INFINITE, FALSE);
+	}
+	m_descriptorAllocator->ResetDynamicSlots(m_frameIndex);
+
+	OnAfterChainSwaped();
+}
+
+void DXAppBase::WaitForGpu()
+{
+	assert(m_swapChainFence);
+	uint64_t lastFenceValue = m_swapChainFence->GetCompletedValue();
+	if (lastFenceValue == 0)
+	{
+		const uint64_t kInitFence = 1;
+		m_nextFenceValue = std::max<uint64_t>(m_nextFenceValue, kInitFence);
+		for (uint32_t i = 0; i < kFrameCount; ++i)
+		{
+			m_fenceValues[i] = std::max<uint64_t>(m_fenceValues[i], kInitFence);
+		}
+		ThrowIfFailed(GetPresentQueue()->Signal(m_swapChainFence.Get(), kInitFence));
+	}
+	else if (m_swapChainFence->GetCompletedValue() < lastFenceValue)
+	{
+		ThrowIfFailed(GetPresentQueue()->Signal(m_swapChainFence.Get(), lastFenceValue));
+		ThrowIfFailed(m_swapChainFence->SetEventOnCompletion(lastFenceValue, m_fenceEvent));
+		WaitForSingleObjectEx(m_fenceEvent, INFINITE, FALSE);
+
+	}
+	m_fenceValues[m_frameIndex] = lastFenceValue + 1;
 }

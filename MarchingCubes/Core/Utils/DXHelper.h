@@ -17,6 +17,23 @@ inline std::string HrToString(HRESULT hr)
 	return std::string(s_str);
 }
 
+inline std::string UTF16ToUTF8(const wchar_t* wstr)
+{
+    if (!wstr || *wstr == L'\0') return {};
+
+    // null 포함한 필요 길이
+    int sizeNeeded = ::WideCharToMultiByte(CP_UTF8, 0, wstr, -1, nullptr, 0, nullptr, nullptr);
+
+    // 빈 문자열이거나 오류
+    if (sizeNeeded <= 1) return {};
+
+    std::string result(static_cast<size_t>(sizeNeeded - 1), '\0'); // null 제외한 길이
+    ::WideCharToMultiByte(CP_UTF8, 0, wstr, -1, result.data(), sizeNeeded, nullptr, nullptr);
+
+    return result;
+}
+
+
 class HrException : public std::runtime_error
 {
 public:
@@ -56,8 +73,9 @@ inline std::wstring GetFullPath(AssetType type, LPCWSTR name)
     const wchar_t* root = nullptr;
     switch (type)
     {
-    case AssetType::Texture: root = ASSETS_ROOT; break;
+    case AssetType::Default: root = ASSETS_ROOT; break;
     case AssetType::Shader:  root = SHADERS_ROOT; break;
+    case AssetType::Texture: root = TEXTURES_ROOT; break;
     default:                  root = ASSETS_ROOT; break;
     }
     return std::wstring(root) + L"/" + std::wstring(name);

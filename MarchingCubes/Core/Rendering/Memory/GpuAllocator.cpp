@@ -4,8 +4,8 @@
 
 GpuAllocator::GpuAllocator(ID3D12Device* device, GpuAllocatorInitInfo info)
 {
-	m_cbRing = std::make_unique<UploadRing>(device, info.cbRingBytes, D3D12_CONSTANT_BUFFER_DATA_PLACEMENT_ALIGNMENT);
-	m_stagingRing = std::make_unique<UploadRing>(device, info.stagingRingBytes, 4u);
+	m_cbRing = std::make_unique<UploadRing>(device, info.cbRingBytes);
+	m_stagingRing = std::make_unique<UploadRing>(device, info.stagingRingBytes);
 
 	uint64_t vbSmallSize = info.vbPoolBytes >> 2;
 	uint64_t vbLargeSize = info.vbPoolBytes - vbSmallSize;
@@ -34,7 +34,7 @@ void GpuAllocator::Alloc(ID3D12Device* device, const AllocDesc& desc, BufferHand
 	auto AllocFromRing = [](UploadRing* ring, ID3D12Device* device, const AllocDesc& desc, BufferHandle& outHandle) {
 		uint64_t offset = UINT64_MAX;
 		uint8_t* cpuPtr = nullptr;
-		if (!ring->Allocate(desc.size, offset, cpuPtr)) return false;
+		if (!ring->Allocate(AlignUp64(desc.size, desc.align), offset, cpuPtr)) return false;
 
 		outHandle.res = ring->GetResource();
 		outHandle.offset = offset;
@@ -114,7 +114,7 @@ void GpuAllocator::Alloc(ID3D12Device* device, const AllocDesc& desc, BufferHand
 
 			const uint64_t cutOffMin = isVB ? m_vbPool->GetCapacity() >> 4 : m_ibPool->GetCapacity() >> 4;
 			const uint64_t cutOffMax = cutOffMin << 2;
-			const uint32_t cutoff = std::clamp<uint64_t>(static_cast<uint64_t>(isVB ? 2 * PROMOTE_VB_MIN : 2 * PROMOTE_IB_MIN), cutOffMin, cutOffMax);
+			const uint64_t cutoff = std::clamp<uint64_t>(static_cast<uint64_t>(isVB ? 2 * PROMOTE_VB_MIN : 2 * PROMOTE_IB_MIN), cutOffMin, cutOffMax);
 			bool ok = (desc.size > cutoff) ?
 				tryPool(pool_large, device, desc, outHandle) || tryPool(pool_small, device, desc, outHandle) : 
 				tryPool(pool_small, device, desc, outHandle) || tryPool(pool_large, device, desc, outHandle);

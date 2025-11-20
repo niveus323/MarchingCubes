@@ -5,9 +5,10 @@
 
 struct Vertex
 {
-	DirectX::XMFLOAT3 pos;
-	DirectX::XMFLOAT3 normal;
-	DirectX::XMFLOAT4 color;
+	DirectX::XMFLOAT3 pos{0.0f, 0.0f, 0.0f};
+	DirectX::XMFLOAT3 normal{0.0f, 0.0f, 1.0f};
+	DirectX::XMFLOAT2 texCoord{0.0f, 0.0f};
+	DirectX::XMFLOAT4 color{1.0f, 1.0f, 1.0f, 1.0f};
 };
 
 struct GeometryData
@@ -21,5 +22,5 @@ static uint32_t kMaxLights = 256u;
 struct LightBlobView
 {
 	const void* data;
-	size_t size;
+	uint32_t size;
 };

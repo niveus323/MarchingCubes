@@ -5,7 +5,7 @@
 #include "Core/Geometry/Mesh/Mesh.h"
 #include "Core/Input/InputState.h"
 #include "Core/Rendering/RenderSystem.h"
-#include "Core/Utils/Profiler.h"
+#include "Core/Trace/Profiler.h"
 
 class EditorApp : public DXAppBase
 {
@@ -23,29 +23,20 @@ public:
 
 	void OnPlatformEvent(uint32_t msg, WPARAM wParam, LPARAM lParam) override;
 protected:
-	virtual void CreateQueues();
-	virtual ID3D12CommandQueue* GetPresentQueue() const { return m_commandQueue.Get(); };
-
 	virtual void OnAfterSwapchainCreated() override;
 	virtual void OnInitPipelines() override;
-	ID3D12GraphicsCommandList* BeginInitCommand();
-	void OnBuildInitialScene() override final;
-	void EndInitCommand();
+	void OnBuildInitialScene(ID3D12GraphicsCommandList* initCommand) override final;
+	void OnAfterChainSwaped() override final;
 
 	virtual void InitScene(ID3D12GraphicsCommandList* cmd) {}
 	virtual void InitUICommon(ID3D12GraphicsCommandList* cmd);
 	virtual void InitUI();
 	virtual void UpdateScene(float deltaTime) {}
 	virtual void UpdateUI(float deltaTime);
-	// 렌더링 명령을 추가 전 필요한 작업은 이쪽으로 (ex 버퍼 업로드)
-	virtual void BeforeDraw(ID3D12GraphicsCommandList* cmd);
-	virtual void SyncGpu(ID3D12GraphicsCommandList* cmd) {};  // NOTE : ResourceSystem/DebugDrawSystem 추가 시 해당 내용을 옮긴다.
+	virtual void OnUpload(ID3D12GraphicsCommandList* cmd) override;
 	virtual void DrawScene(ID3D12GraphicsCommandList* cmd);
 	// 렌더링 명령 추가 후 필요한 작업은 이쪽으로 (ex PostProcessing)
 	virtual void AfterDraw(ID3D12GraphicsCommandList* cmd) {}
-
-	void MoveToNextFrame();
-	void WaitForGpu();
 
 	virtual std::vector<std::wstring> GetPSOFiles() const { return { L"EditorCommon.json" }; }
 private:
@@ -71,12 +62,6 @@ protected:
 	std::unique_ptr<LightManager> m_lightManager;
 	std::unique_ptr<RenderSystem> m_renderSystem;
 
-	// Memory
-	std::unique_ptr<GpuAllocator> m_gpuAllocator;
-	std::unique_ptr<UploadContext> m_uploadContext;
-	std::unique_ptr<StaticBufferRegistry> m_staticBufferRegistry;
-	std::unique_ptr<DescriptorAllocator> m_descriptorAllocator;
-
 	// debug
 #ifdef _DEBUG
 	bool m_debugViewEnabled = false;
@@ -85,9 +70,6 @@ protected:
 #endif // _DEBUG
 
 private:
-	ComPtr<ID3D12CommandAllocator> m_commandAllocators[kFrameCount];
-	ComPtr<ID3D12CommandQueue> m_commandQueue;
-	ComPtr<ID3D12GraphicsCommandList> m_commandList;
 	ComPtr<ID3D12RootSignature> m_rootSignature;
 
 	CD3DX12_VIEWPORT m_viewport;
@@ -104,11 +86,5 @@ private:
 
 	UI::FrameCallbackToken m_uiToken_Fps = 0;
 	UI::FrameCallbackToken m_uiToken_Profiler = 0;
-
-	// Material
-	// NOTE : ResourceManager 구현 전에 임시 사용을 위한 Material StructuredBuffer
-	std::vector<MaterialGPU> m_materials;
-	ComPtr<ID3D12Resource> m_materialBufferTable;
-	uint32_t m_materialSlot = UINT32_MAX;
 };
 

@@ -1,15 +1,14 @@
 #pragma once
 #include "Core/DataStructures/Drawable.h"
 #include "Core/Rendering/PSO/PSOList.h"
-#include "Core/Rendering/Material.h"
+#include "Core/Assets/Material.h"
 #include <unordered_set>
 #include <unordered_map>
 
 // TODO : Instancing 추가 시 수정.
-
 struct BundleKey
 {
-	Material* material;
+	MaterialConstants material;
 	D3D12_VERTEX_BUFFER_VIEW vbv;
 	D3D12_INDEX_BUFFER_VIEW ibv;
 	D3D12_PRIMITIVE_TOPOLOGY topology;

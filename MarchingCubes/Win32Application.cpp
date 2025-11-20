@@ -58,7 +58,7 @@ int Win32Application::Run(DXAppBase* pAppBase, HINSTANCE hInstance, int nCmdShow
         else
         {
             pAppBase->TickAndUpdate();
-            pAppBase->OnRender();
+            pAppBase->Render();
         }
        
     }

@@ -10,29 +10,43 @@ namespace MeshGenerator
 		GeometryData result;
 		result.topology = D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST;
 
-		result.vertices.push_back({ {0.0f, radius, 0.0f}, {0.0f, 1.0f, 0.0f}, color });
+		result.vertices.push_back(Vertex{ 
+			.pos = {0.0f, radius, 0.0f}, 
+			.normal = {0.0f, 1.0f, 0.0f}, 
+			.texCoord = {0.0f, 0.0f},
+			.color = color 
+		});
 
 		for (uint32_t stack = 1; stack < stackCount; ++stack)
 		{
 			float phi = XM_PI * stack / stackCount;
+			float v = (float)stack / stackCount; // UV.y
 			for (uint32_t slice = 0; slice <= sliceCount; ++slice)
 			{
+				float u = (float)slice / sliceCount; // UV.x
 				float theta = XM_2PI * slice / sliceCount;
 				float x = radius * sinf(phi) * cosf(theta);
 				float y = radius * cosf(phi);
 				float z = radius * sinf(phi) * sinf(theta);
 
-				Vertex v;
-				v.pos = { x,y,z };
-				XMVECTOR n = XMVector3Normalize(XMLoadFloat3(&v.pos));
-				XMStoreFloat3(&v.normal, n);
-				v.color = color;
+				Vertex vertex{
+					.pos = {x,y,z},
+					.texCoord = {u, v},
+					.color = color
+				};
+				XMVECTOR n = XMVector3Normalize(XMLoadFloat3(&vertex.pos));
+				XMStoreFloat3(&vertex.normal, n);
 
-				result.vertices.push_back(v);
+				result.vertices.push_back(vertex);
 			}
 		}
 
-		result.vertices.push_back({ {0.0f, -radius, 0.0f}, {0.0f, -1.0f, 0.0f}, color });
+		result.vertices.push_back(Vertex{ 
+			.pos = {0.0f, -radius, 0.0f}, 
+			.normal = {0.0f, -1.0f, 0.0f},
+			.texCoord = {0.0f, 1.0f},
+			.color = color 
+		});
 
 		for (uint32_t i = 1; i <= sliceCount; ++i)
 		{
@@ -84,15 +98,16 @@ namespace MeshGenerator
 
 		result.vertices.clear();
 		result.indices.clear();
-		result.vertices.reserve(X * Y * Z);
-		result.indices.reserve(((X - 1) * Y * Z + X * (Y - 1) * Z + X * Y * (Z - 1)) * 2);
+		result.vertices.reserve(static_cast<size_t>(X * Y * Z));
+		result.indices.reserve(static_cast<size_t>(((X - 1) * Y * Z + X * (Y - 1) * Z + X * Y * (Z - 1)) * 2));
 
 		auto pushMCVertex = [&](int gx, int gy, int gz) {
-			Vertex v{};
-			v.pos = { float(gx), float(gy), float(gz) };
+			Vertex v{
+			 .pos = { float(gx), float(gy), float(gz) },
+			 .color = { 1,1,1,1 }
+			};
 			XMVECTOR n = XMVector3Normalize(XMLoadFloat3(&v.pos));
 			XMStoreFloat3(&v.normal, n);
-			v.color = { 1,1,1,1 };
 			result.vertices.push_back(v);
 		};
 		

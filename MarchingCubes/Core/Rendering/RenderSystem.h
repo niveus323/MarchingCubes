@@ -35,7 +35,7 @@ public:
 	bool GetPsoEnabled(int psoIndex) { return m_passEnabled[psoIndex]; }
 	inline void SetPsoEnabled(const std::string& psoName, bool bEnabled) { m_passEnabled[GetPSOIndex(psoName)] = bEnabled; }
 
-	void PrepareRender(UploadContext& uploadContext, DescriptorAllocator& descriptorAllocator, const CameraConstants& cameraData, const LightBlobView& lightData, uint32_t frameIndex);
+	void PrepareRender(_In_ UploadContext* uploadContext, _In_ DescriptorAllocator* descriptorAllocator, const CameraConstants& cameraData, const LightBlobView& lightData, uint32_t frameIndex);
 	void RenderFrame(ID3D12GraphicsCommandList* cmd);
 	bool IsDynamicRegistered(IDrawable* drawable, const std::string& psoName);
 	bool RegisterStatic(IDrawable* drawable, const std::string& psoName, uint32_t frameIndex);
@@ -57,9 +57,9 @@ private:
 	std::vector<PSOBucket> m_buckets;
 	std::vector<bool> m_passEnabled;
 
-	BufferHandle m_cameraBuf;
-	BufferHandle m_lightsBuf;
-	D3D12_GPU_DESCRIPTOR_HANDLE m_lightsGpu;
+	BufferHandle m_cameraBuf{};
+	BufferHandle m_lightsBuf{};
+	D3D12_GPU_DESCRIPTOR_HANDLE m_lightsGpu{};
 
 #ifdef _DEBUG
 	bool m_wireViewEnabled = false;

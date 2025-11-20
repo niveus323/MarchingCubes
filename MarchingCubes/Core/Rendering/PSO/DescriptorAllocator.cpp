@@ -4,14 +4,18 @@
 DescriptorAllocator::DescriptorAllocator(ID3D12Device* device, DescriptorInitInfo info)
 {
 	//Sampler
-	{
-		D3D12_DESCRIPTOR_HEAP_DESC desc{};
-		desc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_SAMPLER;
-		desc.NumDescriptors = info.samplerCount;
-		desc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
-		ThrowIfFailed(device->CreateDescriptorHeap(&desc, IID_PPV_ARGS(m_samplerHeap.ReleaseAndGetAddressOf())));
-		NAME_D3D12_OBJECT_ALIAS(m_samplerHeap, L"Sampler");
-	}
+	D3D12_DESCRIPTOR_HEAP_DESC desc{};
+	desc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_SAMPLER;
+	desc.NumDescriptors = info.samplerCount;
+	desc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
+	ThrowIfFailed(device->CreateDescriptorHeap(&desc, IID_PPV_ARGS(m_samplerHeap.ReleaseAndGetAddressOf())));
+	NAME_D3D12_OBJECT_ALIAS(m_samplerHeap, L"Sampler");
+
+	m_samplerCpuBase = m_samplerHeap->GetCPUDescriptorHandleForHeapStart();
+	m_samplerGpuBase = m_samplerHeap->GetGPUDescriptorHandleForHeapStart();
+	m_samplerInc = device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_SAMPLER);
+	m_samplerCount = info.samplerCount;
+	m_nextSampler = 0;
 
 	// CBV_SRV_UAV
 	m_ring = std::make_unique<DescriptorRing>(device, info.ringCount, info.descriptorsPerFrame, info.staticCount);
@@ -71,6 +75,7 @@ uint32_t DescriptorAllocator::AllocateStaticSlot()
 	assert(m_nextStatic < m_ring->GetStaticCount());
 	return m_nextStatic++;
 }
+
 
 void DescriptorAllocator::ResetDynamicSlots(uint32_t frameIdx)
 {

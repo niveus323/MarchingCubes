@@ -4,14 +4,20 @@
 #include <DirectXMath.h>
 #include <DirectXCollision.h>
 
-MeshChunkRenderer::MeshChunkRenderer(ID3D12Device* device) :
-	m_mappedObjectCB(nullptr)
+MeshChunkRenderer::MeshChunkRenderer()
 {
 	m_worldMat = XMMatrixIdentity();
 	XMMATRIX worldMatTrans = XMMatrixTranspose(m_worldMat);
-	XMStoreFloat4x4(&m_objectCBData.worldMatrix, worldMatTrans);
+	DirectX::XMStoreFloat4x4(&m_objectCBData.worldMatrix, worldMatTrans);
 	XMMATRIX worldMatTransInv = XMMatrixInverse(nullptr, worldMatTrans);
-	XMStoreFloat4x4(&m_objectCBData.worldInvMatrix, worldMatTransInv);
+	DirectX::XMStoreFloat4x4(&m_objectCBData.worldInvMatrix, worldMatTransInv);
+	m_objectCBData.bUseTriplanar = true;
+}
+
+MeshChunkRenderer::MeshChunkRenderer(const ObjectConstants& cb) :
+	m_objectCBData(cb)
+{
+	m_worldMat = DirectX::XMLoadFloat4x4(&m_objectCBData.worldMatrix);
 }
 
 void MeshChunkRenderer::ApplyUpdates(ID3D12Device* device, const std::vector<ChunkUpdate>& ups)
@@ -63,7 +69,6 @@ void MeshChunkRenderer::ApplyUpdates(ID3D12Device* device, const std::vector<Chu
 				chunkSlot.bNeedsUpload = true;
 				chunkSlot.meshData = u.md;
 				buildTriBounds(chunkSlot.meshData, chunkSlot.triBound);
-				//chunkSlot.meshBuffer.CreateBuffers(device, u.md);
 				m_chunks.insert_or_assign(u.key, chunkSlot);
 				m_chunkDrawables.emplace(u.key, std::make_unique<ChunkDrawable>(this, u.key));
 			}
@@ -145,7 +150,7 @@ DrawBindingInfo MeshChunkRenderer::ChunkDrawable::GetDrawBinding() const
 	const BufferHandle& vb = slot.meshBuffer.GetCurrentVBHandle();
 	info.vbv = {
 		.BufferLocation = vb.res ? vb.res->GetGPUVirtualAddress() + vb.offset : 0,
-		.SizeInBytes = vb.size,
+		.SizeInBytes = static_cast<UINT>(vb.size),
 		.StrideInBytes = static_cast<UINT>(sizeof(Vertex)),
 	};
 

@@ -2,7 +2,7 @@
 // PBR.hlsli
 // - Cook-Torrance based PBR 유틸 함수
 // ---------------------------------------------
-#ifndef PRB_HLSLI
+#ifndef PBR_HLSLI
 #define PBR_HLSLI
 
 static const float PI = 3.14159265359f;
@@ -39,6 +39,20 @@ float GeometrySmith(float3 N, float3 V, float3 L, float roughness)
 float3 FresnelSchlick(float cosTheta, float3 F0)
 {
     return F0 + (1.0f - F0) * pow(1.0f - cosTheta, 5.0f);
+}
+
+float3 ComputeF0_Default(float3 albedo, float specular, float metalic)
+{
+    float3 dielectricF0 = (0.08f * specular).xxx;
+    return lerp(dielectricF0, albedo, metalic);
+}
+
+float3 ComputeF0_Dielectric(float ior, float metallic, float3 albedo)
+{
+    float fd = pow((1.0f - ior) / (1.0f + ior), 2.0f);
+    float3 F0 = lerp(fd.xxx, albedo, metallic);
+    
+    return F0;
 }
 
 #endif // PBR_HLSLI

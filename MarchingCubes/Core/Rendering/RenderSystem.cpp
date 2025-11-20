@@ -53,8 +53,7 @@ RenderSystem::~RenderSystem()
 	}
 }
 
-// 업로드 준비
-void RenderSystem::PrepareRender(UploadContext& uploadContext, DescriptorAllocator& descriptorAllocator, const CameraConstants& cameraData, const LightBlobView& lightData, uint32_t frameIndex)
+void RenderSystem::PrepareRender(_In_ UploadContext* uploadContext, _In_ DescriptorAllocator* descriptorAllocator, const CameraConstants& cameraData, const LightBlobView& lightData, uint32_t frameIndex)
 {
 	// Upload Per-Object Constants
 	for (int i = 0; i < m_buckets.size(); ++i)
@@ -66,7 +65,7 @@ void RenderSystem::PrepareRender(UploadContext& uploadContext, DescriptorAllocat
 			if (GeometryBuffer* buf = drawable->GetGPUBuffer())
 			{
 				ObjectConstants cb = drawable->GetObjectConstants();
-				uploadContext.UploadObjectConstants(frameIndex, buf, cb);
+				uploadContext->UploadObjectConstants(frameIndex, buf, cb);
 			}
 		}
 
@@ -76,23 +75,23 @@ void RenderSystem::PrepareRender(UploadContext& uploadContext, DescriptorAllocat
 			if (GeometryBuffer* buf = drawable->GetGPUBuffer())
 			{
 				ObjectConstants cb = drawable->GetObjectConstants();
-				uploadContext.UploadObjectConstants(frameIndex, buf, cb);
+				uploadContext->UploadObjectConstants(frameIndex, buf, cb);
 			}
 		}
 	}
 
-	uploadContext.UploadContstants(frameIndex, &cameraData, sizeof(CameraConstants), m_cameraBuf);
+	uploadContext->UploadContstants(frameIndex, &cameraData, sizeof(CameraConstants), m_cameraBuf);
 	
 	const uint32_t lightCBSize = AlignUp(sizeof(LightConstantsHeader) + kMaxLights * sizeof(Light), CB_ALIGN);
-	const size_t blobSizeToCopy = (lightData.size <= lightCBSize) ? lightData.size : static_cast<size_t>(lightCBSize);
-	uploadContext.UploadContstants(frameIndex, lightData.data, blobSizeToCopy, m_lightsBuf);
-	uint32_t lightsSlot = descriptorAllocator.AllocateDynamic(frameIndex);
-	D3D12_CPU_DESCRIPTOR_HANDLE lightsCpu = descriptorAllocator.GetDynamicCpu(frameIndex, lightsSlot);
+	const uint32_t blobSizeToCopy = (lightData.size <= lightCBSize) ? lightData.size : lightCBSize;
+	uploadContext->UploadContstants(frameIndex, lightData.data, blobSizeToCopy, m_lightsBuf);
+	uint32_t lightsSlot = descriptorAllocator->AllocateDynamic(frameIndex);
+	D3D12_CPU_DESCRIPTOR_HANDLE lightsCpu = descriptorAllocator->GetDynamicCpu(frameIndex, lightsSlot);
 	D3D12_CONSTANT_BUFFER_VIEW_DESC desc = {};
 	desc.BufferLocation = m_lightsBuf.gpuVA;
-	desc.SizeInBytes = m_lightsBuf.size;
+	desc.SizeInBytes = static_cast<UINT>(m_lightsBuf.size);
 	m_info.device->CreateConstantBufferView(&desc, lightsCpu);
-	m_lightsGpu = descriptorAllocator.GetDynamicGpu(frameIndex, lightsSlot);
+	m_lightsGpu = descriptorAllocator->GetDynamicGpu(frameIndex, lightsSlot);
 }
 
 // 렌더링 
@@ -226,22 +225,3 @@ bool RenderSystem::UpdateDynamic(IDrawable* drawable, const GeometryData& data)
 	// 없었다면 등록하도록 유도
 	return found;
 }
-//
-//void RenderSystem::UploadCameraConstants(const CameraConstants& cameraData)
-//{
-//	memcpy(m_cameraCBMapped, &cameraData, sizeof(CameraConstants));
-//}
-//
-//void RenderSystem::UploadLightConstants(const LightBlobView& lightData)
-//{
-//	assert(lightData.size <= m_lightCBSize && "Excetion : LightData Overflowing");
-//	const size_t blobSizeToCopy = (lightData.size <= m_lightCBSize) ? lightData.size : static_cast<size_t>(m_lightCBSize);
-//
-//	// m_lightCBMapped는 Init에서 Map해둔 업로드 힙 메모리 시작 주소
-//	std::memcpy(m_lightCBMapped, lightData.data, blobSizeToCopy);
-//	size_t remain = m_lightCBSize - blobSizeToCopy;
-//	if (remain > 0)
-//	{
-//		std::memset(m_lightCBMapped + blobSizeToCopy, 0, remain);
-//	}
-//}

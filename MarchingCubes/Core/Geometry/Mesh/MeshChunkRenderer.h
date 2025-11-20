@@ -10,7 +10,8 @@ class UploadContext;
 class MeshChunkRenderer final
 {
 public:
-	MeshChunkRenderer(ID3D12Device* device);
+	explicit MeshChunkRenderer();
+	explicit MeshChunkRenderer(const ObjectConstants& cb);
 	void ApplyUpdates(ID3D12Device* device, const std::vector<ChunkUpdate>& ups);
 	void Clear();
 
@@ -114,7 +115,7 @@ private:
 	// Object Constants Buffer
 	DirectX::XMMATRIX m_worldMat;
 	ObjectConstants m_objectCBData{}; // GPU Object Constants
-	UINT8* m_mappedObjectCB;
+	UINT8* m_mappedObjectCB = nullptr;
 
 	// Debug
 	std::string m_debugName = "MeshChunk";
