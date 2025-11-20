@@ -13,9 +13,26 @@ using namespace DirectX;
 inline std::string HrToString(HRESULT hr)
 {
 	char s_str[64] = {};
-	sprintf_s(s_str, "HRESULT of 0x%08X", static_cast<UINT>(hr));
+	sprintf_s(s_str, "HRESULT of 0x%08X", static_cast<uint32_t>(hr));
 	return std::string(s_str);
 }
+
+inline std::string UTF16ToUTF8(const wchar_t* wstr)
+{
+    if (!wstr || *wstr == L'\0') return {};
+
+    // null 포함한 필요 길이
+    int sizeNeeded = ::WideCharToMultiByte(CP_UTF8, 0, wstr, -1, nullptr, 0, nullptr, nullptr);
+
+    // 빈 문자열이거나 오류
+    if (sizeNeeded <= 1) return {};
+
+    std::string result(static_cast<size_t>(sizeNeeded - 1), '\0'); // null 제외한 길이
+    ::WideCharToMultiByte(CP_UTF8, 0, wstr, -1, result.data(), sizeNeeded, nullptr, nullptr);
+
+    return result;
+}
+
 
 class HrException : public std::runtime_error
 {
@@ -56,8 +73,9 @@ inline std::wstring GetFullPath(AssetType type, LPCWSTR name)
     const wchar_t* root = nullptr;
     switch (type)
     {
-    case AssetType::Texture: root = ASSETS_ROOT; break;
+    case AssetType::Default: root = ASSETS_ROOT; break;
     case AssetType::Shader:  root = SHADERS_ROOT; break;
+    case AssetType::Texture: root = TEXTURES_ROOT; break;
     default:                  root = ASSETS_ROOT; break;
     }
     return std::wstring(root) + L"/" + std::wstring(name);
@@ -65,9 +83,9 @@ inline std::wstring GetFullPath(AssetType type, LPCWSTR name)
 
 std::wstring GetShaderFullPath(LPCWSTR shaderName);
 
-HRESULT ReadDataFromFile(LPCWSTR filename, byte** data, UINT* size);
+HRESULT ReadDataFromFile(LPCWSTR filename, byte** data, uint32_t* size);
 
-HRESULT ReadDataFromDDSFile(LPCWSTR filename, byte** data, UINT* offset, UINT* size);
+HRESULT ReadDataFromDDSFile(LPCWSTR filename, byte** data, uint32_t* offset, uint32_t* size);
 
 // Assign a name to the object to aid with debugging.
 #if defined(_DEBUG) || defined(DBG)
@@ -75,7 +93,7 @@ inline void SetName(ID3D12Object* pObject, LPCWSTR name)
 {
     pObject->SetName(name);
 }
-inline void SetNameIndexed(ID3D12Object* pObject, LPCWSTR name, UINT index)
+inline void SetNameIndexed(ID3D12Object* pObject, LPCWSTR name, uint32_t index)
 {
     WCHAR fullName[50];
     if (swprintf_s(fullName, L"%s[%u]", name, index) > 0)
@@ -95,7 +113,7 @@ inline void SetNameAlias(ID3D12Object* pObject, LPCWSTR name, LPCWSTR alias)
 inline void SetName(ID3D12Object*, LPCWSTR)
 {
 }
-inline void SetNameIndexed(ID3D12Object*, LPCWSTR, UINT)
+inline void SetNameIndexed(ID3D12Object*, LPCWSTR, uint32_t)
 {
 }
 inline void SetNameAlias(ID3D12Object*, LPCWSTR, LPCWSTR)
@@ -111,7 +129,7 @@ inline void SetNameAlias(ID3D12Object*, LPCWSTR, LPCWSTR)
 #define NAME_D3D12_OBJECT_ALIAS(x, s) SetNameAlias((x).Get(), L#x, s)
 #define NAME_D3D12_OBJECT_ALIAS_INDEXED(x, n, s) SetNameAlias((x)[n].Get(), L#x, s);
 
-inline UINT CalculateConstantBufferByteSize(UINT byteSize)
+inline uint32_t CalculateConstantBufferByteSize(uint32_t byteSize)
 {
     // Constant buffer size is required to be aligned.
     return (byteSize + (D3D12_CONSTANT_BUFFER_DATA_PLACEMENT_ALIGNMENT - 1)) & ~(D3D12_CONSTANT_BUFFER_DATA_PLACEMENT_ALIGNMENT - 1);
@@ -124,7 +142,7 @@ inline Microsoft::WRL::ComPtr<ID3DBlob> CompileShader(
     const std::string& entrypoint,
     const std::string& target)
 {
-    UINT compileFlags = 0;
+    uint32_t compileFlags = 0;
 #if defined(_DEBUG) || defined(DBG)
     compileFlags = D3DCOMPILE_DEBUG | D3DCOMPILE_SKIP_OPTIMIZATION;
 #endif
@@ -208,18 +226,18 @@ inline XMFLOAT3 ToEulerFromQuat(const XMVECTOR& quat)
     return euler;
 }
 
-static UINT AlignUp(UINT size, UINT align)
+static uint32_t AlignUp(uint32_t size, uint32_t align)
 {
     return (size + align - 1) & ~(align - 1);
 }
 
-static UINT64 AlignUp64(UINT64 size, UINT64 align)
+static uint64_t AlignUp64(uint64_t size, uint64_t align)
 {
     return (size + align - 1) & ~(align - 1);
 }
 
 namespace MCUtil {
-    inline UINT AlignCBSize(UINT size)
+    inline uint32_t AlignCBSize(uint32_t size)
     {
         return AlignUp(size, 256u);
     }
@@ -228,10 +246,10 @@ namespace MCUtil {
     void CreateUploadConstantBuffer(ID3D12Device* device, const void* data, size_t sizeBytes, ComPtr<ID3D12Resource>& outUpload);
 
     // Defaul 버퍼 + 업로드 copy (data가 nullptr이면 빈 버퍼만 생성)
-    void CreateAndUploadStructuredBuffer(ID3D12Device* device, ID3D12GraphicsCommandList* cmdList, const void* data, UINT numElements, UINT stride, ComPtr<ID3D12Resource>& outDefault, ComPtr<ID3D12Resource>* outUpload);
+    void CreateAndUploadStructuredBuffer(ID3D12Device* device, ID3D12GraphicsCommandList* cmdList, const void* data, uint32_t numElements, uint32_t stride, ComPtr<ID3D12Resource>& outDefault, ComPtr<ID3D12Resource>* outUpload);
 
     // AppendStructuredUAV 버퍼 + Counter 버퍼 생성
-    void CreateStructuredUavWithCounter(ID3D12Device* device, UINT numElements, UINT stride, ComPtr<ID3D12Resource>& outBuffer, ComPtr<ID3D12Resource>& outCounter);
+    void CreateStructuredUavWithCounter(ID3D12Device* device, uint32_t numElements, uint32_t stride, ComPtr<ID3D12Resource>& outBuffer, ComPtr<ID3D12Resource>& outCounter);
 
     // 카운터 값을 Readback 버퍼로 복사 (4-Bytes)
     void CopyCounterToReadback(ID3D12GraphicsCommandList* cmdList, ID3D12Resource* counter, ID3D12Resource* readback4B);
@@ -242,7 +260,7 @@ namespace MCUtil {
     // 3D Density Field 유틸리티
 
     // 3D Density Field 초기화 (SRV/UAV 디스크립터는 별도 생성)
-    void CreateOrUpdateDensity3D(ID3D12Device* device, ID3D12GraphicsCommandList* cmd, UINT dimX, UINT dimY, UINT dimZ, const float* srcLinearXYZ, ComPtr<ID3D12Resource>& ioTex3D, ComPtr<ID3D12Resource>* outUpload);
+    void CreateOrUpdateDensity3D(ID3D12Device* device, ID3D12GraphicsCommandList* cmd, uint32_t dimX, uint32_t dimY, uint32_t dimZ, const float* srcLinearXYZ, ComPtr<ID3D12Resource>& ioTex3D, ComPtr<ID3D12Resource>* outUpload);
 
     static void EnsureZeroUpload(ID3D12Device* device);
 
@@ -252,88 +270,49 @@ namespace MCUtil {
 
 namespace DescriptorHelper
 {
-    class DescriptorRing
-    {
-    public:
-        DescriptorRing(ID3D12Device* device, UINT ringCount, UINT descriptorsPerFrame, UINT staticCount);
-
-        // 동적 GPU Descriptor Handle 위치 인덱싱
-        D3D12_GPU_DESCRIPTOR_HANDLE GpuAt(UINT frameIdx, UINT slot) const;
-        // 정적 GPU Descriptor Handle 위치 인덱싱
-        D3D12_GPU_DESCRIPTOR_HANDLE StaticGpuAt(UINT index = 0) const;
-
-        // 동적 CPU Descriptor Handle 위치 인덱싱
-        D3D12_CPU_DESCRIPTOR_HANDLE CpuAt(UINT frameIdx, UINT slot) const;
-        D3D12_CPU_DESCRIPTOR_HANDLE StaticCpuAt(UINT index = 0) const;
-
-        ID3D12DescriptorHeap* GetHeap() const { return m_heap.Get(); }
-        UINT Inc() const { return m_inc; }
-        UINT SlotsPerFrame() const { return m_perFrame; }
-        UINT RingCount() const { return m_ringCount; }
-
-    private:
-
-        ComPtr<ID3D12DescriptorHeap>  m_heap;
-        D3D12_CPU_DESCRIPTOR_HANDLE  m_cpuBase{};
-        D3D12_GPU_DESCRIPTOR_HANDLE  m_gpuBase{};
-        UINT m_inc = 0;
-        UINT m_perFrame = 0;
-        UINT m_ringCount = 0;
-        UINT m_staticCount = 0;
-    };
-
-    void CopyToFrameSlot(ID3D12Device* device, DescriptorRing& ring, UINT frameIdx, UINT slot, D3D12_CPU_DESCRIPTOR_HANDLE srcCPU);
-    void CopyRange(ID3D12Device* device, DescriptorRing& ring, UINT frameIdx, UINT baseSlot, const D3D12_CPU_DESCRIPTOR_HANDLE* srcCPU, UINT count);
-
     void CreateSRV_Texture3D(ID3D12Device* device, ID3D12Resource* res, DXGI_FORMAT format, D3D12_CPU_DESCRIPTOR_HANDLE dstCPU);
     void CreateUAV_Texture3D(ID3D12Device* device, ID3D12Resource* res, DXGI_FORMAT format, D3D12_CPU_DESCRIPTOR_HANDLE dstCPU, ID3D12Resource* counter = nullptr);
-    void CreateSRV_Structured(ID3D12Device* device, ID3D12Resource* res, UINT stride, D3D12_CPU_DESCRIPTOR_HANDLE dstCPU);
-    void CreateUAV_Structured(ID3D12Device* device, ID3D12Resource* res, UINT stride, D3D12_CPU_DESCRIPTOR_HANDLE dstCPU, ID3D12Resource* counter = nullptr);
-    void CreateUAV_Raw(ID3D12Device* device, ID3D12Resource* res, D3D12_CPU_DESCRIPTOR_HANDLE dstCPU, UINT firstElement = 0, UINT numElements = 0);
-
-    void SetTable(ID3D12GraphicsCommandList* cmd, DescriptorRing& ring, UINT frameIdx, std::initializer_list<std::pair<UINT,UINT>> paramAndSlots);
-    inline void AssertContiguousSlots(UINT a, UINT b) // 연속된 리소스 사용 시 연속성 검증
-    {
-        assert(b == a + 1 && "Descriptor slots must be contiguous");
-    }
+    void CreateSRV_Structured(ID3D12Device* device, ID3D12Resource* res, uint32_t stride, D3D12_CPU_DESCRIPTOR_HANDLE dstCPU);
+    void CreateUAV_Structured(ID3D12Device* device, ID3D12Resource* res, uint32_t stride, D3D12_CPU_DESCRIPTOR_HANDLE dstCPU, ID3D12Resource* counter = nullptr);
+    void CreateUAV_Raw(ID3D12Device* device, ID3D12Resource* res, D3D12_CPU_DESCRIPTOR_HANDLE dstCPU, uint32_t firstElement = 0, uint32_t numElements = 0);
 }
 
 namespace ConstantBufferHelper
 {
     class CBRing {
     public:
-        CBRing(ID3D12Device* device, UINT ringCount, UINT bytesPerFrame);
+        CBRing(ID3D12Device* device, uint32_t ringCount, uint32_t bytesPerFrame);
 
-        D3D12_GPU_VIRTUAL_ADDRESS PushBytes(UINT frameIndex, const void* src, UINT size);
+        D3D12_GPU_VIRTUAL_ADDRESS PushBytes(uint32_t frameIndex, const void* src, uint32_t size);
         
         template<typename T>
-        inline D3D12_GPU_VIRTUAL_ADDRESS Push(UINT frameIndex, const T& cb)
+        inline D3D12_GPU_VIRTUAL_ADDRESS Push(uint32_t frameIndex, const T& cb)
         {
-            return PushBytes(frameIndex, &cb, (UINT)sizeof(T));
+            return PushBytes(frameIndex, &cb, (uint32_t)sizeof(T));
         }
 
-        inline void BeginFrame(UINT frameIndex) { m_headPerFrame[frameIndex] = 0; }
-        inline UINT Remaining(UINT frameIndex) const { return m_bytesPerFrame - m_headPerFrame[frameIndex]; }
+        inline void BeginFrame(uint32_t frameIndex) { m_headPerFrame[frameIndex] = 0; }
+        inline uint32_t Remaining(uint32_t frameIndex) const { return m_bytesPerFrame - m_headPerFrame[frameIndex]; }
 
     private:
         ComPtr<ID3D12Resource> m_buffer;
         uint8_t* m_cpu = nullptr;
         D3D12_GPU_VIRTUAL_ADDRESS m_baseGPU = 0;
-        std::vector<UINT> m_headPerFrame;
-        UINT m_bytesPerFrame = 0;
-        UINT m_ringCount = 0;
+        std::vector<uint32_t> m_headPerFrame;
+        uint32_t m_bytesPerFrame = 0;
+        uint32_t m_ringCount = 0;
     };
 
     // CB 버퍼 바인딩
     template<typename T>
-    void SetRootCBV(ID3D12Device* device, ID3D12GraphicsCommandList* cmd, UINT rootParamIdx, CBRing& ring, UINT frameIdx, const T& cb)
+    void SetRootCBV(ID3D12Device* device, ID3D12GraphicsCommandList* cmd, uint32_t rootParamIdx, CBRing& ring, uint32_t frameIdx, const T& cb)
     {
         auto gpuCB = ring.Push(frameIdx, cb);
         cmd->SetComputeRootConstantBufferView(rootParamIdx, gpuCB);
     }
 
-    UINT CalcBytesPerFrame(const std::initializer_list<std::pair<UINT, UINT>> cbSizeAndCounts, float margin = 1.5f, UINT minFloor = 64*1024);
+    uint32_t CalcBytesPerFrame(const std::initializer_list<std::pair<uint32_t, uint32_t>> cbSizeAndCounts, float margin = 1.5f, uint32_t minFloor = 64*1024);
 
     // 용량 초과 시 임시 업로드 방식을 사용
-    D3D12_GPU_VIRTUAL_ADDRESS PushOrSpill(ID3D12Device* device, CBRing& ring, UINT frameIdx, const void* src, UINT sizeBytes, std::vector<ComPtr<ID3D12Resource>>& pendingDeleteContainer);
+    D3D12_GPU_VIRTUAL_ADDRESS PushOrSpill(ID3D12Device* device, CBRing& ring, uint32_t frameIdx, const void* src, uint32_t sizeBytes, std::vector<ComPtr<ID3D12Resource>>& pendingDeleteContainer);
 }

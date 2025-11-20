@@ -8,8 +8,13 @@
 TerrainSystem::TerrainSystem(ID3D12Device* device, std::shared_ptr<SdfField<float>> grd, const GridDesc& desc, TerrainMode mode):
 	m_desc(desc)
 {
+	if (m_chunkRenderer)
+	{
+		m_chunkRenderer.reset();
+	}
+	m_chunkRenderer = std::make_unique<MeshChunkRenderer>();
 	setMode(device, mode);
-	initializeField(device, grd, desc);
+	setField(device, grd);
 }
 
 void TerrainSystem::setMode(ID3D12Device* device, TerrainMode mode)
@@ -39,9 +44,28 @@ void TerrainSystem::setGridDesc(ID3D12Device* device, const GridDesc& d)
 	m_backend->setGridDesc(d);
 }
 
+void TerrainSystem::setField(ID3D12Device* device, std::shared_ptr<SdfField<float>> grid)
+{
+	m_lastGRD = std::move(grid);
+	if (m_backend && m_lastGRD) m_backend->setFieldPtr(m_lastGRD);
+}
+
 void TerrainSystem::requestRemesh(const RemeshRequest& r)
 {
 	m_backend->requestRemesh(r);
+}
+
+void TerrainSystem::requestRemesh(float isoValue)
+{
+	RemeshRequest req{ .isoValue = isoValue };
+	uint32_t chunkX = m_desc.cells.x / m_desc.chunkSize;
+	uint32_t chunkY = m_desc.cells.y / m_desc.chunkSize;
+	uint32_t chunkZ = m_desc.cells.z / m_desc.chunkSize;
+	for (uint32_t x = 0; x < chunkX; ++x)
+		for (uint32_t y = 0; y < chunkY; ++y)
+			for (uint32_t z = 0; z < chunkZ; ++z)
+				req.chunkset.insert(ChunkKey{ x,y,z });
+	requestRemesh(req);
 }
 
 void TerrainSystem::requestBrush(const BrushRequest& r)
@@ -98,25 +122,19 @@ void TerrainSystem::MakeDebugCell(GeometryData& outMeshData, bool bDrawFullCell)
 				continue;
 			}
 
-			uint32_t index = outMeshData.indices.size();
-			Vertex A{};
-			A.pos = { 
-				m_desc.origin.x + x * m_desc.cellsize, 
-				m_desc.origin.y + y * m_desc.cellsize,
-				m_desc.origin.z 
+			uint32_t index = static_cast<uint32_t>(outMeshData.indices.size());
+			Vertex A{
+				.pos = { m_desc.origin.x + x * m_desc.cellsize, m_desc.origin.y + y * m_desc.cellsize, m_desc.origin.z },
+				.normal = { 0.0f, 0.0f, 1.0f },
+				.color = { 1.0f, 1.0f, 1.0f, 1.0f }
 			};
-			A.normal = { 0.0f, 0.0f, 1.0f };
-			A.color = { 1.0f, 1.0f, 1.0f, 1.0f };
-
-			Vertex B{};
-			B.pos = { 
-				A.pos.x, 
-				A.pos.y, 
-				A.pos.z + m_desc.cells.z * m_desc.cellsize 
+			
+			Vertex B{
+				.pos = { A.pos.x, A.pos.y, A.pos.z + m_desc.cells.z * m_desc.cellsize },
+				.normal = { 0.0f, 0.0f, 1.0f },
+				.color = { 1.0f, 1.0f, 1.0f, 1.0f }
 			};
-			B.normal = { 0.0f, 0.0f, 1.0f };
-			B.color = { 1.0f, 1.0f, 1.0f, 1.0f };
-
+			
 			outMeshData.vertices.push_back(A);
 			outMeshData.vertices.push_back(B);
 			outMeshData.indices.push_back(index);
@@ -142,25 +160,19 @@ void TerrainSystem::MakeDebugCell(GeometryData& outMeshData, bool bDrawFullCell)
 				continue;
 			}
 
-			uint32_t index = outMeshData.indices.size();
-			Vertex A{};
-			A.pos = {
-				m_desc.origin.x + x * m_desc.cellsize,
-				m_desc.origin.y,
-				m_desc.origin.z + z * m_desc.cellsize
+			uint32_t index = static_cast<uint32_t>(outMeshData.indices.size());
+			Vertex A{
+				.pos = { m_desc.origin.x + x * m_desc.cellsize, m_desc.origin.y, m_desc.origin.z + z * m_desc.cellsize },
+				.normal = { 0.0f, 1.0f, 0.0f },
+				.color = { 1.0f, 1.0f, 1.0f, 1.0f }
 			};
-			A.normal = { 0.0f, 1.0f, 0.0f };
-			A.color = { 1.0f, 1.0f, 1.0f, 1.0f };
-
-			Vertex B{};
-			B.pos = {
-				A.pos.x,
-				A.pos.y + m_desc.cells.y * m_desc.cellsize ,
-				A.pos.z 
+			
+			Vertex B{
+				.pos = { A.pos.x, A.pos.y + m_desc.cells.y * m_desc.cellsize , A.pos.z },
+				.normal = { 0.0f, 0.0f, 0.0f },
+				.color = { 1.0f, 1.0f, 1.0f, 1.0f }
 			};
-			B.normal = { 0.0f, 0.0f, 0.0f };
-			B.color = { 1.0f, 1.0f, 1.0f, 1.0f };
-
+			
 			outMeshData.vertices.push_back(A);
 			outMeshData.vertices.push_back(B);
 			outMeshData.indices.push_back(index);
@@ -185,25 +197,19 @@ void TerrainSystem::MakeDebugCell(GeometryData& outMeshData, bool bDrawFullCell)
 				continue;
 			}
 
-			uint32_t index = outMeshData.indices.size();
-			Vertex A{};
-			A.pos = {
-				m_desc.origin.x,
-				m_desc.origin.y + y * m_desc.cellsize,
-				m_desc.origin.z + z * m_desc.cellsize
+			uint32_t index = static_cast<uint32_t>(outMeshData.indices.size());
+			Vertex A{
+				.pos = { m_desc.origin.x, m_desc.origin.y + y * m_desc.cellsize, m_desc.origin.z + z * m_desc.cellsize },
+				.normal = { 0.0f, 0.0f, 0.0f },
+				.color = { 1.0f, 1.0f, 1.0f, 1.0f }
 			};
-			A.normal = { 0.0f, 0.0f, 0.0f };
-			A.color = { 1.0f, 1.0f, 1.0f, 1.0f };
-
-			Vertex B{};
-			B.pos = {
-				A.pos.x + m_desc.cells.x * m_desc.cellsize ,
-				A.pos.y,
-				A.pos.z
+			
+			Vertex B{
+				.pos = { A.pos.x + m_desc.cells.x * m_desc.cellsize , A.pos.y, A.pos.z },
+				.normal = { 0.0f, 0.0f, 0.0f },
+				.color = { 1.0f, 1.0f, 1.0f, 1.0f }
 			};
-			B.normal = { 0.0f, 0.0f, 0.0f };
-			B.color = { 1.0f, 1.0f, 1.0f, 1.0f };
-
+			
 			outMeshData.vertices.push_back(A);
 			outMeshData.vertices.push_back(B);
 			outMeshData.indices.push_back(index);
@@ -222,16 +228,3 @@ void TerrainSystem::EraseChunk(RenderSystem* renderSystem)
 	}
 }
 #endif
-
-void TerrainSystem::initializeField(ID3D12Device* device, std::shared_ptr<SdfField<float>> grid, const GridDesc& desc)
-{
-	m_lastGRD = std::move(grid);
-	if (m_chunkRenderer)
-	{
-		m_chunkRenderer.reset();
-	}
-
-	m_chunkRenderer = std::make_unique<MeshChunkRenderer>(device);
-	if (m_backend && m_lastGRD) m_backend->setFieldPtr(m_lastGRD);
-}
-

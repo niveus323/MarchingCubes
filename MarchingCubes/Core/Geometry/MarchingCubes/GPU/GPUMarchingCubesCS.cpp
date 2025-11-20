@@ -2,7 +2,7 @@
 #include "GPUMarchingCubesCS.h"
 #include "Core/Geometry/MarchingCubesTables.h"
 
-static const UINT64 tableSize = 256u * 16u * sizeof(UINT);
+static const uint64_t tableSize = 256u * 16u * sizeof(uint32_t);
 
 GPUMarchingCubesCS::GPUMarchingCubesCS(ID3D12Device* device)
 {
@@ -22,7 +22,7 @@ void GPUMarchingCubesCS::encode(const GPUMCEncodingContext& context)
     XMUINT3 rmax = context.regionMax;
     XMUINT3 gridDim = vol.grid.cells;
 
-    const UINT chunkCubes = vol.chunkCubes; // 16
+    const uint32_t chunkCubes = vol.chunkCubes; // 16
     uint32_t groupsPerChunk = (chunkCubes + 7) / 8; // chunkcubes = 16이므로 2의 값이 들어갈 예정
     XMUINT3 gpc(groupsPerChunk, groupsPerChunk, groupsPerChunk);
 
@@ -86,7 +86,7 @@ void GPUMarchingCubesCS::encode(const GPUMCEncodingContext& context)
     // SRV(t0)
     cmd->SetComputeRootDescriptorTable(1, fa.descRing->StaticGpuAt(0));
     // SRV(t1), UAV(u0)
-    DescriptorHelper::SetTable(cmd, *fa.descRing, fa.ringCursor, { { 2, kSlot_t1 }, { 3, kSlot_u0 } });
+    DescriptorRing::SetTable(cmd, *fa.descRing, fa.ringCursor, { { 2, kSlot_t1 }, { 3, kSlot_u0 } });
 
 #if PIX_DEBUGMODE
     PIXScopedEvent(PIX_COLOR(0, 128, 255), "CPU MC encode");
@@ -95,9 +95,9 @@ void GPUMarchingCubesCS::encode(const GPUMCEncodingContext& context)
 
     //cmd->Dispatch(context.numChunkAxis.x * gpc.x, context.numChunkAxis.y * gpc.y, context.numChunkAxis.z * gpc.z);
 
-    const UINT gx = (cmax.x - cmin.x) * gpc.x;
-    const UINT gy = (cmax.y - cmin.y) * gpc.y;
-    const UINT gz = (cmax.z - cmin.z) * gpc.z;
+    const uint32_t gx = (cmax.x - cmin.x) * gpc.x;
+    const uint32_t gy = (cmax.y - cmin.y) * gpc.y;
+    const uint32_t gz = (cmax.z - cmin.z) * gpc.z;
 
     if (gx > 0 && gy > 0 && gz > 0)
     {
@@ -143,9 +143,9 @@ void GPUMarchingCubesCS::ensurePipeline(ID3D12Device* device)
     {
 
 #ifdef _DEBUG
-        UINT compileFlags = D3DCOMPILE_DEBUG | D3DCOMPILE_SKIP_OPTIMIZATION;
+        uint32_t compileFlags = D3DCOMPILE_DEBUG | D3DCOMPILE_SKIP_OPTIMIZATION;
 #else
-        UINT compileFlags = 0;
+        uint32_t compileFlags = 0;
 #endif // _DEBUG
 
         // PSO (MarchingCubesCS.hlsl 의 "CS")

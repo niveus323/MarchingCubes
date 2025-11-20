@@ -124,7 +124,7 @@ void MCMainCS(uint3 groupId : SV_GroupID, uint3 groupThreadID : SV_GroupThreadID
     {
         // T/F ±¸ºÐ
         if(SampleDensity(c[i]) < isoValue)
-            cfg |= (1 << i);
+            cfg |= (1u << i);
     }
     
     [unroll]

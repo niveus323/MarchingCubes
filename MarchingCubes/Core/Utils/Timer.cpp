@@ -41,7 +41,7 @@ double Timer::GetCpuFrameMsAvg() const
 float Timer::GetCpuFPSAvg() const
 {
 	const double ms = GetCpuFrameMsAvg();
-	return ms > 0.0 ? static_cast<double>(1000.0 / ms) : 0.0f;
+	return ms > 0.0 ? static_cast<float>(1000.0 / ms) : 0.0f;
 }
 
 void Timer::PushGpuFrameMs(double ms)

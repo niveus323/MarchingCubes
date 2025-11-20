@@ -1,6 +1,7 @@
 #pragma once
 #include "Core/Geometry/Mesh/Mesh.h"
 #include "Core/Utils/DXHelper.h"
+#include "Core/Rendering/PSO/DescriptorRing.h"
 #include "Core/Geometry/MarchingCubes/ITerrainBackend.h"
 
 struct SDFVolumeView
@@ -14,13 +15,13 @@ struct SDFVolumeView
 };
 
 struct FrameAlloc {
-	DescriptorHelper::DescriptorRing* descRing = nullptr;
+	DescriptorRing* descRing = nullptr;
 	ConstantBufferHelper::CBRing* cbRing = nullptr;
-	UINT ringCursor;
+	uint32_t ringCursor;
 };
 
 // kSlot_t1Àº static
-enum EMCSlots : UINT {
+enum EMCSlots : uint32_t {
 	kSlot_t1 = 0, // density SRV
 	kSlot_u0, // OutTriangle UAV
 	kSlot_u1, // RW density3D UAV

@@ -70,7 +70,7 @@ void GPUBrushCS::encode(const GPUBrushEncodingContext& context)
     ID3D12DescriptorHeap* heaps[] = { fa.descRing->GetHeap() };
     cmd->SetDescriptorHeaps(1, heaps);
     // u1 ¼¼ÆÃ
-    DescriptorHelper::SetTable(cmd, *fa.descRing, fa.ringCursor, { {1, kSlot_u1} });
+    DescriptorRing::SetTable(cmd, *fa.descRing, fa.ringCursor, { {1, kSlot_u1} });
 
 #if PIX_DEBUGMODE
     PIXBeginEvent(cmd, PIX_COLOR(255, 0, 192), "BrushCS ExecuteIndirect");
@@ -125,9 +125,9 @@ void GPUBrushCS::ensureSignatures(ID3D12Device* device)
 void GPUBrushCS::ensurePipelines(ID3D12Device* device)
 {
 #ifdef _DEBUG
-    UINT compileFlags = D3DCOMPILE_DEBUG | D3DCOMPILE_SKIP_OPTIMIZATION;
+    uint32_t compileFlags = D3DCOMPILE_DEBUG | D3DCOMPILE_SKIP_OPTIMIZATION;
 #else
-    UINT compileFlags = 0;
+    uint32_t compileFlags = 0;
 #endif // _DEBUG
 
     if (!m_brushPso)

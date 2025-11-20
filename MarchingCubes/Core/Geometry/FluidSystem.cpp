@@ -44,9 +44,9 @@ void FluidSystem::SetSmoothingLength(float h)
 	m_h = h;
 	m_h2 = h * h;
 	const float pi = 3.14159265358979323846f;
-	m_poly6Coeff = 315.0f / (64.0f * pi * std::pow(h, 9));
-	m_spikyCoeff = 15.0f / (pi * std::pow(h, 6));
-	m_viscoLaplacianCoeff = 45.0f / (pi * std::pow(h, 6));
+	m_poly6Coeff = 315.0f / (64.0f * pi * std::powf(h, 9));
+	m_spikyCoeff = 15.0f / (pi * std::powf(h, 6));
+	m_viscoLaplacianCoeff = 45.0f / (pi * std::powf(h, 6));
 	m_cellSize = h;
 }
 

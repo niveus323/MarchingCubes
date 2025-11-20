@@ -3,20 +3,19 @@
 #include "Memory/GpuAllocator.h"
 #include "Memory/StaticBufferRegistry.h"
 
-UploadContext::UploadContext(ID3D12Device* device, GpuAllocator* allocator, StaticBufferRegistry* staticBufferRegistry) :
+UploadContext::UploadContext(ID3D12Device* device, GpuAllocator* allocator, StaticBufferRegistry* staticBufferRegistry, DescriptorAllocator* descriptorAllocator) :
 	m_device(device),
 	m_allocator(allocator),
-	m_staticBufferRegistry(staticBufferRegistry)
+	m_staticBufferRegistry(staticBufferRegistry),
+	m_descriptorAllocator(descriptorAllocator)
 {
 }
 
 // 업로드 제출
 void UploadContext::Execute(ID3D12GraphicsCommandList* cmd)
 {
-#ifdef _DEBUG
 	assert(m_device && "UploadContext::Execute : device is Invalid!!!!");
 	assert(m_allocator && "UploadContext::Execute : allocator is Invalid!!!!");
-#endif
 	std::unordered_map<ID3D12Resource*, D3D12_RESOURCE_STATES> targets;
 	targets.reserve(m_pendingUploads.size());
 	auto recordTarget = [](std::unordered_map<ID3D12Resource*, D3D12_RESOURCE_STATES>& targets, ID3D12Resource* res, D3D12_RESOURCE_STATES back) {
@@ -29,8 +28,8 @@ void UploadContext::Execute(ID3D12GraphicsCommandList* cmd)
 	for (auto& pending : m_pendingUploads)
 	{
 		if (pending.state != PendingUpload::UploadState::Enqueued) continue;
-		if (pending.vbSize && pending.vbSlice.res) recordTarget(targets, pending.vbSlice.res, D3D12_RESOURCE_STATE_VERTEX_AND_CONSTANT_BUFFER);
-		if (pending.ibSize && pending.ibSlice.res) recordTarget(targets, pending.ibSlice.res, D3D12_RESOURCE_STATE_INDEX_BUFFER);
+		if (pending.vbSize && pending.vbHandle.res) recordTarget(targets, pending.vbHandle.res, D3D12_RESOURCE_STATE_VERTEX_AND_CONSTANT_BUFFER);
+		if (pending.ibSize && pending.ibHandle.res) recordTarget(targets, pending.ibHandle.res, D3D12_RESOURCE_STATE_INDEX_BUFFER);
 	}
 
 	if (!targets.empty())
@@ -41,7 +40,7 @@ void UploadContext::Execute(ID3D12GraphicsCommandList* cmd)
 		{
 			barriers.push_back(CD3DX12_RESOURCE_BARRIER::Transition(res, back, D3D12_RESOURCE_STATE_COPY_DEST));
 		}
-		cmd->ResourceBarrier((UINT)barriers.size(), barriers.data());
+		cmd->ResourceBarrier((uint32_t)barriers.size(), barriers.data());
 	}
 
 	// 2단계 : Upload -> Default 복사
@@ -49,17 +48,17 @@ void UploadContext::Execute(ID3D12GraphicsCommandList* cmd)
 	{
 		if (pending.state != PendingUpload::UploadState::Enqueued) continue;
 
-		const ResourceSlice& staging = pending.stagingSlice;
+		const BufferHandle& staging = pending.stagingHandle;
 		// vb
-		if (pending.vbSize && pending.vbSlice.res)
+		if (pending.vbSize && pending.vbHandle.res)
 		{
-			cmd->CopyBufferRegion(pending.vbSlice.res, pending.vbSlice.offset, staging.res, staging.offset, pending.vbSize);
+			cmd->CopyBufferRegion(pending.vbHandle.res, pending.vbHandle.offset, staging.res, staging.offset, pending.vbSize);
 		}
 		// ib (dst offset = dstIB.offset + vbAligned)
-		if (pending.ibSize && pending.ibSlice.res)
+		if (pending.ibSize && pending.ibHandle.res)
 		{
-			const UINT64 ibOffset = staging.offset + pending.vbAligned;
-			cmd->CopyBufferRegion(pending.ibSlice.res, pending.ibSlice.offset, staging.res, ibOffset, pending.ibSize);
+			const uint64_t ibOffset = staging.offset + pending.vbAligned;
+			cmd->CopyBufferRegion(pending.ibHandle.res, pending.ibHandle.offset, staging.res, ibOffset, pending.ibSize);
 		}
 		pending.drawable->SetUploadPending(false);
 		pending.state = PendingUpload::UploadState::Recorded;
@@ -74,12 +73,12 @@ void UploadContext::Execute(ID3D12GraphicsCommandList* cmd)
 		{
 			barriers.push_back(CD3DX12_RESOURCE_BARRIER::Transition(res, D3D12_RESOURCE_STATE_COPY_DEST, back));
 		}
-		cmd->ResourceBarrier((UINT)barriers.size(), barriers.data());
+		cmd->ResourceBarrier((uint32_t)barriers.size(), barriers.data());
 	}
 }
 
 // GPU 명령 작업이 끝난 것들은 침범할 수 없도록 inflight 처리
-void UploadContext::TrackPendingAllocations(UINT64 submitFenceValue)
+void UploadContext::TrackPendingAllocations(uint64_t submitFenceValue)
 {
 	m_allocator->TagFence(submitFenceValue);
 
@@ -92,20 +91,20 @@ void UploadContext::TrackPendingAllocations(UINT64 submitFenceValue)
 		}
 	}
 
-	// 기존 슬라이스를 교체했다면 Free
+	// 교체했다면 Free
 	if (!m_reclaimed.empty())
 	{
-		std::vector<ResourceSlice> toFree;
+		std::vector<BufferHandle> toFree;
 		toFree.swap(m_reclaimed);
-		for (auto& slice : toFree)
+		for (auto& handle : toFree)
 		{
-			m_allocator->FreeLater(slice, submitFenceValue);
+			m_allocator->FreeLater(handle, submitFenceValue);
 		}
 	}
 }
 
 // GPU 명령이 끝나면 다음 프레임에 할당 가능하도록 세팅
-void UploadContext::ReclaimCompleted(UINT64 completedFenceValue)
+void UploadContext::Reclaim(uint64_t completedFenceValue)
 {
 	for (auto& pu : m_pendingUploads) {
 		if (pu.state == PendingUpload::UploadState::InFlight && pu.fenceValue != 0 && pu.fenceValue <= completedFenceValue)
@@ -123,7 +122,7 @@ void UploadContext::ReclaimCompleted(UINT64 completedFenceValue)
 }
 
 // VB/IB 스테이징
-void UploadContext::UploadDrawable(IDrawable* drawable, UINT64 completedFenceValue)
+void UploadContext::UploadDrawable(IDrawable* drawable, uint64_t completedFenceValue)
 {
 	if (!drawable) return;
 
@@ -131,30 +130,28 @@ void UploadContext::UploadDrawable(IDrawable* drawable, UINT64 completedFenceVal
 	GeometryBuffer* buf = drawable->GetGPUBuffer();
 	if (!cpuData || !buf) return;
 
-	const UINT64 vbBytes = cpuData->vertices.size() * sizeof(Vertex);
-	const UINT64 ibBytes = cpuData->indices.size() * sizeof(uint32_t);
-	UINT64 vbAligned = AlignUp64(vbBytes, 4ull); // 4byte 정렬
-	UINT64 ibAligned = AlignUp64(ibBytes, 4ull); // R32_UINT 사용하므로 4bytes 정렬
-	UINT64 totalBytes = vbAligned + ibAligned;
+	const uint64_t vbBytes = cpuData->vertices.size() * sizeof(Vertex);
+	const uint64_t ibBytes = cpuData->indices.size() * sizeof(uint32_t);
+	uint64_t vbAligned = AlignUp64(vbBytes, 4ull); // 4byte 정렬
+	uint64_t ibAligned = AlignUp64(ibBytes, 4ull); // R32_UINT 사용하므로 4bytes 정렬
+	uint64_t totalBytes = vbAligned + ibAligned;
 
 	// Default VB/IB 바인딩되어있는지 확인하고 없으면 할당받는다.
 	EnsureDefaultVB(buf, vbBytes, drawable->GetDebugName());
 	EnsureDefaultIB(buf, ibBytes, drawable->GetDebugName());
 
 	// Stage VB/IB
-	ResourceSlice stagingSlice{};
+	BufferHandle stagingHandle{};
 	AllocDesc desc{
 		.kind = AllocDesc::Kind::Staging,
 		.size = totalBytes,
-		.align = 4ull, 
+		.align = 4, 
 		.owner = drawable->GetDebugName()
 	};
-	m_allocator->Alloc(m_device, desc, stagingSlice);
+	m_allocator->Alloc(m_device, desc, stagingHandle);
 
-	uint8_t* ptr = stagingSlice.cpuPtr;
-#ifdef _DEBUG
-	assert(ptr && "Staging Slice Ptr is Invalid !!!!");
-#endif // _DEBUG
+	uint8_t* ptr = stagingHandle.cpuPtr;
+	assert(ptr && "Staging Handle Pointer is Invalid !!!!");
 
 	memcpy(ptr, cpuData->vertices.data(), vbBytes);
 	memcpy(ptr + vbAligned, cpuData->indices.data(), ibBytes);
@@ -168,18 +165,18 @@ void UploadContext::UploadDrawable(IDrawable* drawable, UINT64 completedFenceVal
 		if (e.state == PendingUpload::UploadState::Enqueued && e.drawable == drawable)
 		{
 			already = true;
-			e.vbSlice = buf->GetCurrentVBSlice();
-			e.ibSlice = buf->GetCurrentIBSlice();
-			e.stagingSlice = stagingSlice;
+			e.vbHandle = buf->GetCurrentVBHandle();
+			e.ibHandle = buf->GetCurrentIBHandle();
+			e.stagingHandle = stagingHandle;
 			break;
 		}
 	}
 	if (!already)
 	{
 		PendingUpload pu{};
-		pu.stagingSlice = stagingSlice;
-		pu.vbSlice = buf->GetCurrentVBSlice();
-		pu.ibSlice = buf->GetCurrentIBSlice();
+		pu.stagingHandle = stagingHandle;
+		pu.vbHandle = buf->GetCurrentVBHandle();
+		pu.ibHandle = buf->GetCurrentIBHandle();
 		pu.state = PendingUpload::UploadState::Enqueued;
 		pu.vbSize = vbBytes;
 		pu.ibSize = ibBytes;
@@ -189,7 +186,7 @@ void UploadContext::UploadDrawable(IDrawable* drawable, UINT64 completedFenceVal
 	}
 }
 
-void UploadContext::UploadStatic(IDrawable* drawable, UINT64 completedFenceValue)
+void UploadContext::UploadStatic(IDrawable* drawable, uint64_t completedFenceValue)
 {
 	if (!drawable) return;
 
@@ -197,33 +194,30 @@ void UploadContext::UploadStatic(IDrawable* drawable, UINT64 completedFenceValue
 	GeometryBuffer* buf = drawable->GetGPUBuffer();
 	if (!cpuData || !buf) return;
 
-	const UINT64 vbBytes = cpuData->vertices.size() * sizeof(Vertex);
-	const UINT64 ibBytes = cpuData->indices.size() * sizeof(uint32_t);
-	UINT64 vbAligned = AlignUp64(vbBytes, 4ull); // 4byte 정렬
-	UINT64 ibAligned = AlignUp64(ibBytes, 4ull); // R32_UINT 사용하므로 4bytes 정렬
-	UINT64 totalBytes = vbAligned + ibAligned;
+	const uint32_t vbBytes = static_cast<uint32_t>(cpuData->vertices.size() * sizeof(Vertex));
+	const uint32_t ibBytes = static_cast<uint32_t>(cpuData->indices.size() * sizeof(uint32_t));
+	uint32_t vbAligned = AlignUp(vbBytes, 4u); // 4byte 정렬
+	uint32_t ibAligned = AlignUp(ibBytes, 4u); // R32_UINT 사용하므로 4bytes 정렬
+	uint32_t totalBytes = vbAligned + ibAligned;
 
-	// Default VB/IB 바인딩되어있는지 확인하고 없으면 할당받는다.
-	ResourceSlice defaultVBSlice{}, defaultIBSlice{};
-	m_staticBufferRegistry->CreateStatic(m_device, vbBytes, ibBytes, sizeof(Vertex), DXGI_FORMAT_R32_UINT, &defaultVBSlice, &defaultIBSlice, drawable->GetDebugName());
-	// 정적 오브젝트는 초기 업로드에서만 VBSlice, IBSlice를 세팅하므로 oldSlice는 없음
-	buf->BindVBSlice(defaultVBSlice);
-	buf->BindIBSlice(defaultIBSlice);
+	BufferHandle defaultVBHandle{}, defaultIBHandle{};
+	m_staticBufferRegistry->CreateStatic(m_device, vbBytes, ibBytes, sizeof(Vertex), DXGI_FORMAT_R32_UINT, &defaultVBHandle, &defaultIBHandle, drawable->GetDebugName());
+	
+	buf->SwapVBHandle(defaultVBHandle);
+	buf->SwapIBHandle(defaultIBHandle);
 
 	// Stage VB/IB
-	ResourceSlice stagingSlice{};
+	BufferHandle stagingHandle{};
 	AllocDesc desc{
 		.kind = AllocDesc::Kind::Staging,
 		.size = totalBytes,
-		.align = 4ull,
+		.align = 4,
 		.owner = drawable->GetDebugName()
 	};
-	m_allocator->Alloc(m_device, desc, stagingSlice);
+	m_allocator->Alloc(m_device, desc, stagingHandle);
 
-	uint8_t* ptr = stagingSlice.cpuPtr;
-#ifdef _DEBUG
-	assert(ptr && "Staging Slice Ptr is Invalid !!!!");
-#endif // _DEBUG
+	uint8_t* ptr = stagingHandle.cpuPtr;
+	assert(ptr && "Staging Handle Pointer is Invalid !!!!");
 
 	memcpy(ptr, cpuData->vertices.data(), vbBytes);
 	memcpy(ptr + vbAligned, cpuData->indices.data(), ibBytes);
@@ -237,18 +231,18 @@ void UploadContext::UploadStatic(IDrawable* drawable, UINT64 completedFenceValue
 		if (e.state == PendingUpload::UploadState::Enqueued && e.drawable == drawable)
 		{
 			already = true;
-			e.stagingSlice = stagingSlice;
-			e.vbSlice = buf->GetCurrentVBSlice();
-			e.ibSlice = buf->GetCurrentIBSlice();
+			e.stagingHandle = stagingHandle;
+			e.vbHandle = buf->GetCurrentVBHandle();
+			e.ibHandle = buf->GetCurrentIBHandle();
 			break;
 		}
 	}
 	if (!already)
 	{
 		PendingUpload pu{};
-		pu.stagingSlice = stagingSlice;
-		pu.vbSlice = buf->GetCurrentVBSlice();
-		pu.ibSlice = buf->GetCurrentIBSlice();
+		pu.stagingHandle = stagingHandle;
+		pu.vbHandle = buf->GetCurrentVBHandle();
+		pu.ibHandle = buf->GetCurrentIBHandle();
 		pu.state = PendingUpload::UploadState::Enqueued;
 		pu.vbSize = vbBytes;
 		pu.ibSize = ibBytes;
@@ -259,85 +253,133 @@ void UploadContext::UploadStatic(IDrawable* drawable, UINT64 completedFenceValue
 }
 
 // Object CB 업로드
-void UploadContext::UploadObjectConstants(GeometryBuffer* buf, const ObjectConstants& cb)
+void UploadContext::UploadObjectConstants(uint32_t frameIndex, GeometryBuffer* buf, const ObjectConstants& cb)
 {
 	if (!buf) return;
 
-	ResourceSlice slice{};
+	BufferHandle handle{};
 	AllocDesc desc{
 		.kind = AllocDesc::Kind::CB,
-		.size = AlignUp64(sizeof(ObjectConstants), CB_ALIGN),
+		.size = AlignUp(sizeof(ObjectConstants), CB_ALIGN),
 		.align = CB_ALIGN
 	};
-	m_allocator->Alloc(m_device, desc, slice);
-#ifdef _DEBUG
-	assert(slice.cpuPtr && "CB Slice Ptr is Invalid!!!!");
-#endif // _DEBUG
-	memcpy(slice.cpuPtr, &cb, sizeof(ObjectConstants));
+	m_allocator->Alloc(m_device, desc, handle);
+	assert(handle.cpuPtr && "CB Handle Ptr is Invalid!!!!");
+	memcpy(handle.cpuPtr, &cb, sizeof(ObjectConstants));
 
-	ResourceSlice old{};
-	buf->BindCBSlice(slice, &old);
-	if (old.res)
-	{
-		bool already = false;
-		for (auto& r : m_reclaimed) {
-			if (r.res == old.res && r.offset == old.offset && r.size == old.size) { already = true; break; }
-		}
-		if (!already) m_reclaimed.push_back(old);
-	}
+	buf->SwapCBHandle(handle);
+	if (handle.res) FreeBufferHandle(handle);
 }
 
-void UploadContext::EnsureDefaultVB(GeometryBuffer* buf, UINT64 neededSize, const char* debugName)
+void UploadContext::UploadStructuredBuffer(ID3D12GraphicsCommandList* cmd, const void* srcData, uint64_t byteSize, ID3D12Resource* buffer, uint64_t dstOffset, const char* debugName)
 {
-	ResourceSlice curVB = buf->GetCurrentVBSlice();
+	if (!srcData || !buffer || byteSize == 0) return;
+	assert(m_device && m_allocator && "UploadStructuredBuffer : Invalid state");
+
+	BufferHandle staging{};
+	AllocDesc desc{
+		.kind = AllocDesc::Kind::Staging,
+		.size = byteSize,
+		.align = 4,
+		.owner = debugName
+	};
+	m_allocator->Alloc(m_device, desc, staging);
+	assert(staging.cpuPtr != 0 && "Allocated Buffer Ptr is Invalid!!!!");
+	std::memcpy(staging.cpuPtr, srcData, byteSize);
+
+	cmd->CopyBufferRegion(buffer, dstOffset, staging.res, staging.offset, byteSize);
+}
+
+void UploadContext::UploadContstants(uint32_t frameIndex, const void* srcData, uint32_t size, BufferHandle& outHandle)
+{
+	const uint32_t alignedSize = AlignUp(size, CB_ALIGN);
+	AllocDesc desc{
+		.kind = AllocDesc::Kind::CB,
+		.size = alignedSize,
+		.align = CB_ALIGN
+	};
+
+	m_allocator->Alloc(m_device, desc, outHandle);
+	assert(outHandle.cpuPtr && "Handle Ptr is Invalid!!!!");
+	memcpy(outHandle.cpuPtr, srcData, size);
+}
+
+void UploadContext::UploadTexture2D(ID3D12GraphicsCommandList* cmd, ID3D12Resource* pDestinationResource, const std::vector<D3D12_SUBRESOURCE_DATA>& subResources, const char* debugName)
+{
+	UploadTexture2D_Internal(cmd, pDestinationResource, subResources, D3D12_RESOURCE_STATE_COMMON, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE, debugName);
+}
+
+void UploadContext::EnsureDefaultVB(GeometryBuffer* buf, uint64_t neededSize, const char* debugName)
+{
+	BufferHandle curVB = buf->GetCurrentVBHandle();
 	if (curVB.size < neededSize)
 	{
-		ResourceSlice alloc{};
+		BufferHandle handle{};
 		AllocDesc desc{
 			.kind = AllocDesc::Kind::VB,
 			.size = neededSize,
 			.align = D3D12_DEFAULT_RESOURCE_PLACEMENT_ALIGNMENT,
 			.owner = debugName
 		};
-		m_allocator->Alloc(m_device, desc, alloc);
+		m_allocator->Alloc(m_device, desc, handle);
 
-		ResourceSlice old{};
-		buf->BindVBSlice(alloc, &old);
-		if (old.res)
-		{
-			bool already = false;
-			for (auto& r : m_reclaimed) {
-				if (r.res == old.res && r.offset == old.offset && r.size == old.size) { already = true; break; }
-			}
-			if (!already) m_reclaimed.push_back(old);
-		}
+		buf->SwapVBHandle(handle);
+		if (handle.res) FreeBufferHandle(handle);
 		return;
 	}
 }
 
-void UploadContext::EnsureDefaultIB(GeometryBuffer* buf, UINT64 neededSize, const char* debugName)
+void UploadContext::EnsureDefaultIB(GeometryBuffer* buf, uint64_t neededSize, const char* debugName)
 {
-	ResourceSlice curIB = buf->GetCurrentIBSlice();
+	BufferHandle curIB = buf->GetCurrentIBHandle();
 	if (curIB.size < neededSize)
 	{
-		ResourceSlice alloc{};
+		BufferHandle handle{};
 		AllocDesc desc{
 			.kind = AllocDesc::Kind::IB,
 			.size = neededSize,
 			.align = D3D12_DEFAULT_RESOURCE_PLACEMENT_ALIGNMENT,
 			.owner = debugName
 		};
-		m_allocator->Alloc(m_device, desc, alloc);
+		m_allocator->Alloc(m_device, desc, handle);
 
-		ResourceSlice old{};
-		buf->BindIBSlice(alloc, &old);
-		if (old.res)
-		{
-			bool already = false;
-			for (auto& r : m_reclaimed) {
-				if (r.res == old.res && r.offset == old.offset && r.size == old.size) { already = true; break; }
-			}
-			if (!already) m_reclaimed.push_back(old);
+		buf->SwapIBHandle(handle);
+		if (handle.res) FreeBufferHandle(handle);
+	}
+}
+
+void UploadContext::FreeBufferHandle(const BufferHandle& handle)
+{
+	for (auto& r : m_reclaimed) 
+	{
+		if (r.res == handle.res && r.offset == handle.offset && r.size == handle.size) 
+		{ 
+			return;
 		}
 	}
+	m_reclaimed.push_back(handle);
+}
+
+void UploadContext::UploadTexture2D_Internal(
+	ID3D12GraphicsCommandList* cmd, 
+	ID3D12Resource* pDestinationResource, 
+	const std::vector<D3D12_SUBRESOURCE_DATA>& subResources, 
+	D3D12_RESOURCE_STATES before, 
+	D3D12_RESOURCE_STATES after, 
+	const char* debugName)
+{
+	UINT64 size = GetRequiredIntermediateSize(pDestinationResource, 0, static_cast<UINT>(subResources.size()));
+	BufferHandle handle {};
+	AllocDesc desc {
+		.kind = AllocDesc::Kind::Staging,
+		.lifetime = AllocDesc::LifeTime::LONG,
+		.size = size,
+		.align = D3D12_TEXTURE_DATA_PLACEMENT_ALIGNMENT,
+		.owner = debugName
+	};
+	m_allocator->Alloc(m_device, desc, handle);
+	assert(handle.res != nullptr && "UploadTexture2D : Failed to Allocate!!!!");
+	cmd->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(pDestinationResource, before, D3D12_RESOURCE_STATE_COPY_DEST));
+	UpdateSubresources(cmd, pDestinationResource, handle.res, handle.offset, 0, static_cast<UINT>(subResources.size()), subResources.data());
+	cmd->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(pDestinationResource, D3D12_RESOURCE_STATE_COPY_DEST, after));
 }

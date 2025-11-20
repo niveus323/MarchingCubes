@@ -1,13 +1,12 @@
 #include "pch.h"
 #include "UploadRing.h"
 
-UploadRing::UploadRing(ID3D12Device* device, UINT64 totalSize, UINT64 align)
+UploadRing::UploadRing(ID3D12Device* device, uint64_t totalSize)
 {
 	assert(device);
 	m_totalSize = totalSize;
 	m_head = 0;
 	m_tail = m_totalSize;
-	m_align = align;
 
 	D3D12_HEAP_PROPERTIES hpUpload = CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD);
 	D3D12_RESOURCE_DESC desc = CD3DX12_RESOURCE_DESC::Buffer(totalSize);
@@ -26,70 +25,60 @@ UploadRing::~UploadRing()
 }
 
 // 업로드 할 공간 할당
-uint8_t* UploadRing::Allocate(UINT64 size, UINT64& outOffset, UINT64 align)
+bool UploadRing::Allocate(const uint64_t alignedSize, uint64_t& outOffset, uint8_t*& outPtr)
 {
-	UINT64 alignment = align ? align : m_align;
-	const UINT64 alignedSize = AlignUp64(size, alignment);
-
 	// 할당 크기가 가능한 전체 크기보다 클 경우 무조건 실패
-	if (alignedSize > m_totalSize) {
-		outOffset = UINT64_MAX;
-		return nullptr;
+	if (alignedSize > m_totalSize)
+	{
+		Log::Print("UploadRing", "Allocated Failed. total : %llu, trying : %llu", m_totalSize, alignedSize);
+		return false;
 	}
 
-	// 새 할당 요청이 크기를 넘어설 경우
-	if (m_head + alignedSize > m_totalSize)
+	uint64_t used = (m_head < m_tail) ? (m_totalSize - m_tail) + m_head : m_head - m_tail;
+	// 남은 공간에 할당 가능한지 체크
+	if (alignedSize > m_totalSize - used - 1)
+	{
+		Log::Print("UploadRing", "Allocated Failed. remain : %llu, trying : %llu", m_totalSize - used - 1, alignedSize);
+		return false;
+	}
+
+	if (m_head < m_tail)
+	{
+		// [head, tail)
+		outOffset = m_head;
+		m_head += alignedSize;
+	}
+	else if (alignedSize > m_totalSize - m_head)
 	{
 		if (alignedSize > m_tail)
 		{
-			outOffset = UINT64_MAX;
-			return nullptr;
+			Log::Print("UplaodRing", "Allocated Failed. trying %llu > tail %llu", alignedSize, m_tail);
+			return false;
 		}
-		m_head = 0;
-	}
 
-	// 새 할당이 기존 공간을 침범하지 않는지 확인
-	for (const auto& a : m_inFlight)
+		// [0, tail)
+		outOffset = 0;
+		m_head = alignedSize;
+	}
+	else
 	{
-		UINT64 aStart = a.offset;
-		UINT64 aEnd = a.offset + a.size;
-		UINT64 rStart = m_head;
-		UINT64 rEnd = m_head + alignedSize;
-		bool overlap = !(rEnd <= aStart || rStart >= aEnd);
-		if (overlap) {
-			outOffset = UINT64_MAX;
-			return nullptr;
-		}
+		// [head, End)
+		outOffset = m_head;
+		m_head += alignedSize;
 	}
 
-	outOffset = m_head;
-	uint8_t* cpuPtr = m_mappedPtr + m_head;
-	m_head += alignedSize; // 커서 이동
-
+	outPtr = m_mappedPtr + outOffset;
 	UploadAllocation alloc{};
 	alloc.offset = outOffset;
 	alloc.size = alignedSize;
 	alloc.fenceValue = 0;
 	m_unframed.push_back(alloc);
 
-	return cpuPtr; // 할당 가능한 공간의 포인터 주소 반환
-}
-
-void UploadRing::TrackAllocation(UINT64 offset, UINT64 size, UINT64 fenceValue)
-{
-	UploadAllocation a{};
-	a.offset = offset;
-	a.size = size;
-	a.fenceValue = fenceValue;
-
-	if (fenceValue != 0)
-		m_inFlight.push_back(a);
-	else
-		m_unframed.push_back(a);
+	return true;
 }
 
 // 이번 프레임에 할당된 공간들에 대해 펜스 값을 설정
-void UploadRing::TagFence(UINT64 fenceValue)
+void UploadRing::TagFence(uint64_t fenceValue)
 {
 	if (m_unframed.empty()) return;
 	for (auto& alloced : m_unframed)
@@ -100,12 +89,17 @@ void UploadRing::TagFence(UINT64 fenceValue)
 	m_unframed.clear();
 }
 
-void UploadRing::ReclaimCompleted(UINT64 completedFenceValue)
+void UploadRing::Reclaim(uint64_t completedFenceValue)
 {
-	// 완료한 Upload 데이터는 제거
-	while (!m_inFlight.empty() && m_inFlight.front().fenceValue !=0 && m_inFlight.front().fenceValue <= completedFenceValue)
+	while (!m_inFlight.empty())
 	{
-		m_tail = m_inFlight.front().offset + m_inFlight.front().size;
+		const auto& front = m_inFlight.front();
+		if (front.fenceValue == 0 || front.fenceValue > completedFenceValue) break;
+
+		uint64_t end = front.offset + front.size;
+		if (end >= m_totalSize)	end -= m_totalSize; // warp
+		m_tail = (end == 0) ? m_totalSize : end;
+
 		m_inFlight.pop_front();
 	}
 }

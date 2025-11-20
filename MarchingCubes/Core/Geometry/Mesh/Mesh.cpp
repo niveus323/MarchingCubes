@@ -12,29 +12,33 @@ Mesh::Mesh(ID3D12Device* device, const GeometryData& data) :
 	XMStoreFloat4x4(&m_objectCB.worldInvMatrix, XMMatrixInverse(nullptr, identity));
 }
 
-Mesh::Mesh(ID3D12Device* device, const GeometryData& data, const ObjectConstants& cb, std::shared_ptr<Material> material):
+Mesh::Mesh(ID3D12Device* device, const GeometryData& data, const ObjectConstants& cb) :
 	m_cpu(data),
 	m_buffer(device, data),
-	m_objectCB(cb),
-	m_material(std::move(material))
+	m_objectCB(cb)
 {
 }
 
 DrawBindingInfo Mesh::GetDrawBinding() const
 {
 	DrawBindingInfo info{};
-	info.vbv = m_buffer.GetVBV();          
-	info.ibv = m_buffer.GetIBV();       
-	info.topology = m_buffer.GetTopology();
-	info.indexCount = m_cpu.indices.size();
-	info.objectCBGpuVA = m_buffer.GetObjectCBGpuVA(); 
-	info.material = m_material.get();
-	return info;
-}
+	const BufferHandle& vb = m_buffer.GetCurrentVBHandle();
+	info.vbv = {
+		.BufferLocation = vb.res ? vb.res->GetGPUVirtualAddress() + vb.offset : 0,
+		.SizeInBytes = static_cast<UINT>(vb.size),
+		.StrideInBytes = static_cast<UINT>(sizeof(Vertex)),
+	};
 
-void Mesh::Update(float deltaTime)
-{
-	UpdateConstants();
+	const BufferHandle& ib = m_buffer.GetCurrentIBHandle();
+	info.ibv = {
+		.BufferLocation = ib.res ? (ib.res->GetGPUVirtualAddress() + ib.offset) : 0,
+		.SizeInBytes = static_cast<UINT>(ib.size),
+		.Format = DXGI_FORMAT_R32_UINT
+	};
+	info.topology = m_buffer.GetTopology();
+	info.indexCount = static_cast<UINT>(m_cpu.indices.size());
+	info.objectCBGpuVA = m_buffer.GetCurrentCBHandle().gpuVA;
+	return info;
 }
 
 void Mesh::UpdateConstants()

@@ -58,7 +58,7 @@ int Win32Application::Run(DXAppBase* pAppBase, HINSTANCE hInstance, int nCmdShow
         else
         {
             pAppBase->TickAndUpdate();
-            pAppBase->OnRender();
+            pAppBase->Render();
         }
        
     }
@@ -69,7 +69,7 @@ int Win32Application::Run(DXAppBase* pAppBase, HINSTANCE hInstance, int nCmdShow
     return static_cast<char>(msg.wParam);
 }
 
-LRESULT Win32Application::WindowProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
+LRESULT Win32Application::WindowProc(HWND hWnd, uint32_t message, WPARAM wParam, LPARAM lParam)
 {
     if (message == WM_CREATE)
     {

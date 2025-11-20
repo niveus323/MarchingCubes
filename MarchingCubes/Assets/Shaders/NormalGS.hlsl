@@ -5,11 +5,12 @@ struct PSInput
     float4 Position : SV_POSITION0;
     float3 WorldPos : TEXCOORD0;
     float3 WorldNormal : TEXCOORD1;
+    float2 TexCoord : TEXCOORD2;
     float4 Color : COLOR0;
 };
 
 [maxvertexcount(6)]
-void GSMain(linear triangle PSInput tri[3], inout LineStream<PSInput> outStream)
+void GSMain(triangle PSInput tri[3], inout LineStream<PSInput> outStream)
 {
     [unroll]
     for (int i = 0; i < 3; ++i)
@@ -25,6 +26,7 @@ void GSMain(linear triangle PSInput tri[3], inout LineStream<PSInput> outStream)
 
         PSInput v1 = v0;
         v1.Position = endClip;
+        v1.TexCoord = float2(1.0f, 1.0f);
         v1.Color = float4(1.0f, 0.0f, 0.0f, 1.0f);
         
         outStream.Append(v0);

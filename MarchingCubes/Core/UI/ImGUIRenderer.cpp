@@ -4,7 +4,7 @@
 #include <algorithm>
 using namespace UI;
 
-extern LRESULT ImGui_ImplWin32_WndProcHandler(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam);
+extern LRESULT ImGui_ImplWin32_WndProcHandler(HWND hwnd, uint32_t msg, WPARAM wParam, LPARAM lParam);
 
 bool ImGUIRenderer::Initialize(const UI::InitContext& context)
 {
@@ -72,55 +72,6 @@ bool ImGUIRenderer::Initialize(const UI::InitContext& context)
 	return true;
 }
 
-void ImGUIRenderer::BeginFrame()
-{
-	ImGui_ImplDX12_NewFrame();
-	ImGui_ImplWin32_NewFrame();
-	ImGui::NewFrame();
-
-	uint64_t now = Timer::GetTimeMs();
-	std::vector<std::shared_ptr<UIEntry>> copy;
-	{
-		std::lock_guard<std::mutex> lock(m_entriesMutex);
-		copy = m_entries;
-	}
-
-	std::sort(copy.begin(), copy.end(), [](auto const& a, auto const& b) { return a->priority > b->priority; });
-	for (auto& entry : copy)
-	{
-		if (!entry->enabled.load(std::memory_order_relaxed)) continue;
-		if (entry->rateHz > 0)
-		{
-			uint64_t interval = 1000u / (uint64_t)entry->rateHz;
-			if (now - entry->lastTimestamp < interval) continue;
-			entry->lastTimestamp = now;
-		}
-
-		try
-		{
-			entry->callback();
-		}
-		catch (...)
-		{
-			Log::Print("ImGUIRenderer", "Callback Failed!!!!");
-		}
-	}
-}
-
-void ImGUIRenderer::EndFrame(ID3D12GraphicsCommandList* commandList)
-{
-	ID3D12DescriptorHeap* heaps[] = { m_srvHeap.Get() };
-	commandList->SetDescriptorHeaps(1, heaps);
-	ImGui::Render();
-	ImGui_ImplDX12_RenderDrawData(ImGui::GetDrawData(), commandList);
-
-	if (ImGui::GetIO().ConfigFlags & ImGuiConfigFlags_ViewportsEnable)
-	{
-		ImGui::UpdatePlatformWindows();
-		ImGui::RenderPlatformWindowsDefault(nullptr, (void*)commandList);
-	}
-}
-
 void ImGUIRenderer::RenderFrame(ID3D12GraphicsCommandList* commandList)
 {
 	ImGui_ImplDX12_NewFrame();
@@ -174,7 +125,7 @@ void ImGUIRenderer::ShutDown()
 	ImGui::DestroyContext();
 }
 
-LRESULT ImGUIRenderer::WndMsgProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam)
+LRESULT ImGUIRenderer::WndMsgProc(HWND hWnd, uint32_t msg, WPARAM wParam, LPARAM lParam)
 {
 	if (ImGui_ImplWin32_WndProcHandler(hWnd, msg, wParam, lParam))
 		return true;

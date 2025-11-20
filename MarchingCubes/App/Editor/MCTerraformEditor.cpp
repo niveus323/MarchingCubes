@@ -7,19 +7,20 @@
 #include <algorithm>
 #include <typeinfo>
 #include <iostream>
-#ifdef _DEBUG
-#include <numeric>
-#endif // _DEBUG
 
-int sDebugFrame = 0;
 void MCTerraformEditor::OnDestroy()
 {
-#if PIX_DEBUGMODE
-	if (PIXGetCaptureState() == PIX_CAPTURE_GPU)
+	if (m_debugBrush)
 	{
-		PIXEndCapture(FALSE);
+		if (GeometryBuffer* buf = m_debugBrush->GetGPUBuffer())
+			buf->ReleaseGPUResources();
 	}
-#endif
+
+	if (m_debugCellMesh)
+	{
+		if (GeometryBuffer* buf = m_debugCellMesh->GetGPUBuffer()) 
+			buf->ReleaseGPUResources();
+	}
 
 	EditorApp::OnDestroy();
 }
@@ -35,20 +36,11 @@ void MCTerraformEditor::InitScene(ID3D12GraphicsCommandList* cmd)
 		gridDesc.chunkSize = 50u;
 		auto initialSphereField = MakeSphereGrid(100U, 1.0f, 25.0f, m_gridOrigin, gridDesc);
 		m_terrain = std::make_unique<TerrainSystem>(m_device.Get(), initialSphereField, gridDesc, TerrainMode::CPU_MC33);
-		RemeshRequest req(m_mcIso);
-
-		UINT chunkX = gridDesc.cells.x / gridDesc.chunkSize;
-		UINT chunkY = gridDesc.cells.y / gridDesc.chunkSize;
-		UINT chunkZ = gridDesc.cells.z / gridDesc.chunkSize;
-		for (UINT x = 0; x < chunkX; ++x)
-			for (UINT y = 0; y < chunkY; ++y)
-				for (UINT z = 0; z < chunkZ; ++z)
-					req.chunkset.insert(ChunkKey{ x,y,z });
-		m_terrain->requestRemesh(req);
+		m_terrain->requestRemesh(m_mcIso);
 
 		MeshChunkRenderer* terrainMesh = m_terrain->GetRenderer();
 		terrainMesh->SetDebugName("TerrainMesh");
-		terrainMesh->SetMaterial(m_defaultMat);
+		terrainMesh->SetMaterial(0);
 	}
 
 #ifdef _DEBUG	
@@ -56,23 +48,23 @@ void MCTerraformEditor::InitScene(ID3D12GraphicsCommandList* cmd)
 	{
 		GeometryData debugcellData;
 		m_terrain->MakeDebugCell(debugcellData, false);
-		std::unique_ptr<Mesh> debugCellMesh = std::make_unique<Mesh>(m_device.Get(), debugcellData);
-		debugCellMesh->SetDebugName("TerrainCell");
-		m_renderSystem->RegisterStatic(debugCellMesh.get(), "Line");
+		m_debugCellMesh = std::make_unique<Mesh>(m_device.Get(), debugcellData);
+		m_debugCellMesh->SetDebugName("TerrainCell");
 
-		m_StaticObjects.push_back(std::move(debugCellMesh));
+		m_renderSystem->RegisterStatic(m_debugCellMesh.get(), "Line", m_frameIndex);
+		GetUploadContext()->UploadStatic(m_debugCellMesh.get(), m_swapChainFence->GetCompletedValue());
+
 	}
 
 	// Debug Brush
 	{
 		GeometryData debugBrushData = MeshGenerator::CreateSphereMeshData(m_brushRadius, { 1.0f, 0.0f, 0.0f, 0.4f });
 		m_debugBrush = std::make_unique<Mesh>(m_device.Get(), debugBrushData);
-		m_debugBrush->SetMaterial(m_defaultMat);
+		m_debugBrush->SetMaterial(0);
 		m_debugBrush->SetDebugName("DebugBrush");
 		m_renderSystem->RegisterDynamic(m_debugBrush.get(), "Wire");
 	}
 #endif // _DEBUG
-
 }
 
 void MCTerraformEditor::InitUI()
@@ -90,7 +82,7 @@ void MCTerraformEditor::InitUI()
 		.rateHz = 0,
 		.enabled = true,
 		.id = "MarchingCubes UI"
-	});
+		});
 }
 
 void MCTerraformEditor::UpdateScene(float deltaTime)
@@ -143,20 +135,6 @@ void MCTerraformEditor::UpdateScene(float deltaTime)
 			XMFLOAT3 hitPosLS;
 			if (PhysicsUtil::IsHit(rayOriginls, rayDirls, terrainRenderer->GetCPUData(), terrainRenderer->GetBoundingBox(), hitPosLS))
 			{
-#if PIX_DEBUGMODE
-				if (m_debugViewEnabled && sDebugFrame == 0 && PIXGetCaptureState() == 0)
-				{
-					std::cout << "BeginCapture" << std::endl;
-					PIXCaptureParameters param = {};
-					/*param.TimingCaptureParameters.FileName = L"Brush.wpix";
-					param.TimingCaptureParameters.CaptureCallstacks = true;
-					param.TimingCaptureParameters.CaptureCpuSamples = true;
-					param.TimingCaptureParameters.CaptureGpuTiming = true;
-					param.TimingCaptureParameters.CpuSamplesPerSecond = 4000;*/
-					param.GpuCaptureParameters.FileName = L"Brush.wpix";
-					PIXBeginCapture(PIX_CAPTURE_GPU, &param);
-				}
-#endif
 #ifdef _DEBUG
 				// Hit가 발생한 위치에 원 세팅
 				{
@@ -184,23 +162,29 @@ void MCTerraformEditor::UpdateScene(float deltaTime)
 	m_terrain->tryFetch(m_device.Get(), m_renderSystem.get(), "Filled");
 }
 
-void MCTerraformEditor::UpdateUI(float deltaTime)
+void MCTerraformEditor::OnUpload(ID3D12GraphicsCommandList* cmd)
 {
-	EditorApp::UpdateUI(deltaTime);
-	if (m_gridRenewRequested)
-	{
-		GridDesc gridDesc{};
-		gridDesc.cells = { (UINT)m_gridSize[0], (UINT)m_gridSize[1], (UINT)m_gridSize[2] };
-		gridDesc.cellsize = static_cast<float>(m_cellSize);
-		gridDesc.origin = m_gridOrigin;
-		m_terrain->setGridDesc(m_device.Get(), gridDesc);
-		m_gridRenewRequested = false;
-	}
-}
+	EditorApp::OnUpload(cmd);
+	uint64_t completed = m_swapChainFence->GetCompletedValue();
 
-void MCTerraformEditor::BeforeDraw(ID3D12GraphicsCommandList* cmd)
-{
-	EditorApp::BeforeDraw(cmd);
+	auto& terrainChunks = m_terrain->GetRenderer()->GetChunkDrawables();
+	for (auto chunk : terrainChunks)
+	{
+		if (chunk->IsUploadPending())
+		{
+			GetUploadContext()->UploadDrawable(chunk, completed);
+		}
+	}
+
+	if (m_debugBrush->IsUploadPending())
+	{
+		GetUploadContext()->UploadDrawable(m_debugBrush.get(), completed);
+	}
+
+	if (m_debugCellMesh->IsUploadPending())
+	{
+		GetUploadContext()->UploadDrawable(m_debugCellMesh.get(), completed);
+	}
 }
 
 void MCTerraformEditor::DrawScene(ID3D12GraphicsCommandList* cmd)
@@ -217,68 +201,18 @@ void MCTerraformEditor::DrawScene(ID3D12GraphicsCommandList* cmd)
 			auto* pso = psoList->Get(i);
 			if (!pso || !m_renderSystem->GetPsoEnabled(i)) continue;
 
-			if (!buckets[i].staticItem.objects.empty())
-				cmd->ExecuteBundle(buckets[i].staticItem.bundle);
+			for (auto& object : buckets[i].staticItems)
+			{
+				RecordDrawItem(cmd, object->GetDrawBinding());
+			}
 
-			for (auto& item : buckets[i].dynamicItems)
-				RecordDrawItem(cmd, item.object);
+			for (auto& object : buckets[i].dynamicItems)
+			{
+				RecordDrawItem(cmd, object->GetDrawBinding());
+			}
 		}
 	}
 }
-
-//void MCTerraformEditor::DrawUI(ID3D12GraphicsCommandList* cmd)
-//{
-//	EditorApp::DrawUI(cmd);
-//	// Debuging Tools
-//#ifdef _DEBUG
-//	//auto* allocator = m_renderSystem->GetGpuAllocator();
-//	//if (allocator) {
-//	//	ImGui::Begin("Buffer Pools Summary");
-//	//	ImGui::Text("Pools (Small / Large)"); 
-//	//	ImGui::Separator();
-//
-//	//	static bool showFreeBlocks = true;
-//	//	static bool showPromoted = true;
-//	//	ImGui::Checkbox("Show Free Blocks", &showFreeBlocks);
-//	//	ImGui::SameLine();
-//	//	ImGui::Checkbox("Show Promoted", &showPromoted);
-//	//	ImGui::Separator();
-//
-//	//	for (auto& pi : allocator->GetDebugPools())
-//	//	{
-//	//		if (!pi.pool) continue;
-//	//		auto info = pi.pool->GetDebugInfo();
-//	//		const double used = info.capacity - std::accumulate(info.freeBlocks.begin(), info.freeBlocks.end(), 0ULL, [](UINT64 sum, const GPUBufferPool::DebugBlock& b) { return sum + b.size; });
-//	//		double frag = info.freeBlocks.empty() ? 0.0 : (double)info.freeBlocks.size();
-//
-//	//		ImGui::Text("%s : Resource %p  Capacity: %llu  Used: %llu  FreeBlocks: %zu",
-//	//			pi.name.c_str(), info.resource, (unsigned long long)info.capacity, (unsigned long long)used, info.freeBlocks.size());
-//
-//	//		// small mini-bar (capacity)
-//	//		const float barW = ImGui::GetContentRegionAvail().x;
-//	//		const float barH = 14.0f;
-//	//		ImVec2 p0 = ImGui::GetCursorScreenPos();
-//	//		ImVec2 p1 = ImVec2(p0.x + barW, p0.y + barH);
-//	//		auto* dl = ImGui::GetWindowDrawList();
-//	//		dl->AddRectFilled(p0, p1, IM_COL32(255, 30, 30, 255), 4.0f);
-//	//		dl->AddRect(p0, p1, IM_COL32(200, 200, 200, 128), 4.0f);
-//	//		auto toX = [&](UINT64 off)->float { return p0.x + float((double)off / (double)info.capacity * barW); };
-//
-//	//		if (showFreeBlocks) 
-//	//		{
-//	//			for (auto& fb : info.freeBlocks) 
-//	//			{
-//	//				float x0 = toX(fb.offset);
-//	//				float x1 = toX(fb.offset + fb.size);
-//	//				dl->AddRectFilled(ImVec2(x0, p0.y), ImVec2(x1, p1.y), IM_COL32(120, 120, 120, 160), 2.0f);
-//	//			}
-//	//		}
-//	//		ImGui::Dummy(ImVec2(barW, barH + 6.0f));
-//	//	}
-//	//	ImGui::End();
-//	//}
-//#endif // _DEBUG
-//}
 
 void MCTerraformEditor::RenderCameraLightUI()
 {
@@ -299,24 +233,18 @@ void MCTerraformEditor::RenderMarchingCubesUI()
 	ImGui::Begin("Marching Cubes Options");
 
 	ImGui::Text("Origin");
-	ImGui::SliderFloat3("##Origin", &m_gridOrigin.x, -10.0f, 10.0f, "%.3f", ImGuiSliderFlags_AlwaysClamp);
+	ImGui::InputFloat3("##Origin", &m_gridOrigin.x);
 
 	ImGui::Text("Num Of Tiles");
-	ImGui::InputInt3("##Num Of Tiles", m_gridSize.data()/*, ImGuiInputTextFlags_::ImGuiInputTextFlags_EnterReturnsTrue*/);
-	if (ImGui::IsItemDeactivatedAfterEdit())
+	if (ImGui::InputInt("##Num Of Tiles", &m_gridTiles, 1, 25))
 	{
-		m_gridSize[0] = std::clamp(m_gridSize[0], 1, 16);
-		m_gridSize[1] = std::clamp(m_gridSize[1], 1, 16);
-		m_gridSize[2] = std::clamp(m_gridSize[2], 1, 16);
-
-		m_gridRenewRequested = true;
+		m_gridTiles = std::clamp(m_gridTiles, 1, 100);
 	}
 
 	ImGui::Text("Cell Size");
 	if (ImGui::InputInt("##Num Of Tiles", &m_cellSize, 1, 4, ImGuiInputTextFlags_AlwaysOverwrite))
 	{
 		m_cellSize = std::clamp(m_cellSize, 1, 16);
-		m_gridRenewRequested = true;
 	}
 
 	ImGui::Text("Brush Radius");
@@ -325,13 +253,27 @@ void MCTerraformEditor::RenderMarchingCubesUI()
 	{
 		GeometryData newBrushMeshData;
 		MeshGenerator::CreateSphereMeshData(m_brushRadius, { 1.0f, 0.0f, 0.0f, 0.4f });
-		m_debugBrush->SetCPUData(newBrushMeshData);
-		m_renderSystem->UpdateDynamic(m_debugBrush.get(), newBrushMeshData);
+		if (!m_renderSystem->UpdateDynamic(m_debugBrush.get(), newBrushMeshData))
+		{
+			m_debugBrush->SetCPUData(newBrushMeshData);
+			m_renderSystem->RegisterDynamic(m_debugBrush.get(), "wire");
+		}
 	}
 
 	ImGui::Text("Brush Strength");
 	ImGui::DragFloat("##Brush Strength", &m_brushStrength, 1.0f, 1.0f, 10.0f, "%.3f", ImGuiSliderFlags_AlwaysClamp);
+	ImGui::Separator();
+	if (ImGui::Button("Generate"))
+	{
+		GridDesc gridDesc{ .chunkSize = 50u };
+		auto newSdf = MakeSphereGrid(m_gridTiles, static_cast<float>(m_cellSize), 25.0f, m_gridOrigin, gridDesc);
+		m_terrain->setGridDesc(m_device.Get(), gridDesc);
+		m_terrain->setField(m_device.Get(), newSdf);
+		m_terrain->requestRemesh(m_mcIso);
 
+		m_debugCellMesh->SetPosition(m_gridOrigin);
+		m_debugCellMesh->UpdateConstants();
+	}
 	ImGui::End();
 }
 

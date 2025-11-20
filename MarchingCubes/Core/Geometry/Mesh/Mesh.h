@@ -2,7 +2,6 @@
 #include "Core/DataStructures/Data.h"
 #include "Core/DataStructures/ShaderTypes.h"
 #include "Core/DataStructures/Drawable.h"
-#include "Core/Rendering/Material.h"
 #include <Core/Rendering/Camera.h>
 #include <DirectXCollision.h>
 using Microsoft::WRL::ComPtr;
@@ -11,12 +10,11 @@ class Mesh :public IDrawable
 {
 public:
 	Mesh(ID3D12Device* device, const GeometryData& data);
-	Mesh(ID3D12Device* device, const GeometryData& data, const ObjectConstants& cb, std::shared_ptr<Material> material);
+	Mesh(ID3D12Device* device, const GeometryData& data, const ObjectConstants& cb);
 
 	// IDrawable을(를) 통해 상속됨
 	DrawBindingInfo GetDrawBinding() const override;
 	ObjectConstants GetObjectConstants() const override { return m_objectCB; }
-	void Update(float deltaTime);
 	void UpdateConstants();
 	
 	const GeometryData* GetCPUData() const override { return &m_cpu; }
@@ -31,9 +29,7 @@ public:
 
 	void SetCPUData(const GeometryData& meshData) override { m_cpu = meshData; }
 	void SetCPUData(GeometryData&& meshData) override { m_cpu = std::move(meshData); }
-	Material* GetMaterial() { return m_material.get(); }
-	void SetMaterial(std::shared_ptr<Material> mat) { m_material = std::move(mat); }
-
+	void SetMaterial(const uint32_t index) { m_objectCB.materialIndex = index; }
 	DirectX::XMFLOAT3 GetPosition() const { return m_position; }
 	void SetPosition(const DirectX::XMFLOAT3& pos) { m_position = pos; }
 	DirectX::XMFLOAT3 GetRotation() const { return m_rotation; }
@@ -52,8 +48,6 @@ private:
 	GeometryBuffer m_buffer;
 	GeometryData m_cpu;
 	ObjectConstants m_objectCB{};
-
-	std::shared_ptr<Material> m_material; // Material은 App 클래스에서 공유받아 bind만 해준다.
 
 	DirectX::XMFLOAT3 m_position = { 0.0f, 0.0f, 0.0f };
 	DirectX::XMFLOAT3 m_rotation = { 0.0f, 0.0f, 0.0f };

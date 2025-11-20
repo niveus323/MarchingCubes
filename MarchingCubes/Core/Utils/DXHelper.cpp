@@ -6,7 +6,7 @@ std::wstring GetShaderFullPath(LPCWSTR shaderName)
     return GetFullPath(AssetType::Shader, shaderName);
 }
 
-HRESULT ReadDataFromFile(LPCWSTR filename, byte** data, UINT* size)
+HRESULT ReadDataFromFile(LPCWSTR filename, byte** data, uint32_t* size)
 {
     using namespace Microsoft::WRL;
 
@@ -50,7 +50,7 @@ HRESULT ReadDataFromFile(LPCWSTR filename, byte** data, UINT* size)
     return S_OK;
 }
 
-HRESULT ReadDataFromDDSFile(LPCWSTR filename, byte** data, UINT* offset, UINT* size)
+HRESULT ReadDataFromDDSFile(LPCWSTR filename, byte** data, uint32_t* offset, uint32_t* size)
 {
     if (FAILED(ReadDataFromFile(filename, data, size)))
     {
@@ -58,8 +58,8 @@ HRESULT ReadDataFromDDSFile(LPCWSTR filename, byte** data, UINT* offset, UINT* s
     }
 
     // DDS files always start with the same magic number.
-    static const UINT DDS_MAGIC = 0x20534444;
-    UINT magicNumber = *reinterpret_cast<const UINT*>(*data);
+    static const uint32_t DDS_MAGIC = 0x20534444;
+    uint32_t magicNumber = *reinterpret_cast<const uint32_t*>(*data);
     if (magicNumber != DDS_MAGIC)
     {
         return E_FAIL;
@@ -67,41 +67,41 @@ HRESULT ReadDataFromDDSFile(LPCWSTR filename, byte** data, UINT* offset, UINT* s
 
     struct DDS_PIXELFORMAT
     {
-        UINT size;
-        UINT flags;
-        UINT fourCC;
-        UINT rgbBitCount;
-        UINT rBitMask;
-        UINT gBitMask;
-        UINT bBitMask;
-        UINT aBitMask;
+        uint32_t size;
+        uint32_t flags;
+        uint32_t fourCC;
+        uint32_t rgbBitCount;
+        uint32_t rBitMask;
+        uint32_t gBitMask;
+        uint32_t bBitMask;
+        uint32_t aBitMask;
     };
 
     struct DDS_HEADER
     {
-        UINT size;
-        UINT flags;
-        UINT height;
-        UINT width;
-        UINT pitchOrLinearSize;
-        UINT depth;
-        UINT mipMapCount;
-        UINT reserved1[11];
+        uint32_t size;
+        uint32_t flags;
+        uint32_t height;
+        uint32_t width;
+        uint32_t pitchOrLinearSize;
+        uint32_t depth;
+        uint32_t mipMapCount;
+        uint32_t reserved1[11];
         DDS_PIXELFORMAT ddsPixelFormat;
-        UINT caps;
-        UINT caps2;
-        UINT caps3;
-        UINT caps4;
-        UINT reserved2;
+        uint32_t caps;
+        uint32_t caps2;
+        uint32_t caps3;
+        uint32_t caps4;
+        uint32_t reserved2;
     };
 
-    auto ddsHeader = reinterpret_cast<const DDS_HEADER*>(*data + sizeof(UINT));
+    auto ddsHeader = reinterpret_cast<const DDS_HEADER*>(*data + sizeof(uint32_t));
     if (ddsHeader->size != sizeof(DDS_HEADER) || ddsHeader->ddsPixelFormat.size != sizeof(DDS_PIXELFORMAT))
     {
         return E_FAIL;
     }
 
-    const ptrdiff_t ddsDataOffset = sizeof(UINT) + sizeof(DDS_HEADER);
+    const ptrdiff_t ddsDataOffset = sizeof(uint32_t) + sizeof(DDS_HEADER);
     *offset = ddsDataOffset;
     *size = *size - ddsDataOffset;
 
@@ -115,7 +115,7 @@ namespace MCUtil
     // 업로드 힙 상수버퍼 (즉시 Map/memcpy) 생성 함수
     void CreateUploadConstantBuffer(ID3D12Device* device, const void* data, size_t sizeBytes, ComPtr<ID3D12Resource>& outUpload)
     {
-        UINT aligned = AlignCBSize(UINT(sizeBytes));
+        uint32_t aligned = AlignCBSize(uint32_t(sizeBytes));
         CD3DX12_HEAP_PROPERTIES hp(D3D12_HEAP_TYPE_UPLOAD);
         auto desc = CD3DX12_RESOURCE_DESC::Buffer(aligned);
 
@@ -134,9 +134,9 @@ namespace MCUtil
     }
 
     // Defaul 버퍼 + 업로드 copy (data가 nullptr이면 빈 버퍼만 생성)
-    void CreateAndUploadStructuredBuffer(ID3D12Device* device, ID3D12GraphicsCommandList* cmdList, const void* data, UINT numElements, UINT stride, ComPtr<ID3D12Resource>& outDefault, ComPtr<ID3D12Resource>* outUpload = nullptr)
+    void CreateAndUploadStructuredBuffer(ID3D12Device* device, ID3D12GraphicsCommandList* cmdList, const void* data, uint32_t numElements, uint32_t stride, ComPtr<ID3D12Resource>& outDefault, ComPtr<ID3D12Resource>* outUpload = nullptr)
     {
-        const UINT64 sizeBytes = UINT64(numElements) * stride;
+        const uint64_t sizeBytes = uint64_t(numElements) * stride;
 
         // Default buffer (COPY_DEST)
         CD3DX12_HEAP_PROPERTIES hpDef(D3D12_HEAP_TYPE_DEFAULT);
@@ -172,9 +172,9 @@ namespace MCUtil
     }
 
     // AppendStructuredUAV 버퍼 + Counter 버퍼 생성
-    void CreateStructuredUavWithCounter(ID3D12Device* device, UINT numElements, UINT stride, ComPtr<ID3D12Resource>& outBuffer, ComPtr<ID3D12Resource>& outCounter)
+    void CreateStructuredUavWithCounter(ID3D12Device* device, uint32_t numElements, uint32_t stride, ComPtr<ID3D12Resource>& outBuffer, ComPtr<ID3D12Resource>& outCounter)
     {
-        const UINT64 sizeBytes = UINT64(numElements) * stride;
+        const uint64_t sizeBytes = uint64_t(numElements) * stride;
 
         CD3DX12_HEAP_PROPERTIES hpDef(D3D12_HEAP_TYPE_DEFAULT);
 
@@ -207,7 +207,7 @@ namespace MCUtil
     // 3D Density Field 유틸리티
 
     // 3D Density Field 초기화 (SRV/UAV 디스크립터는 별도 생성)
-    void CreateOrUpdateDensity3D(ID3D12Device* device, ID3D12GraphicsCommandList* cmd, UINT dimX, UINT dimY, UINT dimZ, const float* srcLinearXYZ, ComPtr<ID3D12Resource>& ioTex3D, ComPtr<ID3D12Resource>* outUpload = nullptr)
+    void CreateOrUpdateDensity3D(ID3D12Device* device, ID3D12GraphicsCommandList* cmd, uint32_t dimX, uint32_t dimY, uint32_t dimZ, const float* srcLinearXYZ, ComPtr<ID3D12Resource>& ioTex3D, ComPtr<ID3D12Resource>* outUpload = nullptr)
     {
         const DXGI_FORMAT fmt = DXGI_FORMAT_R32_FLOAT;
 
@@ -242,15 +242,15 @@ namespace MCUtil
             cmd->ResourceBarrier(1, &toCopy);
         }
 
-        const UINT64 rowPitch = UINT64(dimX) * sizeof(float);
-        const UINT64 slicePitch = rowPitch * dimY;
+        const uint64_t rowPitch = uint64_t(dimX) * sizeof(float);
+        const uint64_t slicePitch = rowPitch * dimY;
 
         D3D12_SUBRESOURCE_DATA s = {};
         s.pData = srcLinearXYZ;
         s.RowPitch = rowPitch;
         s.SlicePitch = slicePitch;
 
-        const UINT64 uploadBytes = GetRequiredIntermediateSize(ioTex3D.Get(), 0, 1);
+        const uint64_t uploadBytes = GetRequiredIntermediateSize(ioTex3D.Get(), 0, 1);
         ComPtr<ID3D12Resource> upload;
         CD3DX12_HEAP_PROPERTIES hpUp(D3D12_HEAP_TYPE_UPLOAD);
         auto descUp = CD3DX12_RESOURCE_DESC::Buffer(uploadBytes);
@@ -273,7 +273,7 @@ namespace MCUtil
         if (g_zeroUpload) return;
 
         // 4바이트만 있어도 충분하지만, Buffer 최소 정렬은 크게 요구되지 않음(여기선 4B)
-        const UINT kBytes = sizeof(UINT);
+        const uint32_t kBytes = sizeof(uint32_t);
         auto desc = CD3DX12_RESOURCE_DESC::Buffer(kBytes);
 
         // 업로드 힙으로 만들고, 0을 써 둔다.
@@ -290,7 +290,7 @@ namespace MCUtil
         void* p = nullptr;
         D3D12_RANGE r{ 0, 0 }; // write-only
         ThrowIfFailed(g_zeroUpload->Map(0, &r, &p));
-        *reinterpret_cast<UINT*>(p) = 0u;
+        *reinterpret_cast<uint32_t*>(p) = 0u;
         g_zeroUpload->Unmap(0, nullptr);
     }
 
@@ -307,7 +307,7 @@ namespace MCUtil
         }
 
         // 0을 카운터 리소스의 시작(오프셋 0)에 복사
-        cmd->CopyBufferRegion(counter, 0, g_zeroUpload.Get(), 0, sizeof(UINT));
+        cmd->CopyBufferRegion(counter, 0, g_zeroUpload.Get(), 0, sizeof(uint32_t));
 
         // COPY_DEST -> after
         auto toAfter = CD3DX12_RESOURCE_BARRIER::Transition(
@@ -319,66 +319,7 @@ namespace MCUtil
 
 namespace DescriptorHelper
 {    
-    DescriptorHelper::DescriptorRing::DescriptorRing(ID3D12Device* device, UINT ringCount, UINT descriptorsPerFrame, UINT staticCount) :
-        m_ringCount(ringCount),
-        m_perFrame(descriptorsPerFrame),
-        m_staticCount(staticCount)
-    {
-        D3D12_DESCRIPTOR_HEAP_DESC desc{};
-        desc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
-        desc.NumDescriptors = m_staticCount + descriptorsPerFrame * m_ringCount;
-        desc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
-        ThrowIfFailed(device->CreateDescriptorHeap(&desc, IID_PPV_ARGS(m_heap.ReleaseAndGetAddressOf())));
-        NAME_D3D12_OBJECT(m_heap);
-        
-        m_inc = device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
-        m_cpuBase = m_heap->GetCPUDescriptorHandleForHeapStart();
-        m_gpuBase = m_heap->GetGPUDescriptorHandleForHeapStart();
-    }
-
-    D3D12_GPU_DESCRIPTOR_HANDLE DescriptorRing::GpuAt(UINT frameIdx, UINT slot) const
-    {
-        D3D12_GPU_DESCRIPTOR_HANDLE h = m_gpuBase;
-        h.ptr += SIZE_T((m_staticCount + (frameIdx * m_perFrame) + slot) * m_inc);
-        return h;
-    }
-
-    D3D12_GPU_DESCRIPTOR_HANDLE DescriptorRing::StaticGpuAt(UINT index) const
-    {
-        D3D12_GPU_DESCRIPTOR_HANDLE h = m_gpuBase;
-        h.ptr += SIZE_T(index * m_inc);
-        return h;
-    }
-    
-    D3D12_CPU_DESCRIPTOR_HANDLE DescriptorRing::CpuAt(UINT frameIdx, UINT slot) const
-    {
-        D3D12_CPU_DESCRIPTOR_HANDLE h = m_cpuBase;
-        h.ptr += SIZE_T((m_staticCount + (frameIdx * m_perFrame) + slot) * m_inc);
-        return h;
-    }
-
-    D3D12_CPU_DESCRIPTOR_HANDLE DescriptorRing::StaticCpuAt(UINT index) const
-    {
-        D3D12_CPU_DESCRIPTOR_HANDLE h = m_cpuBase;
-        h.ptr += SIZE_T(index * m_inc);
-        return h;
-    }
-
-    void CopyToFrameSlot(ID3D12Device* device, DescriptorRing& ring, UINT frameIdx, UINT slot, D3D12_CPU_DESCRIPTOR_HANDLE srcCPU)
-    {
-        auto dst = ring.CpuAt(frameIdx, slot);
-        device->CopyDescriptorsSimple(1, dst, srcCPU, D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
-    }
-
-    void DescriptorHelper::CopyRange(ID3D12Device* device, DescriptorRing& ring, UINT frameIdx, UINT baseSlot, const D3D12_CPU_DESCRIPTOR_HANDLE* srcCPU, UINT count)
-    {
-        for (UINT i = 0; i < count; ++i)
-        {
-            CopyToFrameSlot(device, ring, frameIdx, baseSlot + i, srcCPU[i]);
-        }
-    }
-
-    void DescriptorHelper::CreateSRV_Texture3D(ID3D12Device* device, ID3D12Resource* res, DXGI_FORMAT format, D3D12_CPU_DESCRIPTOR_HANDLE dstCPU)
+    void CreateSRV_Texture3D(ID3D12Device* device, ID3D12Resource* res, DXGI_FORMAT format, D3D12_CPU_DESCRIPTOR_HANDLE dstCPU)
     {
         D3D12_SHADER_RESOURCE_VIEW_DESC d{};
         d.Format = format;
@@ -402,7 +343,7 @@ namespace DescriptorHelper
         device->CreateUnorderedAccessView(res, counter, &d, dstCPU);
     }
 
-    void CreateSRV_Structured(ID3D12Device* device, ID3D12Resource* res, UINT stride, D3D12_CPU_DESCRIPTOR_HANDLE dstCPU)
+    void CreateSRV_Structured(ID3D12Device* device, ID3D12Resource* res, uint32_t stride, D3D12_CPU_DESCRIPTOR_HANDLE dstCPU)
     {
         auto desc = res->GetDesc();
         D3D12_SHADER_RESOURCE_VIEW_DESC d{};
@@ -410,20 +351,20 @@ namespace DescriptorHelper
         d.ViewDimension = D3D12_SRV_DIMENSION_BUFFER;
         d.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
         d.Buffer.FirstElement = 0;
-        d.Buffer.NumElements = UINT(desc.Width / stride);
+        d.Buffer.NumElements = uint32_t(desc.Width / stride);
         d.Buffer.StructureByteStride = stride;
         d.Buffer.Flags = D3D12_BUFFER_SRV_FLAG_NONE;
         device->CreateShaderResourceView(res, &d, dstCPU);
     }
 
-    void CreateUAV_Structured(ID3D12Device* device, ID3D12Resource* res, UINT stride, D3D12_CPU_DESCRIPTOR_HANDLE dstCPU, ID3D12Resource* counter)
+    void CreateUAV_Structured(ID3D12Device* device, ID3D12Resource* res, uint32_t stride, D3D12_CPU_DESCRIPTOR_HANDLE dstCPU, ID3D12Resource* counter)
     {
         auto desc = res->GetDesc();
         D3D12_UNORDERED_ACCESS_VIEW_DESC d{};
         d.Format = DXGI_FORMAT_UNKNOWN;
         d.ViewDimension = D3D12_UAV_DIMENSION_BUFFER;
         d.Buffer.FirstElement = 0;
-        d.Buffer.NumElements = UINT(desc.Width / stride);
+        d.Buffer.NumElements = uint32_t(desc.Width / stride);
         d.Buffer.StructureByteStride = stride;
         d.Buffer.CounterOffsetInBytes = 0;
         d.Buffer.Flags = D3D12_BUFFER_UAV_FLAG_NONE;
@@ -431,7 +372,7 @@ namespace DescriptorHelper
 
     }
 
-    void DescriptorHelper::CreateUAV_Raw(ID3D12Device* device, ID3D12Resource* res, D3D12_CPU_DESCRIPTOR_HANDLE dstCPU, UINT firstElement, UINT numElements)
+    void CreateUAV_Raw(ID3D12Device* device, ID3D12Resource* res, D3D12_CPU_DESCRIPTOR_HANDLE dstCPU, uint32_t firstElement, uint32_t numElements)
     {
         auto desc = res->GetDesc();
         if ((desc.Width % 4ull) != 0ull)
@@ -439,7 +380,7 @@ namespace DescriptorHelper
             OutputDebugString(L"Raw Buffer must be 4-byte Aligned!!!!");
         }
 
-        const UINT totalElemnts = static_cast<UINT>(desc.Width / 4ull);
+        const uint32_t totalElemnts = static_cast<uint32_t>(desc.Width / 4ull);
         if (numElements == 0)
         {
             numElements = totalElemnts - firstElement;
@@ -457,29 +398,16 @@ namespace DescriptorHelper
         device->CreateUnorderedAccessView(res, nullptr, &d, dstCPU);
 
     }
-
-    void DescriptorHelper::SetTable(ID3D12GraphicsCommandList* cmd, DescriptorRing& ring, UINT frameIdx, std::initializer_list<std::pair<UINT,UINT>> paramAndSlots)
-    {
-        for (const auto& item : paramAndSlots)
-        {
-            UINT paramIdx = item.first;
-            UINT slotIdx = item.second;
-
-            cmd->SetComputeRootDescriptorTable(paramIdx, ring.GpuAt(frameIdx, slotIdx));
-
-        }        
-    }
-
 }
 
 
 namespace ConstantBufferHelper
 {
-    CBRing::CBRing(ID3D12Device* device, UINT ringCount, UINT bytesPerFrame) :
+    CBRing::CBRing(ID3D12Device* device, uint32_t ringCount, uint32_t bytesPerFrame) :
         m_ringCount(ringCount)
     {
         m_bytesPerFrame = AlignUp(bytesPerFrame, 256U);
-        const UINT totalBytes = m_bytesPerFrame * ringCount;
+        const uint32_t totalBytes = m_bytesPerFrame * ringCount;
 
         auto desc = CD3DX12_RESOURCE_DESC::Buffer(totalBytes);
         auto hpUpload = CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD);
@@ -490,12 +418,12 @@ namespace ConstantBufferHelper
         m_headPerFrame.assign(ringCount, 0u);
     }
 
-    D3D12_GPU_VIRTUAL_ADDRESS CBRing::PushBytes(UINT frameIndex, const void* src, UINT size)
+    D3D12_GPU_VIRTUAL_ADDRESS CBRing::PushBytes(uint32_t frameIndex, const void* src, uint32_t size)
     {
-        const UINT n = AlignUp(size, 256u);
-        UINT& head = m_headPerFrame[frameIndex];
+        const uint32_t n = AlignUp(size, 256u);
+        uint32_t& head = m_headPerFrame[frameIndex];
 
-        const UINT frameOffset = m_bytesPerFrame * frameIndex;
+        const uint32_t frameOffset = m_bytesPerFrame * frameIndex;
         std::memcpy(m_cpu + frameOffset + head, src, size);
         D3D12_GPU_VIRTUAL_ADDRESS va = m_baseGPU + frameOffset + head;
         head += n;
@@ -503,23 +431,23 @@ namespace ConstantBufferHelper
         return va;
     }
 
-    UINT ConstantBufferHelper::CalcBytesPerFrame(const std::initializer_list<std::pair<UINT, UINT>> cbSizeAndCounts, float margin, UINT minFloor)
+    uint32_t ConstantBufferHelper::CalcBytesPerFrame(const std::initializer_list<std::pair<uint32_t, uint32_t>> cbSizeAndCounts, float margin, uint32_t minFloor)
     {
-        UINT raw = 0;
+        uint32_t raw = 0;
         for (const auto& item : cbSizeAndCounts)
         {
-            UINT size = item.first;
-            UINT countPerFrame = item.second;
+            uint32_t size = item.first;
+            uint32_t countPerFrame = item.second;
 
             raw += AlignUp(size, 256u) * countPerFrame;
         }
-        UINT bytesPerFrame = (UINT)(raw * margin);
+        uint32_t bytesPerFrame = (uint32_t)(raw * margin);
         return std::max(AlignUp(bytesPerFrame, 256u), minFloor);
     }
 
-    D3D12_GPU_VIRTUAL_ADDRESS PushOrSpill(ID3D12Device* device, CBRing& ring, UINT frameIdx, const void* src, UINT sizeBytes, std::vector<ComPtr<ID3D12Resource>>& pendingDeleteContainer)
+    D3D12_GPU_VIRTUAL_ADDRESS PushOrSpill(ID3D12Device* device, CBRing& ring, uint32_t frameIdx, const void* src, uint32_t sizeBytes, std::vector<ComPtr<ID3D12Resource>>& pendingDeleteContainer)
     {
-        const UINT need = AlignUp(sizeBytes, 256U);
+        const uint32_t need = AlignUp(sizeBytes, 256U);
         if (ring.Remaining(frameIdx) >= need)
             return ring.PushBytes(frameIdx, src, sizeBytes);
 

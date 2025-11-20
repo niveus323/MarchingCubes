@@ -3,9 +3,9 @@
 #include "PSOEnumLUT.h"
 #include <filesystem>
 
-static void ApplyAlphaBlend(D3D12_BLEND_DESC& b, UINT rtCount)
+static void ApplyAlphaBlend(D3D12_BLEND_DESC& b, uint32_t rtCount)
 {
-    for (UINT i = 0; i < rtCount && i < 8; i++) {
+    for (uint32_t i = 0; i < rtCount && i < 8; i++) {
         auto& rt = b.RenderTarget[i];
         rt.BlendEnable = TRUE;
         rt.SrcBlend = D3D12_BLEND_SRC_ALPHA;
@@ -88,7 +88,7 @@ ComPtr<ID3D12PipelineState> PSOList::CreatePSO_v1(const BuildContext& ctx, const
     d.NumRenderTargets = s.rt.depthOnly ? 0u : 1u;
     d.RTVFormats[0] = s.rt.depthOnly ? DXGI_FORMAT_UNKNOWN : ParseFormat(s.rt.format);
     d.DSVFormat = ParseFormat(s.rt.dsv);
-    d.SampleDesc.Count = (UINT)std::max(1, s.rt.msaa);
+    d.SampleDesc.Count = (uint32_t)std::max(1, s.rt.msaa);
     d.SampleDesc.Quality = 0;
 
     // Raster

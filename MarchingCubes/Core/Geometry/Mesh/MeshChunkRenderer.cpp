@@ -4,15 +4,20 @@
 #include <DirectXMath.h>
 #include <DirectXCollision.h>
 
-MeshChunkRenderer::MeshChunkRenderer(ID3D12Device* device) :
-	m_mappedObjectCB(nullptr)
+MeshChunkRenderer::MeshChunkRenderer()
 {
 	m_worldMat = XMMatrixIdentity();
 	XMMATRIX worldMatTrans = XMMatrixTranspose(m_worldMat);
-	XMStoreFloat4x4(&m_objectCBData.worldMatrix, worldMatTrans);
+	DirectX::XMStoreFloat4x4(&m_objectCBData.worldMatrix, worldMatTrans);
 	XMMATRIX worldMatTransInv = XMMatrixInverse(nullptr, worldMatTrans);
-	XMStoreFloat4x4(&m_objectCBData.worldInvMatrix, worldMatTransInv);
-	CreateObjectConstantsBuffer(device);
+	DirectX::XMStoreFloat4x4(&m_objectCBData.worldInvMatrix, worldMatTransInv);
+	m_objectCBData.bUseTriplanar = true;
+}
+
+MeshChunkRenderer::MeshChunkRenderer(const ObjectConstants& cb) :
+	m_objectCBData(cb)
+{
+	m_worldMat = DirectX::XMLoadFloat4x4(&m_objectCBData.worldMatrix);
 }
 
 void MeshChunkRenderer::ApplyUpdates(ID3D12Device* device, const std::vector<ChunkUpdate>& ups)
@@ -64,7 +69,6 @@ void MeshChunkRenderer::ApplyUpdates(ID3D12Device* device, const std::vector<Chu
 				chunkSlot.bNeedsUpload = true;
 				chunkSlot.meshData = u.md;
 				buildTriBounds(chunkSlot.meshData, chunkSlot.triBound);
-				//chunkSlot.meshBuffer.CreateBuffers(device, u.md);
 				m_chunks.insert_or_assign(u.key, chunkSlot);
 				m_chunkDrawables.emplace(u.key, std::make_unique<ChunkDrawable>(this, u.key));
 			}
@@ -134,25 +138,6 @@ std::vector<const GeometryData*> MeshChunkRenderer::GetCPUData() const
 	return out;
 }
 
-void MeshChunkRenderer::CreateObjectConstantsBuffer(ID3D12Device* device)
-{
-	static const UINT objectConstantBufferSize = AlignUp(sizeof(ObjectConstants), D3D12_CONSTANT_BUFFER_DATA_PLACEMENT_ALIGNMENT);
-
-	ThrowIfFailed(device->CreateCommittedResource(
-		&CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD),
-		D3D12_HEAP_FLAG_NONE,
-		&CD3DX12_RESOURCE_DESC::Buffer(objectConstantBufferSize),
-		D3D12_RESOURCE_STATE_GENERIC_READ,
-		nullptr,
-		IID_PPV_ARGS(m_objectCB.ReleaseAndGetAddressOf())
-	));
-	NAME_D3D12_OBJECT_ALIAS(m_objectCB, L"MeshChunkRenderer");
-
-	// Map & CreateUploadBuffer Constant Buffer
-	ThrowIfFailed(m_objectCB->Map(0, nullptr, reinterpret_cast<void**>(&m_mappedObjectCB)));
-	memcpy(m_mappedObjectCB, &m_objectCBData, sizeof(m_objectCBData));
-}
-
 DrawBindingInfo MeshChunkRenderer::ChunkDrawable::GetDrawBinding() const
 {
 	DrawBindingInfo info{};
@@ -162,12 +147,22 @@ DrawBindingInfo MeshChunkRenderer::ChunkDrawable::GetDrawBinding() const
 	const ChunkSlot& slot = it->second;
 	if (slot.meshData.indices.empty()) return info;
 
-	info.vbv = slot.meshBuffer.GetVBV();
-	info.ibv = slot.meshBuffer.GetIBV();
+	const BufferHandle& vb = slot.meshBuffer.GetCurrentVBHandle();
+	info.vbv = {
+		.BufferLocation = vb.res ? vb.res->GetGPUVirtualAddress() + vb.offset : 0,
+		.SizeInBytes = static_cast<UINT>(vb.size),
+		.StrideInBytes = static_cast<UINT>(sizeof(Vertex)),
+	};
+
+	const BufferHandle& ib = slot.meshBuffer.GetCurrentIBHandle();
+	info.ibv = {
+		.BufferLocation = ib.res ? (ib.res->GetGPUVirtualAddress() + ib.offset) : 0,
+		.SizeInBytes = static_cast<UINT>(ib.size),
+		.Format = DXGI_FORMAT_R32_UINT
+	};
 	info.topology = slot.meshBuffer.GetTopology();
 	info.indexCount = static_cast<UINT>(slot.meshData.indices.size());
-	info.objectCBGpuVA = m_parent->m_objectCB ? m_parent->m_objectCB->GetGPUVirtualAddress() : 0ull;
-	info.material = m_parent->m_material.get();
+	info.objectCBGpuVA = slot.meshBuffer.GetCurrentCBHandle().gpuVA;
 	return info;
 }
 

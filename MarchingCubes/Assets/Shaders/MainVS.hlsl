@@ -6,6 +6,7 @@ struct VSInput
 {
     float3 Position : POSITION;
     float3 Normal : NORMAL;
+    float2 TexCoord : TEXCOORD0;
     float4 Color : COLOR;       // For Debugging
 };
 
@@ -15,6 +16,7 @@ struct PSInput
     float4 Position : SV_POSITION0;
     float3 WorldPos : TEXCOORD0;
     float3 WorldNormal : TEXCOORD1;
+    float2 TexCoord : TEXCOORD2;
     float4 Color : COLOR0;
 };
 
@@ -28,6 +30,7 @@ PSInput VSMain(VSInput input)
     output.WorldPos = worldPos.xyz;
     float3x3 worldInvT = transpose((float3x3) gWorldInv);
     output.WorldNormal = normalize(mul(input.Normal, worldInvT));
+    output.TexCoord = input.TexCoord;
     output.Color = input.Color;
     return output;
 }

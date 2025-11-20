@@ -6,7 +6,7 @@ using Microsoft::WRL::ComPtr;
 class LightManager
 {
 public:
-	LightManager(ID3D12Device* device, UINT rootParamIndex);
+	LightManager(ID3D12Device* device, uint32_t rootParamIndex);
 	~LightManager();
 
 	void AddDirectional(const DirectX::XMFLOAT3& dir, const DirectX::XMFLOAT3& radiance);

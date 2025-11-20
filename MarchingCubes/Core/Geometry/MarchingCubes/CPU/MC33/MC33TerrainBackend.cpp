@@ -22,13 +22,13 @@ void MC33TerrainBackend::requestRemesh(const RemeshRequest& req)
         grd->N[1] = chunkSize;
         grd->N[2] = chunkSize;
 
-        grd->d[0] = m_gridDesc.cellsize;
-        grd->d[1] = m_gridDesc.cellsize;
-        grd->d[2] = m_gridDesc.cellsize;
+        grd->d[0] = static_cast<double>(m_gridDesc.cellsize);
+        grd->d[1] = static_cast<double>(m_gridDesc.cellsize);
+        grd->d[2] = static_cast<double>(m_gridDesc.cellsize);
 
-        grd->r0[0] = m_gridDesc.origin.x + static_cast<float>(baseX) * m_gridDesc.cellsize;
-        grd->r0[1] = m_gridDesc.origin.y + static_cast<float>(baseY) * m_gridDesc.cellsize;
-        grd->r0[2] = m_gridDesc.origin.z + static_cast<float>(baseZ) * m_gridDesc.cellsize;
+        grd->r0[0] = static_cast<double>(m_gridDesc.origin.x + static_cast<float>(baseX) * m_gridDesc.cellsize);
+        grd->r0[1] = static_cast<double>(m_gridDesc.origin.y + static_cast<float>(baseY) * m_gridDesc.cellsize);
+        grd->r0[2] = static_cast<double>(m_gridDesc.origin.z + static_cast<float>(baseZ) * m_gridDesc.cellsize);
 
         grd->nonortho = 0;
         grd->periodic = 0;
@@ -53,7 +53,11 @@ void MC33TerrainBackend::requestRemesh(const RemeshRequest& req)
         for (unsigned i = 0; i < S->nV; ++i) {
             float* p = S->V[i];
             float* n = S->N[i];
-            m_chunkData[chunkKey].vertices.push_back({ { p[0], p[1], p[2] }, { n[0], n[1], n[2] }, {1.0f, 1.0f, 1.0f, 1.0f} });
+            m_chunkData[chunkKey].vertices.push_back(Vertex{ 
+                .pos = { p[0], p[1], p[2] }, 
+                .normal = { n[0], n[1], n[2] }, 
+                .color = {1.0f, 1.0f, 1.0f, 1.0f} 
+            });
         }
         m_chunkData[chunkKey].indices.reserve(S->nT * 3);
         for (unsigned t = 0; t < S->nT; ++t) {

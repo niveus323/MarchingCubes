@@ -1,67 +1,14 @@
 ﻿#include "pch.h"
 #include "EditorApp.h"
 #include "Core/UI/ImGUIRenderer.h"
-#include "Core/Rendering/PSO/PSOSpec.h"
+#include "Core/Assets/ResourceManager.h"
 #include <numeric>
 
 void EditorApp::OnDestroy()
 {
 	if (m_commandQueue && m_swapChainFence)
 	{
-		const UINT64 completed = m_swapChainFence->GetCompletedValue();
-		UINT64 maxFenceToWait = 0;
-		for (auto it = m_pendingDeletes.begin(); it != m_pendingDeletes.end(); )
-		{
-			if (completed >= it->fenceValue)
-			{
-				// 이미 완료된 항목은 제거
-				it = m_pendingDeletes.erase(it);
-			}
-			else
-			{
-				// 아직 완료되지 않은 항목 중 최대 펜스값 갱신
-				maxFenceToWait = std::max(maxFenceToWait, it->fenceValue);
-				++it;
-			}
-		}
-
-		if (maxFenceToWait == 0)
-		{
-			// 현재 제출된 프레임의 완료를 보장
-			WaitForGpu();
-		}
-		else
-		{
-			// 이미 완료된지 재확인 (race-safe)
-			const UINT64 now2 = m_swapChainFence->GetCompletedValue();
-			if (now2 < maxFenceToWait)
-			{
-				ThrowIfFailed(m_commandQueue->Signal(m_swapChainFence.Get(), maxFenceToWait));
-				ThrowIfFailed(m_swapChainFence->SetEventOnCompletion(maxFenceToWait, m_fenceEvent));
-				WaitForSingleObjectEx(m_fenceEvent, INFINITE, FALSE);
-			}
-		}
-
-		m_pendingDeletes.erase(
-			std::remove_if(m_pendingDeletes.begin(), m_pendingDeletes.end(),
-				[&](const PendingDeleteItem& pd) { return completed >= pd.fenceValue; }),
-			m_pendingDeletes.end()
-		);
-
-		m_pendingDeletes.clear();
-		m_toDeletesContainer.clear();
-	}
-
-	for (auto& d : m_StaticObjects)
-	{
-		if (!d) continue;
-		GeometryBuffer* buf = d->GetGPUBuffer();
-		if (buf) buf->ReleaseGPUResources();
-	}
-
-	if (m_commandQueue && m_swapChainFence)
-	{
-		const UINT64 finalFence = ++m_nextFenceValue;
+		const uint64_t finalFence = ++m_nextFenceValue;
 		ThrowIfFailed(m_commandQueue->Signal(m_swapChainFence.Get(), finalFence));
 		ThrowIfFailed(m_swapChainFence->SetEventOnCompletion(finalFence, m_fenceEvent));
 		WaitForSingleObjectEx(m_fenceEvent, INFINITE, FALSE);
@@ -85,36 +32,14 @@ void EditorApp::OnUpdate(float deltaTime)
 
 void EditorApp::OnRender()
 {
-	ThrowIfFailed(m_commandAllocators[m_frameIndex]->Reset());
-	ThrowIfFailed(m_commandList->Reset(m_commandAllocators[m_frameIndex].Get(), nullptr));
-	GpuTimestampBegin(m_commandList.Get(), m_frameIndex);
-	BeforeDraw(m_commandList.Get());
 	DrawScene(m_commandList.Get());
-	//DrawUI(m_commandList.Get());
 	m_uiRenderer->RenderFrame(m_commandList.Get());
 	AfterDraw(m_commandList.Get());
 
-	// 렌더링 끝났음. Present 상태로 전환
-	m_commandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(CurrentBackbuffer(), D3D12_RESOURCE_STATE_RENDER_TARGET, D3D12_RESOURCE_STATE_PRESENT));
-
 	GpuTimestampEndAndResolve(m_commandList.Get(), m_frameIndex);
-
-	ThrowIfFailed(m_commandList->Close());
-	ID3D12CommandList* ppCommandLists[] = { m_commandList.Get() };
-	m_commandQueue->ExecuteCommandLists(_countof(ppCommandLists), ppCommandLists);
-
-	UINT syncInterval = 1;
-	UINT flags = 0;
-	if (m_tearingSupported)
-	{
-		syncInterval = 0;
-		flags = DXGI_PRESENT_ALLOW_TEARING;
-	}
-	ThrowIfFailed(m_swapChain->Present(syncInterval, flags));
-	MoveToNextFrame();
 }
 
-void EditorApp::OnPlatformEvent(UINT msg, WPARAM wParam, LPARAM lParam)
+void EditorApp::OnPlatformEvent(uint32_t msg, WPARAM wParam, LPARAM lParam)
 {
 	switch (msg)
 	{
@@ -151,50 +76,8 @@ void EditorApp::OnPlatformEvent(UINT msg, WPARAM wParam, LPARAM lParam)
 
 }
 
-void EditorApp::CreateQueues()
-{
-	D3D12_COMMAND_QUEUE_DESC queueDesc = {};
-	queueDesc.Flags = D3D12_COMMAND_QUEUE_FLAG_NONE;
-	queueDesc.Type = D3D12_COMMAND_LIST_TYPE_DIRECT;
-
-	ThrowIfFailed(m_device->CreateCommandQueue(&queueDesc, IID_PPV_ARGS(m_commandQueue.ReleaseAndGetAddressOf())));
-	NAME_D3D12_OBJECT_ALIAS(m_commandQueue, L"Main_Graphics_Queue");
-}
-
 void EditorApp::OnAfterSwapchainCreated()
 {
-	m_nextFenceValue = m_swapChainFence->GetCompletedValue();
-	for (UINT n = 0; n < kFrameCount; n++)
-	{
-		m_fenceValues[n] = m_nextFenceValue;
-		//CommandAllocator 생성
-		ThrowIfFailed(m_device->CreateCommandAllocator(D3D12_COMMAND_LIST_TYPE_DIRECT, IID_PPV_ARGS(m_commandAllocators[n].ReleaseAndGetAddressOf())));
-		NAME_D3D12_OBJECT_INDEXED(m_commandAllocators, n);
-	}
-
-	// Create CommandList.
-	ThrowIfFailed(m_device->CreateCommandList(0, D3D12_COMMAND_LIST_TYPE_DIRECT, m_commandAllocators[m_frameIndex].Get(), nullptr, IID_PPV_ARGS(m_commandList.ReleaseAndGetAddressOf())));
-	NAME_D3D12_OBJECT(m_commandList);
-	ThrowIfFailed(m_commandList->Close());
-
-	// SRV Heap 생성
-	D3D12_DESCRIPTOR_HEAP_DESC srvHeapDesc{};
-	srvHeapDesc.NumDescriptors = 1;
-	srvHeapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
-	srvHeapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
-	ThrowIfFailed(m_device->CreateDescriptorHeap(&srvHeapDesc, IID_PPV_ARGS(m_srvHeap.ReleaseAndGetAddressOf())));
-	NAME_D3D12_OBJECT(m_srvHeap);
-
-	// SRV (Env Texture) 생성
-	{
-		D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc{};
-		srvDesc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURECUBE;
-		srvDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
-		srvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
-		srvDesc.Texture2D.MipLevels = 1;
-
-		m_device->CreateShaderResourceView(nullptr, &srvDesc, m_srvHeap->GetCPUDescriptorHandleForHeapStart());
-	}
 	InitGpuTimeStampResources();
 }
 
@@ -202,34 +85,30 @@ void EditorApp::OnInitPipelines()
 {
 	D3D12_INPUT_ELEMENT_DESC inputElementDesc[] =
 	{
-		{ "POSITION", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 0, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
-		{ "NORMAL", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 12, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
-		{ "COLOR", 0, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, 24, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 }
+		{ "POSITION", 0, DXGI_FORMAT_R32G32B32_FLOAT,    0,  0, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
+		{ "NORMAL",   0, DXGI_FORMAT_R32G32B32_FLOAT,    0, 12, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
+		{ "TEXCOORD", 0, DXGI_FORMAT_R32G32_FLOAT,       0, 24, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
+		{ "COLOR",    0, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, 32, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 }
 	};
 
 	//Create Main Root Signature.
 	{
-		// Define Root Parameter : b0 (CameraBuffer), b1 (ObjectBuffer), b2 (MaterialBuffer), b3 (LightBuffer), t0 (EnvMap), s0 (EnvSampler)
-		CD3DX12_ROOT_PARAMETER1  rootParams[5];
+		// Define Root Parameter : b0 (CameraBuffer), b1 (ObjectBuffer), b2 (LightBuffer), b3 (TriplanarBuffer) ,t0 (Materials), t1 (EnvMap), t2(TexTable), s0 (LinearSampler)
+		CD3DX12_ROOT_PARAMETER1  rootParams[7];
 		ZeroMemory(rootParams, sizeof(rootParams));
 		rootParams[0].InitAsConstantBufferView(0); // b0
 		rootParams[1].InitAsConstantBufferView(1); // b1
-		rootParams[2].InitAsConstantBufferView(2); // b2
-		rootParams[3].InitAsConstantBufferView(3); // b3
+		rootParams[2].InitAsDescriptorTable(1, &CD3DX12_DESCRIPTOR_RANGE1(D3D12_DESCRIPTOR_RANGE_TYPE_CBV, 1, 2)); // b2
+		rootParams[3].InitAsDescriptorTable(1, &CD3DX12_DESCRIPTOR_RANGE1(D3D12_DESCRIPTOR_RANGE_TYPE_CBV, 1, 3)); // b3
+		rootParams[4].InitAsDescriptorTable(1, &CD3DX12_DESCRIPTOR_RANGE1(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 0)); // t0
+		rootParams[5].InitAsDescriptorTable(1, &CD3DX12_DESCRIPTOR_RANGE1(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 1)); // t1
+		rootParams[6].InitAsDescriptorTable(1, &CD3DX12_DESCRIPTOR_RANGE1(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, (uint32_t) - 1, 2)); // t2
 
-		// 환경 맵 텍스쳐 슬롯 등록. (샘플러는 Static Sampler 사용)
-		CD3DX12_DESCRIPTOR_RANGE1 range{};
-		range.Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 0); // t0
-		rootParams[4].InitAsDescriptorTable(1, &range, D3D12_SHADER_VISIBILITY_ALL);
-
-		// Static Sampler 등록 ( 별도의 샘플러가 필요할 경우 Descriptor Table에 포함할 것.)
-		D3D12_STATIC_SAMPLER_DESC samplerDesc{};
-		samplerDesc.ShaderRegister = 0; // s0
-		samplerDesc.Filter = D3D12_FILTER_MIN_MAG_MIP_LINEAR;
-		samplerDesc.AddressU = samplerDesc.AddressV = samplerDesc.AddressW = D3D12_TEXTURE_ADDRESS_MODE_WRAP;
+		// Static Sampler 등록 ( 런타임에 바꿔야할 샘플러가 필요할 경우 Descriptor Table에 포함할 것.)
+		CD3DX12_STATIC_SAMPLER_DESC samplerDescs = CD3DX12_STATIC_SAMPLER_DESC(0, D3D12_FILTER_MIN_MAG_MIP_LINEAR); // s0
 
 		CD3DX12_VERSIONED_ROOT_SIGNATURE_DESC rootSignatureDesc{};
-		rootSignatureDesc.Init_1_1(_countof(rootParams), rootParams, 1, &samplerDesc, D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT);
+		rootSignatureDesc.Init_1_1(_countof(rootParams), rootParams, 1, &samplerDescs, D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT);
 
 		ComPtr<ID3DBlob> signature;
 		ThrowIfFailed(D3DX12SerializeVersionedRootSignature(&rootSignatureDesc, D3D_ROOT_SIGNATURE_VERSION_1_1, &signature, nullptr));
@@ -239,48 +118,44 @@ void EditorApp::OnInitPipelines()
 
 	D3D12_INPUT_LAYOUT_DESC inputLayout = { inputElementDesc, _countof(inputElementDesc) };
 	m_renderSystem = std::make_unique<RenderSystem>(m_device.Get(), m_rootSignature.Get(), inputLayout, GetPSOFiles());
-	m_renderSystem->SetPsoEnabled("Wire", false);
 	m_renderSystem->SetPsoEnabled("DrawNormal", false);
 }
 
-ID3D12GraphicsCommandList* EditorApp::BeginInitCommand()
+void EditorApp::OnBuildInitialScene(ID3D12GraphicsCommandList* initCommand)
 {
-	ThrowIfFailed(m_commandAllocators[0]->Reset());
-	ThrowIfFailed(m_commandList->Reset(m_commandAllocators[0].Get(), nullptr));
-	return m_commandList.Get();
-}
-
-void EditorApp::OnBuildInitialScene()
-{
-	ID3D12GraphicsCommandList* initCommand = BeginInitCommand();
 	m_mainCamera = std::make_unique<Camera>(static_cast<float>(m_width), static_cast<float>(m_height));
 	m_lightManager = std::make_unique<LightManager>(m_device.Get(), 3);
+	
+	if(ResourceManager* resourceManager = GetResourceManager())
+	{
+		uint32_t sandTexHandle = resourceManager->LoadTexture(GetFullPath(AssetType::Texture, L"gravelly_sand/gravelly_sand_diff_4k.png"));
 
-	m_defaultMat = std::make_shared<Material>();
-	m_defaultMat->SetAlbedo({ 1.0f, 1.0f, 1.0f });
-	m_defaultMat->SetMetallic(0.0f);
-	m_defaultMat->SetRoughness(0.5f);
-	m_defaultMat->SetSpecularStrength(0.04f);
-	m_defaultMat->SetAmbientOcclusion(1.0f);
-	m_defaultMat->SetIOR(1.5f);
-	m_defaultMat->SetShadingModel(EShadingModel::DefaultLit);
-	m_defaultMat->SetOpacity(1.0f);
-	m_defaultMat->CreateConstantBuffer(m_device.Get());
+		MaterialCPU defaultMatCpu(MaterialConstants {
+			.albedo = {1.0f, 1.0f, 1.0f},
+			.metallic = 0.0f,
+			.roughness = 0.5f,
+			.specularStrength = 0.04f,
+			.ao = 1.0f,
+			.ior = 1.0f,
+			.shadingModel = EShadingModel::DefaultLit,
+			.opacity = 1.0f,
+			.diffuse = TextureParams{ 
+				.mappingType = ETextureMappingTypes::Triplanar 
+			}
+		}, sandTexHandle);
+		resourceManager->AddMaterial(defaultMatCpu);
+	}
 
 	InitScene(initCommand);
 	InitUICommon(initCommand);
-	EndInitCommand();
 }
 
-void EditorApp::EndInitCommand()
+void EditorApp::OnAfterChainSwaped()
 {
-	// Close CommandList
-	ThrowIfFailed(m_commandList->Close());
-
-	ID3D12CommandList* ppCommandLists[] = { m_commandList.Get() };
-	m_commandQueue->ExecuteCommandLists(_countof(ppCommandLists), ppCommandLists);
-
-	WaitForGpu();
+	// GPU TimeStamp Readback
+	const double gpuMs = ComputeGpuFrameMsAfterCompleted(m_frameIndex);
+	// Timer에 GPU 프레임 시간(ms) 반영 → 평균/즉시 FPS 계산에 사용
+	GetTimer().PushGpuFrameMs(gpuMs);
 }
 
 void EditorApp::InitUICommon(ID3D12GraphicsCommandList* cmd)
@@ -344,55 +219,59 @@ void EditorApp::InitUI()
 
 void EditorApp::UpdateUI(float deltaTime)
 {
+	GpuAllocator* gpuAllocator = GetGpuAllocator();
+	StaticBufferRegistry* staticBufferRegistry = GetStaticBufferRegistry();
 	if (auto p = m_profiler.lock())
 	{
 		std::vector<BufferPoolInfo> pools;
 		// GpuAllocator
-		for (auto& dbg : m_renderSystem->GetGpuAllocator()->GetDebugPools())
+		for (auto& dbg : gpuAllocator->GetDebugPools())
 		{
 			BufferPoolInfo pi;
 			pi.name = dbg.name;
 			pi.capacity = dbg.pool->GetCapacity();
 			std::vector<BufferBlock>& allocated = dbg.pool->GetAllocatedBlocks();
-			pi.used = std::accumulate(allocated.begin(), allocated.end(), 0ULL, [](UINT64 sum, const BufferBlock& b) { return sum + b.size; });
+			pi.used = std::accumulate(allocated.begin(), allocated.end(), 0ULL, [](uint64_t sum, const BufferBlock& b) { return sum + b.size; });
 			pi.free = dbg.pool->GetFreeBlocks();
 			pi.allocated = dbg.pool->GetAllocatedBlocks();
 			pools.push_back(pi);
 		}
 
 		// StaticBufferRegistry
-		if(auto* registry = m_renderSystem->GetStaticBufferRegistry())
-		{
-			BufferPoolInfo pi_vb;
-			pi_vb.name = "StaticVB";
-			pi_vb.capacity = registry->GetVBCapacity();
-			std::vector<BufferBlock>& allocatedVB = registry->GetVBAllocated();
-			pi_vb.used = std::accumulate(allocatedVB.begin(), allocatedVB.end(), 0ULL, [](UINT64 sum, const BufferBlock& b) {return sum + b.size; });
-			pi_vb.free = registry->GetVBFree();
-			pi_vb.allocated = allocatedVB;
-			pools.push_back(pi_vb);
+		BufferPoolInfo pi_vb;
+		pi_vb.name = "StaticVB";
+		pi_vb.capacity = staticBufferRegistry->GetVBCapacity();
+		std::vector<BufferBlock>& allocatedVB = staticBufferRegistry->GetVBAllocated();
+		pi_vb.used = std::accumulate(allocatedVB.begin(), allocatedVB.end(), 0ULL, [](uint64_t sum, const BufferBlock& b) {return sum + b.size; });
+		pi_vb.free = staticBufferRegistry->GetVBFree();
+		pi_vb.allocated = allocatedVB;
+		pools.push_back(pi_vb);
 
-			BufferPoolInfo pi_ib;
-			pi_ib.name = "StaticIB";
-			pi_ib.capacity = registry->GetIBCapacity();
-			std::vector<BufferBlock>& allocatedIB = registry->GetIBAllocated();
-			pi_ib.used = std::accumulate(allocatedIB.begin(), allocatedIB.end(), 0ULL, [](UINT64 sum, const BufferBlock& b) {return sum + b.size; });
-			pi_ib.free = registry->GetIBFree();
-			pi_ib.allocated = allocatedIB;
-			pools.push_back(pi_ib);
-		}
+		BufferPoolInfo pi_ib;
+		pi_ib.name = "StaticIB";
+		pi_ib.capacity = staticBufferRegistry->GetIBCapacity();
+		std::vector<BufferBlock>& allocatedIB = staticBufferRegistry->GetIBAllocated();
+		pi_ib.used = std::accumulate(allocatedIB.begin(), allocatedIB.end(), 0ULL, [](uint64_t sum, const BufferBlock& b) {return sum + b.size; });
+		pi_ib.free = staticBufferRegistry->GetIBFree();
+		pi_ib.allocated = allocatedIB;
+		pools.push_back(pi_ib);
+
 		p->SetBufferPools(pools);
 
 		p->UpdateFrame(GetTimer().GetTimeMs());
 	}
 }
 
-void EditorApp::BeforeDraw(ID3D12GraphicsCommandList* cmd)
+void EditorApp::OnUpload(ID3D12GraphicsCommandList* cmd)
 {
-	// 교체되는 리소스를 Sink에 수집.
-	m_toDeletesContainer.clear();
-	m_renderSystem->PrepareRender(cmd);
+	GpuTimestampBegin(m_commandList.Get(), m_frameIndex);
+	CameraConstants commonCameraData = m_mainCamera->BuildCameraConstants();
+	LightBlobView commonLightData = m_lightManager->BuildLightConstants();
+	m_renderSystem->PrepareRender(GetUploadContext(), GetDescriptorAllocator(), commonCameraData, commonLightData, m_frameIndex);
+}
 
+void EditorApp::DrawScene(ID3D12GraphicsCommandList* cmd)
+{
 	// 렌더 타겟 생성됨, Back Buffer를 RenderTarget 상태로 전환
 	const auto rtvBarrier = CD3DX12_RESOURCE_BARRIER::Transition(CurrentBackbuffer(), D3D12_RESOURCE_STATE_PRESENT, D3D12_RESOURCE_STATE_RENDER_TARGET);
 	cmd->ResourceBarrier(1, &rtvBarrier);
@@ -408,111 +287,15 @@ void EditorApp::BeforeDraw(ID3D12GraphicsCommandList* cmd)
 
 	cmd->RSSetViewports(1, &m_viewport);
 	cmd->RSSetScissorRects(1, &m_scissorRect);
-}
 
-void EditorApp::DrawScene(ID3D12GraphicsCommandList* cmd)
-{
-	// Set necessary state.
+	DescriptorAllocator* descriptorAllocator = GetDescriptorAllocator();
 	cmd->SetGraphicsRootSignature(m_rootSignature.Get());
-
-	// Descriptor Heaps
-	ID3D12DescriptorHeap* ppHeaps[] = { m_srvHeap.Get() };
-	m_commandList->SetDescriptorHeaps(1, ppHeaps);
-	m_commandList->SetGraphicsRootDescriptorTable(4, m_srvHeap->GetGPUDescriptorHandleForHeapStart());
-
-	CameraConstants commonCameraData = m_mainCamera->BuildCameraConstants();
-	LightBlobView commonLightData = m_lightManager->BuildLightConstants();
-
-	m_renderSystem->RenderFrame(cmd, commonCameraData, commonLightData);
-}
-
-void EditorApp::MoveToNextFrame()
-{
-	const UINT prevIndex = m_frameIndex;
-	const UINT64 fenceToSignal = ++m_nextFenceValue;
-
-	if (fenceToSignal > 0) ThrowIfFailed(GetPresentQueue()->Signal(m_swapChainFence.Get(), fenceToSignal));
-
-	PendingDeleteItem pd = m_renderSystem->CleanUp(fenceToSignal);
-	if (!pd.resources.empty())
-	{
-		if (pd.fenceValue == 0)
-		{
-			Log::Print("EditorApp", "Warning: CleanUp returned pending delete with zero fenceValue!");
-			pd.fenceValue = fenceToSignal;
-		}
-		m_pendingDeletes.emplace_back(std::move(pd));
-	}
-
-	if (!m_toDeletesContainer.empty())
-	{
-		PendingDeleteItem pd;
-		pd.fenceValue = fenceToSignal;
-		pd.resources.swap(m_toDeletesContainer);
-		m_pendingDeletes.emplace_back(std::move(pd));
-	}
-
-	m_fenceValues[prevIndex] = fenceToSignal;
-	// 체인 스왑
-	m_frameIndex = m_swapChain->GetCurrentBackBufferIndex();
-
-	// 체인 스왑 전에 완료하지 못한 작업은 대기
-	UINT64 lastFenceValue = m_fenceValues[m_frameIndex];
-	if (lastFenceValue > 0 && m_swapChainFence->GetCompletedValue() < lastFenceValue)
-	{
-		ThrowIfFailed(m_swapChainFence->SetEventOnCompletion(lastFenceValue, m_fenceEvent));
-		WaitForSingleObjectEx(m_fenceEvent, INFINITE, FALSE);
-	}
-
-	// GPU TimeStamp Readback
-	const double gpuMs = ComputeGpuFrameMsAfterCompleted(m_frameIndex);
-	// Timer에 GPU 프레임 시간(ms) 반영 → 평균/즉시 FPS 계산에 사용
-	GetTimer().PushGpuFrameMs(gpuMs);
-
-	// 삭제 요청 이행.
-	const UINT64 completed = m_swapChainFence->GetCompletedValue();
-	auto iter = m_pendingDeletes.begin();
-	while (iter != m_pendingDeletes.end())
-	{
-		if (completed >= iter->fenceValue)
-		{
-			iter = m_pendingDeletes.erase(iter);
-		}
-		else
-		{
-			++iter;
-		}
-	}
-
-	// RenderSystem 펜스 값 갱신
-	m_renderSystem->CallWhenFenceSignaled(completed);
-}
-
-void EditorApp::WaitForGpu()
-{
-#ifdef _DEBUG
-	assert(m_swapChainFence);
-#endif // _DEBUG
-
-	UINT64 lastFenceValue = m_swapChainFence->GetCompletedValue();
-	if (lastFenceValue == 0)
-	{
-		const UINT64 kInitFence = 1;
-		m_nextFenceValue = std::max<UINT64>(m_nextFenceValue, kInitFence);
-		for (UINT i = 0; i < kFrameCount; ++i)
-		{
-			m_fenceValues[i] = std::max<UINT64>(m_fenceValues[i], kInitFence);
-		}
-		ThrowIfFailed(GetPresentQueue()->Signal(m_swapChainFence.Get(), kInitFence));
-	}
-	else if (m_swapChainFence->GetCompletedValue() < lastFenceValue)
-	{
-		ThrowIfFailed(GetPresentQueue()->Signal(m_swapChainFence.Get(), lastFenceValue));
-		ThrowIfFailed(m_swapChainFence->SetEventOnCompletion(lastFenceValue, m_fenceEvent));
-		WaitForSingleObjectEx(m_fenceEvent, INFINITE, FALSE);
-
-	}
-	m_fenceValues[m_frameIndex] = lastFenceValue + 1;
+	ID3D12DescriptorHeap* ppHeaps[] = { descriptorAllocator->GetCbvSrvUavHeap(), descriptorAllocator->GetSamplerHeap(0)};
+	cmd->SetDescriptorHeaps(_countof(ppHeaps), ppHeaps);
+	//cmd->SetGraphicsRootDescriptorTable(4, descriptorAllocator->GetStaticGpu(m_materialSlot)); // MaterialTable
+	if (ResourceManager* resourceManager = GetResourceManager()) resourceManager->BindDescriptorTable(cmd);
+	
+	m_renderSystem->RenderFrame(cmd);
 }
 
 void EditorApp::InitGpuTimeStampResources()
@@ -527,7 +310,7 @@ void EditorApp::InitGpuTimeStampResources()
 	ThrowIfFailed(m_device->CreateQueryHeap(&qh, IID_PPV_ARGS(&m_tsQueryHeap)));
 
 	// Readback buffer
-	const UINT64 bufSize = sizeof(UINT64) * (kFrameCount * 2);
+	const uint64_t bufSize = sizeof(uint64_t) * (static_cast<uint64_t>(kFrameCount * 2));
 	D3D12_HEAP_PROPERTIES hp{};
 	hp.Type = D3D12_HEAP_TYPE_READBACK;
 	D3D12_RESOURCE_DESC rb{};
@@ -559,30 +342,30 @@ void EditorApp::DestroyGpuTimeStampResources()
 	m_tsFreq = 0;
 }
 
-void EditorApp::GpuTimestampBegin(ID3D12GraphicsCommandList* cmd, UINT frameIndex)
+void EditorApp::GpuTimestampBegin(ID3D12GraphicsCommandList* cmd, uint32_t frameIndex)
 {
-	const UINT q0 = QueryIndexStart(frameIndex);
+	const uint32_t q0 = QueryIndexStart(frameIndex);
 	cmd->EndQuery(m_tsQueryHeap.Get(), D3D12_QUERY_TYPE_TIMESTAMP, q0);
 }
 
-void EditorApp::GpuTimestampEndAndResolve(ID3D12GraphicsCommandList* cmd, UINT frameIndex)
+void EditorApp::GpuTimestampEndAndResolve(ID3D12GraphicsCommandList* cmd, uint32_t frameIndex)
 {
-	const UINT q0 = QueryIndexStart(frameIndex);
-	const UINT q1 = q0 + 1;
+	const uint32_t q0 = QueryIndexStart(frameIndex);
+	const uint32_t q1 = q0 + 1;
 	cmd->EndQuery(m_tsQueryHeap.Get(), D3D12_QUERY_TYPE_TIMESTAMP, q1);
 
 	// 시작/끝 2개를 readback 버퍼에 연속으로 Resolve
-	const UINT64 dstOffsetBytes = sizeof(UINT64) * q0;
+	const uint64_t dstOffsetBytes = sizeof(uint64_t) * q0;
 	cmd->ResolveQueryData(m_tsQueryHeap.Get(), D3D12_QUERY_TYPE_TIMESTAMP, q0, 2, m_tsReadback.Get(), dstOffsetBytes);
 }
 
-double EditorApp::ComputeGpuFrameMsAfterCompleted(UINT frameIndex)
+double EditorApp::ComputeGpuFrameMsAfterCompleted(uint32_t frameIndex)
 {
 	if (!m_tsMapped || m_tsFreq == 0) return 0.0;
-	const UINT q0 = QueryIndexStart(frameIndex);
-	const UINT q1 = q0 + 1;
-	const UINT64 t0 = m_tsMapped[q0];
-	const UINT64 t1 = m_tsMapped[q1];
+	const uint32_t q0 = QueryIndexStart(frameIndex);
+	const uint32_t q1 = q0 + 1;
+	const uint64_t t0 = m_tsMapped[q0];
+	const uint64_t t1 = m_tsMapped[q1];
 	if (t1 <= t0) return 0.0;
 
 	const double sec = double(t1 - t0) / double(m_tsFreq);
@@ -663,7 +446,7 @@ void EditorApp::RenderProfilingUI()
 			auto* dl = ImGui::GetWindowDrawList();
 			dl->AddRectFilled(p0, p1, IM_COL32(30, 30, 30, 255), 4.0f);
 			dl->AddRect(p0, p1, IM_COL32(200, 200, 200, 128), 4.0f);
-			auto toX = [&](UINT64 off)->float { return p0.x + float((double)off / (double)p.capacity * barW); };
+			auto toX = [&](uint64_t off)->float { return p0.x + float((double)off / (double)p.capacity * barW); };
 
 			for (auto& block : p.allocated)
 			{

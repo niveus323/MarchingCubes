@@ -29,26 +29,26 @@
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'" Label="Configuration">
     <ConfigurationType>Application</ConfigurationType>
     <UseDebugLibraries>true</UseDebugLibraries>
-    <PlatformToolset>v143</PlatformToolset>
+    <PlatformToolset>v145</PlatformToolset>
     <CharacterSet>Unicode</CharacterSet>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'" Label="Configuration">
     <ConfigurationType>Application</ConfigurationType>
     <UseDebugLibraries>false</UseDebugLibraries>
-    <PlatformToolset>v143</PlatformToolset>
+    <PlatformToolset>v145</PlatformToolset>
     <WholeProgramOptimization>true</WholeProgramOptimization>
     <CharacterSet>Unicode</CharacterSet>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'" Label="Configuration">
     <ConfigurationType>Application</ConfigurationType>
     <UseDebugLibraries>true</UseDebugLibraries>
-    <PlatformToolset>v143</PlatformToolset>
+    <PlatformToolset>v145</PlatformToolset>
     <CharacterSet>Unicode</CharacterSet>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'" Label="Configuration">
     <ConfigurationType>Application</ConfigurationType>
     <UseDebugLibraries>false</UseDebugLibraries>
-    <PlatformToolset>v143</PlatformToolset>
+    <PlatformToolset>v145</PlatformToolset>
     <WholeProgramOptimization>true</WholeProgramOptimization>
     <CharacterSet>Unicode</CharacterSet>
   </PropertyGroup>
@@ -134,10 +134,11 @@
     <Link>
       <SubSystem>Windows</SubSystem>
       <GenerateDebugInformation>true</GenerateDebugInformation>
-      <AdditionalDependencies>directml.lib;d3d12.lib;dxgi.lib;dxguid.lib;d3dcompiler.lib;MC33.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalDependencies>DirectXTex.lib;d3d12.lib;dxgi.lib;dxguid.lib;d3dcompiler.lib;MC33.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
     <FxCompile>
-      <ShaderModel>4.0</ShaderModel>
+      <ShaderModel>6.6</ShaderModel>
+      <AdditionalOptions>-Qembed_debug</AdditionalOptions>
     </FxCompile>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
@@ -177,12 +178,15 @@
     <ClCompile Include="Core\DataStructures\Drawable.cpp" />
     <ClCompile Include="Core\Rendering\Memory\GPUBufferPool.cpp" />
     <ClCompile Include="Core\Rendering\Memory\GpuAllocator.cpp" />
+    <ClCompile Include="App\Editor\GeometryEditor.cpp" />
+    <ClCompile Include="Core\Rendering\PSO\DescriptorRing.cpp" />
+    <ClCompile Include="Core\Rendering\PSO\DescriptorAllocator.cpp" />
     <ClCompile Include="main.cpp" />
     <ClCompile Include="Core\Geometry\Mesh\Mesh.cpp" />
     <ClCompile Include="Core\Utils\Timer.cpp" />
     <ClCompile Include="Core\Rendering\UploadContext.cpp" />
     <ClCompile Include="Core\Geometry\MarchingCubesTables.cpp" />
-    <ClCompile Include="Core\Rendering\Material.cpp" />
+    <ClCompile Include="Core\Assets\Material.cpp" />
     <ClCompile Include="Core\Geometry\MarchingCubes\TerrainSystem.cpp" />
     <ClCompile Include="Core\Geometry\MarchingCubes\GPU\SDFVolume3D.cpp" />
     <ClCompile Include="Core\Geometry\Mesh\MeshChunkRenderer.cpp" />
@@ -191,7 +195,10 @@
     <ClCompile Include="Core\Rendering\PSO\PSOList.cpp" />
     <ClCompile Include="Core\Rendering\RenderSystem.cpp" />
     <ClCompile Include="Core\Rendering\Memory\StaticBufferRegistry.cpp" />
-    <ClCompile Include="Core\Utils\Profiler.cpp" />
+    <ClCompile Include="Core\Trace\Profiler.cpp" />
+    <ClCompile Include="Core\Assets\ResourceManager.cpp" />
+    <ClCompile Include="Core\Assets\TextureRegistry.cpp" />
+    <ClCompile Include="Core\Assets\MaterialRegistry.cpp" />
     <ClCompile Include="ThirdParty\mc33_impl.cpp" />
     <ClCompile Include="Core\Rendering\Memory\UploadRing.cpp" />
     <ClCompile Include="Win32Application.cpp" />
@@ -217,18 +224,22 @@
     <ClInclude Include="Core\Input\InputState.h" />
     <ClInclude Include="Core\UI\ImGUIRenderer.h" />
     <ClInclude Include="Core\Geometry\MarchingCubesTables.h" />
-    <ClInclude Include="Core\Rendering\Material.h" />
+    <ClInclude Include="Core\Assets\Material.h" />
     <ClInclude Include="Core\Rendering\LightManager.h" />
     <ClInclude Include="Core\Geometry\MarchingCubes\GPU\GPUBrushCS.h" />
     <ClInclude Include="Core\Geometry\MarchingCubes\GPU\GPUMarchingCubesCS.h" />
     <ClInclude Include="Core\Geometry\MarchingCubes\GPU\GPUTerrainBackend.h" />
     <ClInclude Include="Core\Geometry\MarchingCubes\CPU\MC33\MC33TerrainBackend.h" />
-    <ClInclude Include="Core\Utils\Log.h" />
+    <ClInclude Include="Core\Trace\Log.h" />
     <ClInclude Include="Core\Geometry\FluidSystem.h" />
     <ClInclude Include="App\Editor\Interface\EditorApp.h" />
     <ClInclude Include="Core\DataStructures\Drawable.h" />
     <ClInclude Include="Core\Rendering\Memory\GPUBufferPool.h" />
     <ClInclude Include="Core\Rendering\Memory\GpuAllocator.h" />
+    <ClInclude Include="App\Editor\GeometryEditor.h" />
+    <ClInclude Include="Core\Rendering\PSO\DescriptorRing.h" />
+    <ClInclude Include="Core\Rendering\PSO\DescriptorAllocator.h" />
+    <ClInclude Include="Core\Assets\MaterialRegistry.h" />
     <ClInclude Include="pch.h" />
     <ClInclude Include="Core\Utils\Timer.h" />
     <ClInclude Include="Core\Rendering\UploadContext.h" />
@@ -241,7 +252,9 @@
     <ClInclude Include="Core\Rendering\PSO\PSOList.h" />
     <ClInclude Include="Core\Rendering\RenderSystem.h" />
     <ClInclude Include="Core\Rendering\Memory\StaticBufferRegistry.h" />
-    <ClInclude Include="Core\Utils\Profiler.h" />
+    <ClInclude Include="Core\Trace\Profiler.h" />
+    <ClInclude Include="Core\Assets\ResourceManager.h" />
+    <ClInclude Include="Core\Assets\TextureRegistry.h" />
     <ClInclude Include="Win32Application.h" />
   </ItemGroup>
   <ItemGroup>
@@ -255,14 +268,17 @@
     </None>
     <FxCompile Include="Assets\Shaders\BrushCS.hlsl">
       <ShaderType Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">Compute</ShaderType>
-      <ShaderModel Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">5.0</ShaderModel>
+      <ShaderModel Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">6.6</ShaderModel>
       <ShaderType Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">Compute</ShaderType>
-      <ShaderModel Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">4.0</ShaderModel>
+      <ShaderModel Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">6.6</ShaderModel>
       <ShaderType Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">Compute</ShaderType>
-      <ShaderModel Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">4.0</ShaderModel>
+      <ShaderModel Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">6.6</ShaderModel>
       <ShaderType Condition="'$(Configuration)|$(Platform)'=='Release|x64'">Compute</ShaderType>
-      <ShaderModel Condition="'$(Configuration)|$(Platform)'=='Release|x64'">4.0</ShaderModel>
+      <ShaderModel Condition="'$(Configuration)|$(Platform)'=='Release|x64'">6.6</ShaderModel>
       <EntryPointName Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">BrushCS</EntryPointName>
+      <EntryPointName Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">BrushCS</EntryPointName>
+      <EntryPointName Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">BrushCS</EntryPointName>
+      <EntryPointName Condition="'$(Configuration)|$(Platform)'=='Release|x64'">BrushCS</EntryPointName>
     </FxCompile>
     <FxCompile Include="Assets\Shaders\LinePS.hlsl">
       <ShaderType Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">Pixel</ShaderType>
@@ -270,7 +286,13 @@
       <ShaderType Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">Pixel</ShaderType>
       <ShaderType Condition="'$(Configuration)|$(Platform)'=='Release|x64'">Pixel</ShaderType>
       <EntryPointName Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">PSMain</EntryPointName>
-      <ShaderModel Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">5.0</ShaderModel>
+      <ShaderModel Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">6.6</ShaderModel>
+      <ShaderModel Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">6.6</ShaderModel>
+      <ShaderModel Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">6.6</ShaderModel>
+      <ShaderModel Condition="'$(Configuration)|$(Platform)'=='Release|x64'">6.6</ShaderModel>
+      <EntryPointName Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">PSMain</EntryPointName>
+      <EntryPointName Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">PSMain</EntryPointName>
+      <EntryPointName Condition="'$(Configuration)|$(Platform)'=='Release|x64'">PSMain</EntryPointName>
     </FxCompile>
     <None Include="Assets\Shaders\PBR.hlsli">
       <FileType>Document</FileType>
@@ -278,28 +300,23 @@
       </EntryPointName>
       <ShaderModel Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">5.0</ShaderModel>
     </None>
+    <None Include="Assets\Shaders\Texture.hlsli" />
     <None Include="packages.config" />
   </ItemGroup>
   <ItemGroup>
-    <FxCompile Include="Assets\Shaders\HighlightPS.hlsl">
-      <ShaderType Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
-      </ShaderType>
-      <ShaderType Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">Pixel</ShaderType>
-      <ShaderType Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">Pixel</ShaderType>
-      <ShaderType Condition="'$(Configuration)|$(Platform)'=='Release|x64'">Pixel</ShaderType>
-      <ShaderModel Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">5.0</ShaderModel>
-      <EntryPointName Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">VSMain</EntryPointName>
-    </FxCompile>
     <FxCompile Include="Assets\Shaders\MarchingCubesCS.hlsl">
       <ShaderType Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">Compute</ShaderType>
-      <ShaderModel Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">5.0</ShaderModel>
+      <ShaderModel Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">6.6</ShaderModel>
       <ShaderType Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">Compute</ShaderType>
-      <ShaderModel Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">4.0</ShaderModel>
+      <ShaderModel Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">6.6</ShaderModel>
       <ShaderType Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">Compute</ShaderType>
-      <ShaderModel Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">4.0</ShaderModel>
+      <ShaderModel Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">6.6</ShaderModel>
       <ShaderType Condition="'$(Configuration)|$(Platform)'=='Release|x64'">Compute</ShaderType>
-      <ShaderModel Condition="'$(Configuration)|$(Platform)'=='Release|x64'">4.0</ShaderModel>
+      <ShaderModel Condition="'$(Configuration)|$(Platform)'=='Release|x64'">6.6</ShaderModel>
       <EntryPointName Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">MCMainCS</EntryPointName>
+      <EntryPointName Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">MCMainCS</EntryPointName>
+      <EntryPointName Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">MCMainCS</EntryPointName>
+      <EntryPointName Condition="'$(Configuration)|$(Platform)'=='Release|x64'">MCMainCS</EntryPointName>
     </FxCompile>
     <FxCompile Include="Assets\Shaders\MainPS.hlsl">
       <ShaderType Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">Pixel</ShaderType>
@@ -307,23 +324,35 @@
       <ShaderType Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">Pixel</ShaderType>
       <ShaderType Condition="'$(Configuration)|$(Platform)'=='Release|x64'">Pixel</ShaderType>
       <EntryPointName Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">PSMain</EntryPointName>
-      <ShaderModel Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">5.0</ShaderModel>
+      <ShaderModel Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">6.6</ShaderModel>
+      <ShaderModel Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">6.6</ShaderModel>
+      <ShaderModel Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">6.6</ShaderModel>
+      <ShaderModel Condition="'$(Configuration)|$(Platform)'=='Release|x64'">6.6</ShaderModel>
+      <EntryPointName Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">PSMain</EntryPointName>
+      <EntryPointName Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">PSMain</EntryPointName>
+      <EntryPointName Condition="'$(Configuration)|$(Platform)'=='Release|x64'">PSMain</EntryPointName>
+      <EnableUnboundedDescriptorTables Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">true</EnableUnboundedDescriptorTables>
+      <AdditionalOptions Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">-Qembed_debug</AdditionalOptions>
     </FxCompile>
     <FxCompile Include="Assets\Shaders\NormalGS.hlsl">
       <ShaderType Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">Geometry</ShaderType>
-      <ShaderModel Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">5.0</ShaderModel>
+      <ShaderModel Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">6.6</ShaderModel>
       <ShaderType Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">Geometry</ShaderType>
-      <ShaderModel Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">4.0</ShaderModel>
+      <ShaderModel Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">6.6</ShaderModel>
       <ShaderType Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">Geometry</ShaderType>
-      <ShaderModel Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">4.0</ShaderModel>
+      <ShaderModel Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">6.6</ShaderModel>
       <ShaderType Condition="'$(Configuration)|$(Platform)'=='Release|x64'">Geometry</ShaderType>
-      <ShaderModel Condition="'$(Configuration)|$(Platform)'=='Release|x64'">4.0</ShaderModel>
+      <ShaderModel Condition="'$(Configuration)|$(Platform)'=='Release|x64'">6.6</ShaderModel>
       <EntryPointName Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">GSMain</EntryPointName>
+      <EntryPointName Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">GSMain</EntryPointName>
+      <EntryPointName Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">GSMain</EntryPointName>
+      <EntryPointName Condition="'$(Configuration)|$(Platform)'=='Release|x64'">GSMain</EntryPointName>
     </FxCompile>
     <FxCompile Include="Assets\Shaders\MainVS.hlsl">
-      <ShaderModel Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">5.0</ShaderModel>
+      <ShaderModel Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">6.6</ShaderModel>
       <EntryPointName Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">VSMain</EntryPointName>
       <ShaderType Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">Vertex</ShaderType>
+      <AdditionalOptions Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">-Qembed_debug</AdditionalOptions>
     </FxCompile>
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />

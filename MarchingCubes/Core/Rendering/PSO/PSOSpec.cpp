@@ -154,8 +154,7 @@ std::vector<PSOSpec> LoadPSOJsonResolved(LPCWSTR path, int* outSchema)
     errno_t err = _wfopen_s(&fp, path, L"rb");
     if (err != 0 || fp == nullptr)
     {
-        std::wstring msg = L"Cannot open: " + std::wstring(path);
-        throw std::runtime_error(std::string(msg.begin(), msg.end()));
+        throw std::runtime_error("Cannot open: " + UTF16ToUTF8(path));
     }
     if (fseek(fp, 0, SEEK_END) != 0)
     {
