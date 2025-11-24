@@ -19,19 +19,19 @@ void CPUTerrainBackend::setFieldPtr(std::shared_ptr<SdfField<float>> grid)
 	m_grd = std::move(grid);
 }
 
-void CPUTerrainBackend::requestBrush(const BrushRequest& req)
+void CPUTerrainBackend::requestBrush(uint32_t frameIndex, const BrushRequest& r)
 {
     RemeshRequest remeshRequest;
-    remeshRequest.isoValue = req.isoValue;
+    remeshRequest.isoValue = r.isoValue;
 
     const XMUINT3 cells = m_gridDesc.cells;
     const XMFLOAT3 origin = m_gridDesc.origin;
     const float cellsize = m_gridDesc.cellsize;
 
-    const float deltaTime = req.deltaTime;
-    const XMFLOAT3 hitPos = req.hitpos;
-    const float weight = req.weight;
-    const float radius = req.radius;
+    const float deltaTime = r.deltaTime;
+    const XMFLOAT3 hitPos = r.hitpos;
+    const float weight = r.weight;
+    const float radius = r.radius;
 
     const int SX = int(m_gridDesc.cells.x);
     const int SY = int(m_gridDesc.cells.y);
@@ -81,7 +81,7 @@ void CPUTerrainBackend::requestBrush(const BrushRequest& req)
         }
     }
 
-    requestRemesh(remeshRequest);
+    requestRemesh(frameIndex, remeshRequest);
 }
 
 bool CPUTerrainBackend::tryFetch(std::vector<ChunkUpdate>& OutChunkUpdates)

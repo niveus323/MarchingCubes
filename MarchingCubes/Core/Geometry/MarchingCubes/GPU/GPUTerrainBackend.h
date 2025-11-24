@@ -1,9 +1,11 @@
 #pragma once
 #include "Core/Geometry/MarchingCubes/ITerrainBackend.h"
-#include "Core/Rendering/PSO/DescriptorRing.h"
 #include <memory>
 #include <array>
+#include "GPUMarchingCubesShared.h"
 
+class DescriptorAllocator;
+class UploadContext;
 class SDFVolume3D;
 class GPUBrushCS;
 class GPUMarchingCubesCS;
@@ -27,25 +29,39 @@ struct OutTriangle
 class GPUTerrainBackend : public ITerrainBackend
 {
 public:
-	explicit GPUTerrainBackend(ID3D12Device* device, const GridDesc& gridDesc);
+	struct GPUTerrainInitInfo
+	{
+		DescriptorAllocator* descriptorAllocator = nullptr;
+		UploadContext* uplaodContext = nullptr;
+		// ComputeSystem* computeSystem = nullptr; // 나중에 추가 예정
+	};
+
+	explicit GPUTerrainBackend(ID3D12Device* device, const GridDesc& gridDesc, const GPUTerrainInitInfo& init);
 	~GPUTerrainBackend();
 
 	// ITerrainBackend을(를) 통해 상속됨
 	void setGridDesc(const GridDesc& desc) override;
 	void setFieldPtr(std::shared_ptr<SdfField<float>> grid) override;
-	void requestBrush(const BrushRequest& r) override;
-	void requestRemesh(const RemeshRequest& r) override;
+	void requestBrush(uint32_t frameIndex, const BrushRequest& r) override;
+	void requestRemesh(uint32_t frameIndex, const RemeshRequest& r) override;
 	bool tryFetch(std::vector<ChunkUpdate>& OutChunkUpdates) override;
 
-	void encode();
-	DescriptorRing& descriptorRing() { return *m_descriptorRing; }
-	ConstantBufferHelper::CBRing& cbRing() { return *m_cbRing; }
+	void encode(uint32_t frameIndex);
 
 private:
 	void ensureTriangleBuffer();
 	void computeNumChunks();
 	void ensureRBSlot(uint32_t slot);
 	void resetRBSlot(uint32_t slot);
+	void prepareComputeEncoding();
+	void finishComputeEncoding();
+	void encodeFieldUpload(uint32_t frameIndex);
+	void encodeBrushPass(uint32_t frameIndex, DirectX::XMUINT3& regionMin, DirectX::XMUINT3& regionMax, SDFVolumeView& volView);
+	void encodeRemeshPass(uint32_t frameIndex, const DirectX::XMUINT3& regionMin, const DirectX::XMUINT3& regionMax, SDFVolumeView& volView);
+
+	static XMUINT3 computeBrushCenter(const DirectX::XMFLOAT3& hitpos, const DirectX::XMFLOAT3& gridorigin, const float cellsize);
+	static void computeBrushRegionCells(const GridDesc& grid, const DirectX::XMUINT3& brushCenter, const float brushRadius, DirectX::XMUINT3& outRegionMin, DirectX::XMUINT3& outRegionMax);
+	static void computeChunkAlignedRegion(const XMUINT3& cells, const XMUINT3& brushRegionMin, const XMUINT3& brushRegionMax, XMUINT3& outRegionMin, XMUINT3& outRegionMax);
 
 private:
 	static constexpr uint32_t m_ring = 3;
@@ -53,6 +69,9 @@ private:
 	static constexpr int s_chunkcubes = 16; // threadgroup 8x8x8 정렬
 
 	ID3D12Device* m_device = nullptr;
+	DescriptorAllocator* m_descriptorAllocator = nullptr;
+	UploadContext* m_uploadContext = nullptr;
+
 	ComPtr<ID3D12CommandQueue> m_commandQueue;
 	ComPtr<ID3D12CommandAllocator> m_commandAllocator[kRBFrameCount];
 	ComPtr<ID3D12GraphicsCommandList> m_commandList;
@@ -64,11 +83,6 @@ private:
 	std::unique_ptr<SDFVolume3D>        m_vol;
 	std::unique_ptr<GPUBrushCS>         m_brush;
 	std::unique_ptr<GPUMarchingCubesCS> m_mc;
-
-	// Ring Buffers (DescriptorHeap, Constant)
-	std::unique_ptr<DescriptorRing> m_descriptorRing;
-	std::unique_ptr<ConstantBufferHelper::CBRing> m_cbRing;
-	uint32_t m_ringCursor = 0;
 
 	struct RBRound {
 		ComPtr<ID3D12Resource> rbTriangles;
@@ -95,6 +109,6 @@ private:
 	bool m_needsRemesh = false;
 	bool m_needsFetch = false;
 
-	std::vector<ComPtr<ID3D12Resource>> m_pendingDeletes;
+	uint32_t m_triTableSlot = UINT32_MAX;
 };
 

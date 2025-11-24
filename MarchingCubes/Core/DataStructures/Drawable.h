@@ -1,7 +1,12 @@
 #pragma once
 #include "Core/DataStructures/Data.h"
 #include "Core/Rendering/Memory/CommonMemory.h"
-#include "Core/Assets/Material.h"
+#include "ShaderTypes.h"
+#include <d3d12.h>
+#include <d3dcommon.h>
+#include <Windows.h>
+#include <string>
+#include <utility>
 
 struct DrawBindingInfo
 {

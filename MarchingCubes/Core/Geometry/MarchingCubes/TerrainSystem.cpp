@@ -5,17 +5,26 @@
 #include "Core/Geometry/Mesh/MeshChunkRenderer.h"
 #include "Core/Rendering/RenderSystem.h"
 
-TerrainSystem::TerrainSystem(ID3D12Device* device, std::shared_ptr<SdfField<float>> grd, const GridDesc& desc, TerrainMode mode):
-	m_desc(desc)
+TerrainSystem::TerrainSystem(const InitInfo& info) :
+	m_desc(info.desc),
+	m_descriptorAllocator(info.descriptorAllocator),
+	m_uploadContext(info.uploadContext)
 {
 	if (m_chunkRenderer)
 	{
 		m_chunkRenderer.reset();
 	}
 	m_chunkRenderer = std::make_unique<MeshChunkRenderer>();
-	setMode(device, mode);
-	setField(device, grd);
+	setMode(info.device, info.mode);
+	setField(info.device, info.grid);
 }
+
+TerrainSystem::TerrainSystem(ID3D12Device* device, std::shared_ptr<SdfField<float>> grid, const GridDesc& desc, TerrainMode mode) :
+	TerrainSystem(InitInfo{ .device = device, .grid = grid, .desc = desc, .mode = mode})
+{
+}
+
+TerrainSystem::~TerrainSystem() = default;
 
 void TerrainSystem::setMode(ID3D12Device* device, TerrainMode mode)
 {
@@ -25,7 +34,11 @@ void TerrainSystem::setMode(ID3D12Device* device, TerrainMode mode)
 	{
 		case TerrainMode::GPU_ORIGINAL:
 		{
-			m_backend = std::make_unique<GPUTerrainBackend>(device, m_desc);
+			GPUTerrainBackend::GPUTerrainInitInfo initInfo{
+				.descriptorAllocator = m_descriptorAllocator,
+				.uplaodContext = m_uploadContext
+			};
+			m_backend = std::make_unique<GPUTerrainBackend>(device, m_desc, initInfo);
 		}
 		break;
 		case TerrainMode::CPU_MC33:
@@ -50,12 +63,12 @@ void TerrainSystem::setField(ID3D12Device* device, std::shared_ptr<SdfField<floa
 	if (m_backend && m_lastGRD) m_backend->setFieldPtr(m_lastGRD);
 }
 
-void TerrainSystem::requestRemesh(const RemeshRequest& r)
+void TerrainSystem::requestRemesh(uint32_t frameIndex, const RemeshRequest& r)
 {
-	m_backend->requestRemesh(r);
+	m_backend->requestRemesh(frameIndex, r);
 }
 
-void TerrainSystem::requestRemesh(float isoValue)
+void TerrainSystem::requestRemesh(uint32_t frameIndex, float isoValue)
 {
 	RemeshRequest req{ .isoValue = isoValue };
 	uint32_t chunkX = m_desc.cells.x / m_desc.chunkSize;
@@ -65,13 +78,13 @@ void TerrainSystem::requestRemesh(float isoValue)
 		for (uint32_t y = 0; y < chunkY; ++y)
 			for (uint32_t z = 0; z < chunkZ; ++z)
 				req.chunkset.insert(ChunkKey{ x,y,z });
-	requestRemesh(req);
+	requestRemesh(frameIndex, req);
 }
 
-void TerrainSystem::requestBrush(const BrushRequest& r)
+void TerrainSystem::requestBrush(uint32_t frameIndex, const BrushRequest& r)
 {
 	if (!m_backend) return;
-	m_backend->requestBrush(r);
+	m_backend->requestBrush(frameIndex, r);
 }
 
 void TerrainSystem::tryFetch(ID3D12Device* device, RenderSystem* renderSystem, const std::string& psoName)
@@ -95,6 +108,11 @@ void TerrainSystem::tryFetch(ID3D12Device* device, RenderSystem* renderSystem, c
 			else renderSystem->RegisterDynamic(drawable, psoName);
 		}
 	}
+}
+
+void TerrainSystem::ResetRenderer() 
+{
+	m_chunkRenderer->Clear(); 
 }
 
 #ifdef _DEBUG
@@ -128,19 +146,19 @@ void TerrainSystem::MakeDebugCell(GeometryData& outMeshData, bool bDrawFullCell)
 				.normal = { 0.0f, 0.0f, 1.0f },
 				.color = { 1.0f, 1.0f, 1.0f, 1.0f }
 			};
-			
+
 			Vertex B{
 				.pos = { A.pos.x, A.pos.y, A.pos.z + m_desc.cells.z * m_desc.cellsize },
 				.normal = { 0.0f, 0.0f, 1.0f },
 				.color = { 1.0f, 1.0f, 1.0f, 1.0f }
 			};
-			
+
 			outMeshData.vertices.push_back(A);
 			outMeshData.vertices.push_back(B);
 			outMeshData.indices.push_back(index);
 			outMeshData.indices.push_back(index + 1);
 		}
-		
+
 	}
 
 	// XZ-Plane
@@ -166,13 +184,13 @@ void TerrainSystem::MakeDebugCell(GeometryData& outMeshData, bool bDrawFullCell)
 				.normal = { 0.0f, 1.0f, 0.0f },
 				.color = { 1.0f, 1.0f, 1.0f, 1.0f }
 			};
-			
+
 			Vertex B{
 				.pos = { A.pos.x, A.pos.y + m_desc.cells.y * m_desc.cellsize , A.pos.z },
 				.normal = { 0.0f, 0.0f, 0.0f },
 				.color = { 1.0f, 1.0f, 1.0f, 1.0f }
 			};
-			
+
 			outMeshData.vertices.push_back(A);
 			outMeshData.vertices.push_back(B);
 			outMeshData.indices.push_back(index);
@@ -203,13 +221,13 @@ void TerrainSystem::MakeDebugCell(GeometryData& outMeshData, bool bDrawFullCell)
 				.normal = { 0.0f, 0.0f, 0.0f },
 				.color = { 1.0f, 1.0f, 1.0f, 1.0f }
 			};
-			
+
 			Vertex B{
 				.pos = { A.pos.x + m_desc.cells.x * m_desc.cellsize , A.pos.y, A.pos.z },
 				.normal = { 0.0f, 0.0f, 0.0f },
 				.color = { 1.0f, 1.0f, 1.0f, 1.0f }
 			};
-			
+
 			outMeshData.vertices.push_back(A);
 			outMeshData.vertices.push_back(B);
 			outMeshData.indices.push_back(index);

@@ -82,3 +82,83 @@ void DescriptorAllocator::ResetDynamicSlots(uint32_t frameIdx)
 	assert(frameIdx < m_cursor.size());
 	m_cursor[frameIdx] = 0;
 }
+
+void DescriptorAllocator::CreateSRV_Texture3D(ID3D12Device* device, ID3D12Resource* res, DXGI_FORMAT format, D3D12_CPU_DESCRIPTOR_HANDLE dstCPU)
+{
+    D3D12_SHADER_RESOURCE_VIEW_DESC d{};
+    d.Format = format;
+    d.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE3D;
+    d.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
+    auto desc = res->GetDesc();
+    d.Texture3D.MipLevels = 1;
+    d.Texture3D.MostDetailedMip = 0;
+    d.Texture3D.ResourceMinLODClamp = 0.0f;
+    device->CreateShaderResourceView(res, &d, dstCPU);
+}
+
+void DescriptorAllocator::CreateUAV_Texture3D(ID3D12Device* device, ID3D12Resource* res, DXGI_FORMAT format, D3D12_CPU_DESCRIPTOR_HANDLE dstCPU, ID3D12Resource* counter)
+{
+    D3D12_UNORDERED_ACCESS_VIEW_DESC d{};
+    d.Format = DXGI_FORMAT_R32_FLOAT;
+    d.ViewDimension = D3D12_UAV_DIMENSION_TEXTURE3D;
+    d.Texture3D.MipSlice = 0;
+    d.Texture3D.FirstWSlice = 0;
+    d.Texture3D.WSize = res->GetDesc().DepthOrArraySize;
+    device->CreateUnorderedAccessView(res, counter, &d, dstCPU);
+}
+
+void DescriptorAllocator::CreateSRV_Structured(ID3D12Device* device, ID3D12Resource* res, uint32_t stride, D3D12_CPU_DESCRIPTOR_HANDLE dstCPU)
+{
+    auto desc = res->GetDesc();
+    D3D12_SHADER_RESOURCE_VIEW_DESC d{};
+    d.Format = DXGI_FORMAT_UNKNOWN;
+    d.ViewDimension = D3D12_SRV_DIMENSION_BUFFER;
+    d.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
+    d.Buffer.FirstElement = 0;
+    d.Buffer.NumElements = uint32_t(desc.Width / stride);
+    d.Buffer.StructureByteStride = stride;
+    d.Buffer.Flags = D3D12_BUFFER_SRV_FLAG_NONE;
+    device->CreateShaderResourceView(res, &d, dstCPU);
+}
+
+void DescriptorAllocator::CreateUAV_Structured(ID3D12Device* device, ID3D12Resource* res, uint32_t stride, D3D12_CPU_DESCRIPTOR_HANDLE dstCPU, ID3D12Resource* counter)
+{
+    auto desc = res->GetDesc();
+    D3D12_UNORDERED_ACCESS_VIEW_DESC d{};
+    d.Format = DXGI_FORMAT_UNKNOWN;
+    d.ViewDimension = D3D12_UAV_DIMENSION_BUFFER;
+    d.Buffer.FirstElement = 0;
+    d.Buffer.NumElements = uint32_t(desc.Width / stride);
+    d.Buffer.StructureByteStride = stride;
+    d.Buffer.CounterOffsetInBytes = 0;
+    d.Buffer.Flags = D3D12_BUFFER_UAV_FLAG_NONE;
+    device->CreateUnorderedAccessView(res, counter, &d, dstCPU);
+
+}
+
+void DescriptorAllocator::CreateUAV_Raw(ID3D12Device* device, ID3D12Resource* res, D3D12_CPU_DESCRIPTOR_HANDLE dstCPU, uint32_t firstElement, uint32_t numElements)
+{
+    auto desc = res->GetDesc();
+    if ((desc.Width % 4ull) != 0ull)
+    {
+        OutputDebugString(L"Raw Buffer must be 4-byte Aligned!!!!");
+    }
+
+    const uint32_t totalElemnts = static_cast<uint32_t>(desc.Width / 4ull);
+    if (numElements == 0)
+    {
+        numElements = totalElemnts - firstElement;
+    }
+
+    D3D12_UNORDERED_ACCESS_VIEW_DESC d{};
+    d.Format = DXGI_FORMAT_R32_TYPELESS;
+    d.ViewDimension = D3D12_UAV_DIMENSION_BUFFER;
+    d.Buffer.FirstElement = firstElement;
+    d.Buffer.NumElements = numElements;
+    d.Buffer.StructureByteStride = 0;
+    d.Buffer.CounterOffsetInBytes = 0;
+    d.Buffer.Flags = D3D12_BUFFER_UAV_FLAG_RAW;
+
+    device->CreateUnorderedAccessView(res, nullptr, &d, dstCPU);
+
+}

@@ -24,7 +24,7 @@ void TextureRegistry::syncGpu(ID3D12GraphicsCommandList* cmd)
 
 		std::vector<D3D12_SUBRESOURCE_DATA> subres;
 		ThrowIfFailed(DirectX::PrepareUpload(m_device, img, imgCount, meta, subres));
-		m_uploadContext->UploadTexture2D(cmd, pendingTex.dst.Get(), subres, pendingTex.debugName.c_str());
+		m_uploadContext->UploadTexture(cmd, pendingTex.dst.Get(), subres, D3D12_RESOURCE_STATE_COMMON, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE, pendingTex.debugName.c_str());
 	}
 
 	m_pendingTextures.clear();
@@ -34,14 +34,13 @@ void TextureRegistry::BindDescriptorTable(ID3D12GraphicsCommandList* cmd)
 {
 	if (m_descriptorBaseSlot == UINT32_MAX) return;
 
-	D3D12_GPU_DESCRIPTOR_HANDLE baseGpu = m_descriptorAllocator->GetStaticGpu(m_descriptorBaseSlot);
-	cmd->SetGraphicsRootDescriptorTable(m_rootSlot, baseGpu);
+	cmd->SetGraphicsRootDescriptorTable(m_rootSlot, m_descriptorAllocator->GetStaticGpu(m_descriptorBaseSlot));
 }
 
 uint32_t TextureRegistry::LoadTexture(const std::wstring& path)
 {
 	// 이미 로드되어 있는지 확인
-	for (size_t i = 0; i < m_textures.size(); ++i)
+	for (uint32_t i = 0; i < static_cast<uint32_t>(m_textures.size()); ++i)
 	{
 		if (m_textures[i].path == path)  return i;
 	}

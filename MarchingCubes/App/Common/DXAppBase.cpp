@@ -75,7 +75,7 @@ void DXAppBase::Render()
 		flags = DXGI_PRESENT_ALLOW_TEARING;
 	}
 	ThrowIfFailed(m_swapChain->Present(syncInterval, flags));
-
+	
 	MoveToNextFrame();
 }
 
@@ -389,7 +389,7 @@ void DXAppBase::MoveToNextFrame()
 	m_fenceValues[prevIndex] = fenceToSignal;
 	// 체인 스왑
 	m_frameIndex = m_swapChain->GetCurrentBackBufferIndex();
-
+	
 	// 체인 스왑 전에 완료하지 못한 작업은 대기
 	uint64_t lastFenceValue = m_fenceValues[m_frameIndex];
 	if (lastFenceValue > 0 && m_swapChainFence->GetCompletedValue() < lastFenceValue)

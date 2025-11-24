@@ -2,7 +2,11 @@
 #include "Core/DataStructures/Drawable.h"
 #include "Core/Rendering/Memory/CommonMemory.h"
 #include "Core/Rendering/PSO/DescriptorAllocator.h"
-#include <functional>
+#include "Core/DataStructures/ShaderTypes.h"
+#include <string_view>
+#include <d3d12.h>
+#include <cstdint>
+#include <vector>
 
 class GpuAllocator;
 class StaticBufferRegistry;
@@ -21,25 +25,20 @@ public:
 	void UploadObjectConstants(uint32_t frameIndex, GeometryBuffer* buf, const ObjectConstants& cb);
 	void UploadStructuredBuffer(ID3D12GraphicsCommandList* cmd, const void* srcData, uint64_t byteSize, ID3D12Resource* buffer, uint64_t dstOffset, const char* debugName = "");
 	void UploadContstants(uint32_t frameIndex, const void* srcData, uint32_t size, BufferHandle& outHandle);
-	void UploadTexture2D(ID3D12GraphicsCommandList* cmd, ID3D12Resource* pDestinationResource, const std::vector<D3D12_SUBRESOURCE_DATA>& subResources, const char* debugName = "");
+	void UploadTexture(ID3D12GraphicsCommandList* cmd, ID3D12Resource* pDestinationResource, const std::vector<D3D12_SUBRESOURCE_DATA>& subResources, D3D12_RESOURCE_STATES before, D3D12_RESOURCE_STATES after, const char* debugName = "");
+	void ResetCounterUAV(ID3D12GraphicsCommandList* cmd, ID3D12Resource* counter, D3D12_RESOURCE_STATES before, D3D12_RESOURCE_STATES after, std::string_view debugName = "CounterReset");
 
 private:
 	void EnsureDefaultVB(GeometryBuffer* buf, uint64_t neededSize, const char* debugName = nullptr);
 	void EnsureDefaultIB(GeometryBuffer* buf, uint64_t neededSize, const char* debugName = nullptr);
 	void FreeBufferHandle(const BufferHandle& handle);
-	void UploadTexture2D_Internal(
-		ID3D12GraphicsCommandList* cmd, 
-		ID3D12Resource* pDestinationResource, 
-		const std::vector<D3D12_SUBRESOURCE_DATA>& subResources, 
-		D3D12_RESOURCE_STATES before,
-		D3D12_RESOURCE_STATES after, 
-		const char* debugName = "");
-
+	void EnsureZeroUintUpload();
 private:
 	ID3D12Device* m_device = nullptr;
 	GpuAllocator* m_allocator = nullptr;
 	StaticBufferRegistry* m_staticBufferRegistry = nullptr;
 	DescriptorAllocator* m_descriptorAllocator = nullptr;
+	ComPtr<ID3D12Resource> m_zeroUintUpload;
 
 	struct PendingUpload {
 		BufferHandle stagingHandle;

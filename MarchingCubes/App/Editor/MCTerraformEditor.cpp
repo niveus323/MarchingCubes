@@ -4,9 +4,8 @@
 #include "Core/UI/ImGUIRenderer.h"
 #include "Core/Geometry/MeshGenerator.h"
 #include "Core/Math/PhysicsHelper.h"
+#include "Core/Geometry/Mesh/MeshChunkRenderer.h"
 #include <algorithm>
-#include <typeinfo>
-#include <iostream>
 
 void MCTerraformEditor::OnDestroy()
 {
@@ -35,8 +34,16 @@ void MCTerraformEditor::InitScene(ID3D12GraphicsCommandList* cmd)
 		GridDesc gridDesc{};
 		gridDesc.chunkSize = 50u;
 		auto initialSphereField = MakeSphereGrid(100U, 1.0f, 25.0f, m_gridOrigin, gridDesc);
-		m_terrain = std::make_unique<TerrainSystem>(m_device.Get(), initialSphereField, gridDesc, TerrainMode::CPU_MC33);
-		m_terrain->requestRemesh(m_mcIso);
+		TerrainSystem::InitInfo terrainInfo{
+			.device = m_device.Get(),
+			.grid = initialSphereField,
+			.desc = gridDesc,
+			.mode = TerrainMode::GPU_ORIGINAL,
+			.descriptorAllocator = GetDescriptorAllocator(),
+			.uploadContext = GetUploadContext()
+		};
+		m_terrain = std::make_unique<TerrainSystem>(terrainInfo);
+		m_terrain->requestRemesh(m_frameIndex, m_mcIso);
 
 		MeshChunkRenderer* terrainMesh = m_terrain->GetRenderer();
 		terrainMesh->SetDebugName("TerrainMesh");
@@ -154,7 +161,7 @@ void MCTerraformEditor::UpdateScene(float deltaTime)
 				req_brush.weight = m_brushStrength * (m_inputState.IsPressed(ActionKey::Ctrl) ? -1.0f : 1.0f);
 				req_brush.deltaTime = deltaTime;
 				req_brush.isoValue = m_mcIso;
-				m_terrain->requestBrush(req_brush);
+				m_terrain->requestBrush(m_frameIndex, req_brush);
 			}
 		}
 	}
@@ -269,7 +276,7 @@ void MCTerraformEditor::RenderMarchingCubesUI()
 		auto newSdf = MakeSphereGrid(m_gridTiles, static_cast<float>(m_cellSize), 25.0f, m_gridOrigin, gridDesc);
 		m_terrain->setGridDesc(m_device.Get(), gridDesc);
 		m_terrain->setField(m_device.Get(), newSdf);
-		m_terrain->requestRemesh(m_mcIso);
+		m_terrain->requestRemesh(m_frameIndex, m_mcIso);
 
 		m_debugCellMesh->SetPosition(m_gridOrigin);
 		m_debugCellMesh->UpdateConstants();
@@ -289,7 +296,7 @@ std::shared_ptr<SdfField<float>> MCTerraformEditor::MakeSphereGrid(unsigned int 
 	// 샘플 수 = (N+1)^3
 	const int SX = N + 1, SY = N + 1, SZ = N + 1;
 
-	// 채우기: F = radius - |p - center|
+	// 채우기: F = brushRadius - |p - center|
 	auto gridData = new SdfField<float>(SX, SY, SZ);
 	for (int z = 0; z < SZ; ++z)
 	{

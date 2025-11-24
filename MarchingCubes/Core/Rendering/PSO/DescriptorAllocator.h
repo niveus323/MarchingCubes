@@ -55,6 +55,12 @@ public:
 	uint32_t GetRingCount() const { return m_ring->GetRingCount(); }
 	uint32_t DescriptorsPerFrame() const { return m_ring->GetSlotsPerFrame(); }
 
+	static void CreateSRV_Texture3D(ID3D12Device* device, ID3D12Resource* res, DXGI_FORMAT format, D3D12_CPU_DESCRIPTOR_HANDLE dstCPU);
+	static void CreateUAV_Texture3D(ID3D12Device* device, ID3D12Resource* res, DXGI_FORMAT format, D3D12_CPU_DESCRIPTOR_HANDLE dstCPU, ID3D12Resource* counter = nullptr);
+	static void CreateSRV_Structured(ID3D12Device* device, ID3D12Resource* res, uint32_t stride, D3D12_CPU_DESCRIPTOR_HANDLE dstCPU);
+	static void CreateUAV_Structured(ID3D12Device* device, ID3D12Resource* res, uint32_t stride, D3D12_CPU_DESCRIPTOR_HANDLE dstCPU, ID3D12Resource* counter = nullptr);
+	static void CreateUAV_Raw(ID3D12Device* device, ID3D12Resource* res, D3D12_CPU_DESCRIPTOR_HANDLE dstCPU, uint32_t firstElement = 0, uint32_t numElements = 0);
+
 private:
 	// RTV
 	std::vector<ComPtr<ID3D12DescriptorHeap>> m_rtvHeaps;

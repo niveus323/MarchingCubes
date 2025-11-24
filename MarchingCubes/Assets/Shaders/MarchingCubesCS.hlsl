@@ -4,16 +4,20 @@ static const int cornerIndexBFromEdge[12] = { 1, 2, 3, 0, 5, 6, 7, 4, 4, 5, 6, 7
 
 cbuffer GridCB : register(b0)
 {
-    uint3 cells; // 격자 개수 (x,y,z축이 동일하다고 가정하였음)
-    float scale; // 정육면체 격자 1개의 한 변 크기
-    float3 origin;
+    uint3 gridCells; 
+    uint _padding0;
+    
+    float3 gridOrigin;
     float isoValue;
+    
     uint3 numChunkAxis;
     uint chunkCubes; // 16
-    uint3 regionMin;
-    int _padding0;
-    uint3 regionMax;
-    int _padding1;
+    
+    uint3 regionCellMin;
+    uint _padding1;
+    
+    uint3 regionCellMax;
+    uint _padding2;
 };
 
 struct Vertex
@@ -39,14 +43,14 @@ AppendStructuredBuffer<Triangle> gTriangles : register(u0);
 // Chunk 기준 고유 인덱스 <  1차원 벡터 -> [z][y][x] 인덱싱  >
 int IndexFromCoord(int3 coord)
 {
-    return coord.z * (cells.x * cells.y) + coord.y * cells.x + coord.x;
+    return coord.z * (gridCells.x * gridCells.y) + coord.y * gridCells.x + coord.x;
 }
 
 // 밀도 샘플링 ( 경계 클램프 )
 float SampleDensity(int3 coord)
 {
     int3 lo = int3(0, 0, 0);
-    int3 hi = int3(cells) - int3(1, 1, 1);
+    int3 hi = int3(gridCells) - int3(1, 1, 1);
     int3 c = clamp(coord, lo, hi);
     return gDensityTex.Load(int4(c, 0));
 }
@@ -74,8 +78,8 @@ Vertex CreateVertex(int3 coordA, int3 coordB)
     float denom = (dB - dA);
     float t = (abs(denom) > 1e-8) ? (isoValue - dA) / denom : 0.5;
  
-    float3 posA = float3(coordA + origin);
-    float3 posB = float3(coordB + origin);
+    float3 posA = float3(coordA + gridOrigin);
+    float3 posB = float3(coordB + gridOrigin);
     float3 position = lerp(posA, posB, saturate(t));
     
     float3 nA = CalculateNormal(coordA);
@@ -97,8 +101,8 @@ Vertex CreateVertex(int3 coordA, int3 coordB)
 [numthreads(8, 8, 8)]
 void MCMainCS(uint3 groupId : SV_GroupID, uint3 groupThreadID : SV_GroupThreadID)
 {   
-    uint3 base = regionMin + groupId * 8 + groupThreadID;
-    uint3 limit = min(regionMax, cells - uint3(1, 1, 1));
+    uint3 base = regionCellMin + groupId * 8 + groupThreadID;
+    uint3 limit = min(regionCellMax, gridCells - uint3(1, 1, 1));
 
     // 범위 밖이면 return
     if (any(base >= limit))
