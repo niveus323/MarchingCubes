@@ -102,7 +102,7 @@ void EditorApp::OnInitPipelines()
 		rootParams[3].InitAsDescriptorTable(1, &CD3DX12_DESCRIPTOR_RANGE1(D3D12_DESCRIPTOR_RANGE_TYPE_CBV, 1, 3)); // b3
 		rootParams[4].InitAsDescriptorTable(1, &CD3DX12_DESCRIPTOR_RANGE1(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 0)); // t0
 		rootParams[5].InitAsDescriptorTable(1, &CD3DX12_DESCRIPTOR_RANGE1(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 1)); // t1
-		rootParams[6].InitAsDescriptorTable(1, &CD3DX12_DESCRIPTOR_RANGE1(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, (uint32_t) - 1, 2)); // t2
+		rootParams[6].InitAsDescriptorTable(1, &CD3DX12_DESCRIPTOR_RANGE1(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, (uint32_t) - 1, 2, 0u, D3D12_DESCRIPTOR_RANGE_FLAG_DESCRIPTORS_VOLATILE)); // t2
 
 		// Static Sampler 등록 ( 런타임에 바꿔야할 샘플러가 필요할 경우 Descriptor Table에 포함할 것.)
 		CD3DX12_STATIC_SAMPLER_DESC samplerDescs = CD3DX12_STATIC_SAMPLER_DESC(0, D3D12_FILTER_MIN_MAG_MIP_LINEAR); // s0
@@ -231,7 +231,7 @@ void EditorApp::UpdateUI(float deltaTime)
 			pi.name = dbg.name;
 			pi.capacity = dbg.pool->GetCapacity();
 			std::vector<BufferBlock>& allocated = dbg.pool->GetAllocatedBlocks();
-			pi.used = std::accumulate(allocated.begin(), allocated.end(), 0ULL, [](uint64_t sum, const BufferBlock& b) { return sum + b.size; });
+			pi.used = std::accumulate(allocated.cbegin(), allocated.cend(), 0ULL, [](uint64_t sum, const BufferBlock& b) { return sum + b.size; });
 			pi.free = dbg.pool->GetFreeBlocks();
 			pi.allocated = dbg.pool->GetAllocatedBlocks();
 			pools.push_back(pi);
@@ -242,7 +242,7 @@ void EditorApp::UpdateUI(float deltaTime)
 		pi_vb.name = "StaticVB";
 		pi_vb.capacity = staticBufferRegistry->GetVBCapacity();
 		std::vector<BufferBlock>& allocatedVB = staticBufferRegistry->GetVBAllocated();
-		pi_vb.used = std::accumulate(allocatedVB.begin(), allocatedVB.end(), 0ULL, [](uint64_t sum, const BufferBlock& b) {return sum + b.size; });
+		pi_vb.used = std::accumulate(allocatedVB.cbegin(), allocatedVB.cend(), 0ULL, [](uint64_t sum, const BufferBlock& b) {return sum + b.size; });
 		pi_vb.free = staticBufferRegistry->GetVBFree();
 		pi_vb.allocated = allocatedVB;
 		pools.push_back(pi_vb);
@@ -251,7 +251,7 @@ void EditorApp::UpdateUI(float deltaTime)
 		pi_ib.name = "StaticIB";
 		pi_ib.capacity = staticBufferRegistry->GetIBCapacity();
 		std::vector<BufferBlock>& allocatedIB = staticBufferRegistry->GetIBAllocated();
-		pi_ib.used = std::accumulate(allocatedIB.begin(), allocatedIB.end(), 0ULL, [](uint64_t sum, const BufferBlock& b) {return sum + b.size; });
+		pi_ib.used = std::accumulate(allocatedIB.cbegin(), allocatedIB.cend(), 0ULL, [](uint64_t sum, const BufferBlock& b) {return sum + b.size; });
 		pi_ib.free = staticBufferRegistry->GetIBFree();
 		pi_ib.allocated = allocatedIB;
 		pools.push_back(pi_ib);

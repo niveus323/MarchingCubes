@@ -42,7 +42,7 @@ void MaterialRegistry::BuildTable(ID3D12GraphicsCommandList* cmd)
 	ThrowIfFailed(m_device->CreateCommittedResource(&hp, D3D12_HEAP_FLAG_NONE, &desc, D3D12_RESOURCE_STATE_COMMON, nullptr, IID_PPV_ARGS(&m_materialBuffer)));
 	m_uploadContext->UploadStructuredBuffer(cmd, constants.data(), byteSize, m_materialBuffer.Get(), 0);
 
-	DescriptorHelper::CreateSRV_Structured(m_device, m_materialBuffer.Get(), static_cast<uint32_t>(sizeof(MaterialConstants)), m_descriptorAllocator->GetStaticCpu(m_descriptorSlot));
+	DescriptorAllocator::CreateSRV_Structured(m_device, m_materialBuffer.Get(), static_cast<uint32_t>(sizeof(MaterialConstants)), m_descriptorAllocator->GetStaticCpu(m_descriptorSlot));
 }
 
 void MaterialRegistry::BindDescriptorTable(ID3D12GraphicsCommandList* cmd) const

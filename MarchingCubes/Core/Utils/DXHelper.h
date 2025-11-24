@@ -33,6 +33,13 @@ inline std::string UTF16ToUTF8(const wchar_t* wstr)
     return result;
 }
 
+namespace MathHelper
+{
+    static inline uint32_t SafeSub(uint32_t a, uint32_t b)
+    {
+        return (a <= b) ? 0u : (a - b);
+    }
+}
 
 class HrException : public std::runtime_error
 {
@@ -84,8 +91,6 @@ inline std::wstring GetFullPath(AssetType type, LPCWSTR name)
 std::wstring GetShaderFullPath(LPCWSTR shaderName);
 
 HRESULT ReadDataFromFile(LPCWSTR filename, byte** data, uint32_t* size);
-
-HRESULT ReadDataFromDDSFile(LPCWSTR filename, byte** data, uint32_t* offset, uint32_t* size);
 
 // Assign a name to the object to aid with debugging.
 #if defined(_DEBUG) || defined(DBG)
@@ -234,85 +239,4 @@ static uint32_t AlignUp(uint32_t size, uint32_t align)
 static uint64_t AlignUp64(uint64_t size, uint64_t align)
 {
     return (size + align - 1) & ~(align - 1);
-}
-
-namespace MCUtil {
-    inline uint32_t AlignCBSize(uint32_t size)
-    {
-        return AlignUp(size, 256u);
-    }
-
-    // 업로드 힙 상수버퍼 (즉시 Map/memcpy) 생성 함수
-    void CreateUploadConstantBuffer(ID3D12Device* device, const void* data, size_t sizeBytes, ComPtr<ID3D12Resource>& outUpload);
-
-    // Defaul 버퍼 + 업로드 copy (data가 nullptr이면 빈 버퍼만 생성)
-    void CreateAndUploadStructuredBuffer(ID3D12Device* device, ID3D12GraphicsCommandList* cmdList, const void* data, uint32_t numElements, uint32_t stride, ComPtr<ID3D12Resource>& outDefault, ComPtr<ID3D12Resource>* outUpload);
-
-    // AppendStructuredUAV 버퍼 + Counter 버퍼 생성
-    void CreateStructuredUavWithCounter(ID3D12Device* device, uint32_t numElements, uint32_t stride, ComPtr<ID3D12Resource>& outBuffer, ComPtr<ID3D12Resource>& outCounter);
-
-    // 카운터 값을 Readback 버퍼로 복사 (4-Bytes)
-    void CopyCounterToReadback(ID3D12GraphicsCommandList* cmdList, ID3D12Resource* counter, ID3D12Resource* readback4B);
-
-    // 버퍼 내용을 Readback 버퍼로 복사
-    void CopyBufferToReadback(ID3D12GraphicsCommandList* cmd, ID3D12Resource* src, ID3D12Resource* readback, size_t bytes);
-
-    // 3D Density Field 유틸리티
-
-    // 3D Density Field 초기화 (SRV/UAV 디스크립터는 별도 생성)
-    void CreateOrUpdateDensity3D(ID3D12Device* device, ID3D12GraphicsCommandList* cmd, uint32_t dimX, uint32_t dimY, uint32_t dimZ, const float* srcLinearXYZ, ComPtr<ID3D12Resource>& ioTex3D, ComPtr<ID3D12Resource>* outUpload);
-
-    static void EnsureZeroUpload(ID3D12Device* device);
-
-    // Append Counter 0으로 리셋
-    void ResetAndTransitCounter(ID3D12Device* device, ID3D12GraphicsCommandList* cmd, ID3D12Resource* counter, D3D12_RESOURCE_STATES before = D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_STATES after = D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
-}
-
-namespace DescriptorHelper
-{
-    void CreateSRV_Texture3D(ID3D12Device* device, ID3D12Resource* res, DXGI_FORMAT format, D3D12_CPU_DESCRIPTOR_HANDLE dstCPU);
-    void CreateUAV_Texture3D(ID3D12Device* device, ID3D12Resource* res, DXGI_FORMAT format, D3D12_CPU_DESCRIPTOR_HANDLE dstCPU, ID3D12Resource* counter = nullptr);
-    void CreateSRV_Structured(ID3D12Device* device, ID3D12Resource* res, uint32_t stride, D3D12_CPU_DESCRIPTOR_HANDLE dstCPU);
-    void CreateUAV_Structured(ID3D12Device* device, ID3D12Resource* res, uint32_t stride, D3D12_CPU_DESCRIPTOR_HANDLE dstCPU, ID3D12Resource* counter = nullptr);
-    void CreateUAV_Raw(ID3D12Device* device, ID3D12Resource* res, D3D12_CPU_DESCRIPTOR_HANDLE dstCPU, uint32_t firstElement = 0, uint32_t numElements = 0);
-}
-
-namespace ConstantBufferHelper
-{
-    class CBRing {
-    public:
-        CBRing(ID3D12Device* device, uint32_t ringCount, uint32_t bytesPerFrame);
-
-        D3D12_GPU_VIRTUAL_ADDRESS PushBytes(uint32_t frameIndex, const void* src, uint32_t size);
-        
-        template<typename T>
-        inline D3D12_GPU_VIRTUAL_ADDRESS Push(uint32_t frameIndex, const T& cb)
-        {
-            return PushBytes(frameIndex, &cb, (uint32_t)sizeof(T));
-        }
-
-        inline void BeginFrame(uint32_t frameIndex) { m_headPerFrame[frameIndex] = 0; }
-        inline uint32_t Remaining(uint32_t frameIndex) const { return m_bytesPerFrame - m_headPerFrame[frameIndex]; }
-
-    private:
-        ComPtr<ID3D12Resource> m_buffer;
-        uint8_t* m_cpu = nullptr;
-        D3D12_GPU_VIRTUAL_ADDRESS m_baseGPU = 0;
-        std::vector<uint32_t> m_headPerFrame;
-        uint32_t m_bytesPerFrame = 0;
-        uint32_t m_ringCount = 0;
-    };
-
-    // CB 버퍼 바인딩
-    template<typename T>
-    void SetRootCBV(ID3D12Device* device, ID3D12GraphicsCommandList* cmd, uint32_t rootParamIdx, CBRing& ring, uint32_t frameIdx, const T& cb)
-    {
-        auto gpuCB = ring.Push(frameIdx, cb);
-        cmd->SetComputeRootConstantBufferView(rootParamIdx, gpuCB);
-    }
-
-    uint32_t CalcBytesPerFrame(const std::initializer_list<std::pair<uint32_t, uint32_t>> cbSizeAndCounts, float margin = 1.5f, uint32_t minFloor = 64*1024);
-
-    // 용량 초과 시 임시 업로드 방식을 사용
-    D3D12_GPU_VIRTUAL_ADDRESS PushOrSpill(ID3D12Device* device, CBRing& ring, uint32_t frameIdx, const void* src, uint32_t sizeBytes, std::vector<ComPtr<ID3D12Resource>>& pendingDeleteContainer);
 }

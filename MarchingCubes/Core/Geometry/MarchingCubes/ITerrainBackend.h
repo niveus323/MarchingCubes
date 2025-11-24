@@ -60,6 +60,7 @@ struct BrushRequest
 	float weight = 1.0f;
 	float deltaTime = 0.016f;
 	float isoValue = 0.0f;
+
 };
 
 struct ITerrainBackend
@@ -67,7 +68,7 @@ struct ITerrainBackend
 	virtual ~ITerrainBackend() = default;
 	virtual void setGridDesc(const GridDesc&) = 0;
 	virtual void setFieldPtr(std::shared_ptr<SdfField<float>> grid) = 0;			// GPU: density3D 갱신 / CPU: 내부 GRD 보관
-	virtual void requestBrush(const BrushRequest&) = 0;
-	virtual void requestRemesh(const RemeshRequest&) = 0;
+	virtual void requestBrush(uint32_t frameIndex, const BrushRequest& r) = 0;
+	virtual void requestRemesh(uint32_t frameIndex, const RemeshRequest& r) = 0;
 	virtual bool tryFetch(std::vector<ChunkUpdate>& OutChunkUpdates) = 0;  // GPU : readback / CPU : GeometryData -> GeometryBuffer Commit
 };

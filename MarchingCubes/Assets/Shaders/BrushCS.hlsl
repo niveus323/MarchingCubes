@@ -2,21 +2,21 @@
 
 cbuffer BrushCB : register(b0)
 {
-    int resolution; // 3D SDF의 해상도 (RWTexture 한 변의 포인트 개수)
-    float radius; // Brush 반경
+    float brushRadius;
+    float brushWeight;
     float deltaTime;
-    float weight; // 가중치
+    float _padding0;
 
-    uint3 gridDim;
-    int _padding0;
-    
-    uint3 brushcenter;
+    uint3 gridCells;
     int _padding1;
     
-    uint3 regionMin;
+    uint3 brushcenter;
     int _padding2;
-    uint3 regionMax;
+    
+    uint3 regionCellMin;
     int _padding3;
+    uint3 regionCellMax;
+    int _padding4;
 }
 
 RWTexture3D<float> editTexture : register(u1);
@@ -25,16 +25,16 @@ RWTexture3D<float> editTexture : register(u1);
 void BrushCS(uint3 gid : SV_DispatchThreadID)
 {   
     int3 center = brushcenter;
-    uint3 p = regionMin + gid;
+    uint3 p = regionCellMin + gid;
     
-    if (any(p >= regionMax) || any(p >= gridDim))
+    if (any(p >= regionCellMax) || any(p >= gridCells))
         return;
 
     float d = distance(float3(p), float3(center));
-    if (d > radius)
+    if (d > brushRadius)
         return;
     
-    float t = 1.0 - (d / radius);
+    float t = 1.0 - (d / brushRadius);
     float w = smoothstep(0.0, 1.0, t);
-    editTexture[p] += weight * deltaTime * w;
+    editTexture[p] += brushWeight * deltaTime * w;
 }
