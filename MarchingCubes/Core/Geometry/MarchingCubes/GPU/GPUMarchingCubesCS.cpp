@@ -1,6 +1,6 @@
 #include "pch.h"
 #include "GPUMarchingCubesCS.h"
-#include "Core/Geometry/MarchingCubesTables.h"
+#include "Core/Geometry/MarchingCubes/MarchingCubesTables.h"
 #include "Core/Rendering/PSO/PSOList.h"
 
 static const uint64_t tableSize = 256u * 16u * sizeof(uint32_t);

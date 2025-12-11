@@ -1,5 +1,6 @@
 #include "pch.h"
 #include "TextureRegistry.h"
+#include "TextureAsset.h"
 #include "Core/Rendering/UploadContext.h"
 #include "Core/Rendering/PSO/DescriptorAllocator.h"
 
@@ -37,52 +38,29 @@ void TextureRegistry::BindDescriptorTable(ID3D12GraphicsCommandList* cmd)
 	cmd->SetGraphicsRootDescriptorTable(m_rootSlot, m_descriptorAllocator->GetStaticGpu(m_descriptorBaseSlot));
 }
 
-uint32_t TextureRegistry::LoadTexture(const std::wstring& path)
+uint32_t TextureRegistry::LoadTexture(const std::filesystem::path& logicalPath)
 {
 	// 이미 로드되어 있는지 확인
 	for (uint32_t i = 0; i < static_cast<uint32_t>(m_textures.size()); ++i)
 	{
-		if (m_textures[i].path == path)  return i;
+		if (m_textures[i].path == logicalPath) return i;
 	}
+	TextureAsset asset(logicalPath);
 
-	std::unique_ptr<ScratchImage> loadedImg = std::make_unique<ScratchImage>();
+	const auto& img = asset.GetImage();
+	const auto& meta = asset.GetMetadata();
 
-	auto isDDS = [](const std::wstring& path) {
-		return path.ends_with(L".dds");
-	};
-
-	auto isLinear = [](const std::wstring& path) {
-		return false; // normal, roughness 테스트 시 구현
-	};
-
-	if (isDDS(path))
-	{
-		// DDS
-		ThrowIfFailed(LoadFromDDSFile(path.c_str(), DDS_FLAGS_NONE, nullptr, *loadedImg));
-	}
-	else
-	{
-		// WIC
-		WIC_FLAGS flag = isLinear(path) ? WIC_FLAGS_FORCE_LINEAR : WIC_FLAGS_FORCE_SRGB;
-		ThrowIfFailed(LoadFromWICFile(path.c_str(), flag, nullptr, *loadedImg));
-	}
-	
-	const auto img = loadedImg->GetImages();
-	size_t imgCount = loadedImg->GetImageCount();
-	const TexMetadata& meta = loadedImg->GetMetadata();
-
+	// GPU 리소스 생성
 	ComPtr<ID3D12Resource> res;
 	ThrowIfFailed(DirectX::CreateTexture(m_device, meta, &res));
 
 	uint32_t bindlessSlot = m_descriptorAllocator->AllocateStaticSlot();
-	if (m_descriptorBaseSlot == UINT32_MAX)
-		m_descriptorBaseSlot = bindlessSlot;
+	if (m_descriptorBaseSlot == UINT32_MAX) m_descriptorBaseSlot = bindlessSlot;
 
-	D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc{
-		.Format = meta.format,
-		.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING
-	};
-	
+	D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc{};
+	srvDesc.Format = meta.format;
+	srvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
+
 	if (meta.dimension == TEX_DIMENSION_TEXTURE2D)
 	{
 		srvDesc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
@@ -90,7 +68,7 @@ uint32_t TextureRegistry::LoadTexture(const std::wstring& path)
 	}
 	else
 	{
-		// 필요 시 1D/3D/Array 등 추가 처리
+		// TODO: 1D/3D/Array 대응 필요 시 여기 확장
 	}
 
 	auto cpuHandle = m_descriptorAllocator->GetStaticCpu(bindlessSlot);
@@ -98,19 +76,29 @@ uint32_t TextureRegistry::LoadTexture(const std::wstring& path)
 
 	// Lazy-Upload Queueing
 	m_pendingTextures.push_back(PendingTextures{
-		.dst = res.Get(), 
-		.image = std::move(loadedImg), 
-		.debugName = UTF16ToUTF8(path.c_str())
-	});
+		.dst = res.Get(),
+		.image = asset.ExtractImage(),
+		.debugName = UTF16ToUTF8(logicalPath.c_str())
+		});
 
 	TextureResource result{
-		.path = path,
+		.path = logicalPath,
 		.meta = FinalizeMeta(res->GetDesc()),
 		.res = std::move(res),
-		.diffuseTexSlot = bindlessSlot
+		.bindlessSlot = bindlessSlot
 	};
-	m_textures.push_back(result);
+	m_textures.push_back(std::move(result));
+
 	return static_cast<uint32_t>(m_textures.size() - 1);
+}
+
+uint32_t TextureRegistry::GetBindlessIndex(uint32_t handle) const
+{
+	if (handle == UINT32_MAX || m_descriptorBaseSlot == UINT32_MAX)
+		return UINT32_MAX;
+
+	const auto& texRes = GetTexture(static_cast<size_t>(handle));
+	return texRes.bindlessSlot - m_descriptorBaseSlot;
 }
 
 TextureMeta TextureRegistry::FinalizeMeta(const D3D12_RESOURCE_DESC& desc)

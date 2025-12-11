@@ -17,9 +17,9 @@ struct BufferBlock
 {
 	uint64_t offset = 0;
 	uint64_t size = 0;
-	const char* owner = "";
+	std::string_view owner = "";
 
-	BufferBlock(uint64_t off, uint64_t sz, const char* o = nullptr) : offset(off), size(sz), owner(o) {}
+	BufferBlock(uint64_t off, uint64_t sz, std::string_view o = "") : offset(off), size(sz), owner(o) {}
 };
 
 static constexpr uint32_t PROMOTE_VB_MIN = 256 * 1024; // VB는 256KB 이상일 경우 승격

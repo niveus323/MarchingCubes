@@ -73,6 +73,7 @@
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
     <IncludePath>C:\Program Files (x86)\Visual Leak Detector\lib\Win64;$(SolutionDir)ThirdParty;$(IncludePath)</IncludePath>
     <LibraryPath>C:\Program Files (x86)\Visual Leak Detector\lib\Win64;$(SolutionDir)ThirdParty\lib;$(LibraryPath)</LibraryPath>
+    <LinkIncremental>true</LinkIncremental>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
     <IncludePath>C:\Program Files (x86)\Visual Leak Detector\lib\Win64;$(SolutionDir)ThirdParty;$(IncludePath)</IncludePath>
@@ -122,11 +123,11 @@
     <ClCompile>
       <WarningLevel>Level3</WarningLevel>
       <SDLCheck>true</SDLCheck>
-      <PreprocessorDefinitions>compiling_libMC33;_DEBUG;_CONSOLE;WIN32_LEAN_AND_MEAN;NOMINMAX;_WIN32_WINNT=0x0A00;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <PreprocessorDefinitions>FBXSDK_SHARED;compiling_libMC33;_DEBUG;_CONSOLE;WIN32_LEAN_AND_MEAN;NOMINMAX;_WIN32_WINNT=0x0A00;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>false</ConformanceMode>
       <PrecompiledHeader>Create</PrecompiledHeader>
       <PrecompiledHeaderFile>pch.h</PrecompiledHeaderFile>
-      <AdditionalIncludeDirectories>$(ProjectDir);%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(ProjectDir);C:\Program Files\Autodesk\FBX\FBX SDK\2020.3.7\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <LanguageStandard>stdcpp20</LanguageStandard>
       <OpenMPSupport>true</OpenMPSupport>
       <EnableEnhancedInstructionSet>AdvancedVectorExtensions2</EnableEnhancedInstructionSet>
@@ -134,7 +135,8 @@
     <Link>
       <SubSystem>Windows</SubSystem>
       <GenerateDebugInformation>true</GenerateDebugInformation>
-      <AdditionalDependencies>DirectXTex.lib;d3d12.lib;dxgi.lib;dxguid.lib;d3dcompiler.lib;MC33.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalDependencies>libfbxsdk.lib;DirectXTex.lib;d3d12.lib;dxgi.lib;dxguid.lib;d3dcompiler.lib;MC33.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalLibraryDirectories>C:\Program Files\Autodesk\FBX\FBX SDK\2020.3.7\lib\x64\debug;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
     </Link>
     <FxCompile>
       <ShaderModel>6.6</ShaderModel>
@@ -156,9 +158,13 @@
       <EnableCOMDATFolding>true</EnableCOMDATFolding>
       <OptimizeReferences>true</OptimizeReferences>
       <GenerateDebugInformation>true</GenerateDebugInformation>
+      <AdditionalDependencies>libfbxsdk.lib;DirectXTex.lib;d3d12.lib;dxgi.lib;dxguid.lib;d3dcompiler.lib;MC33.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalLibraryDirectories>$(FBX_SDK_DIR)\lib\x64\release</AdditionalLibraryDirectories>
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
+    <ClCompile Include="Core\Scene\Component\Component.cpp" />
+    <ClCompile Include="Core\Scene\BaseScene.cpp" />
     <ClCompile Include="Core\Geometry\MarchingCubes\CPU\CPUTerrainBackend.cpp" />
     <ClCompile Include="Core\Geometry\MeshGenerator.cpp" />
     <ClCompile Include="Core\Math\PhysicsHelper.cpp" />
@@ -181,11 +187,13 @@
     <ClCompile Include="App\Editor\GeometryEditor.cpp" />
     <ClCompile Include="Core\Rendering\PSO\DescriptorRing.cpp" />
     <ClCompile Include="Core\Rendering\PSO\DescriptorAllocator.cpp" />
+    <ClCompile Include="Core\Scene\Component\RendererComponent.cpp" />
+    <ClCompile Include="ThirdParty\FBXImporter.cpp" />
     <ClCompile Include="main.cpp" />
     <ClCompile Include="Core\Geometry\Mesh\Mesh.cpp" />
     <ClCompile Include="Core\Utils\Timer.cpp" />
     <ClCompile Include="Core\Rendering\UploadContext.cpp" />
-    <ClCompile Include="Core\Geometry\MarchingCubesTables.cpp" />
+    <ClCompile Include="Core\Geometry\MarchingCubes\MarchingCubesTables.cpp" />
     <ClCompile Include="Core\Assets\Material.cpp" />
     <ClCompile Include="Core\Geometry\MarchingCubes\TerrainSystem.cpp" />
     <ClCompile Include="Core\Geometry\MarchingCubes\GPU\SDFVolume3D.cpp" />
@@ -199,11 +207,20 @@
     <ClCompile Include="Core\Assets\ResourceManager.cpp" />
     <ClCompile Include="Core\Assets\TextureRegistry.cpp" />
     <ClCompile Include="Core\Assets\MaterialRegistry.cpp" />
+    <ClCompile Include="Core\Assets\TextureAsset.cpp" />
+    <ClCompile Include="Core\Assets\MeshAsset.cpp" />
+    <ClCompile Include="Core\Assets\MeshRegistry.cpp" />
+    <ClCompile Include="Core\Scene\SceneObject.cpp" />
+    <ClCompile Include="Core\Scene\Component\MeshComponent.cpp" />
+    <ClCompile Include="Core\Geometry\MarchingCubes\TerrainRendererComponent.cpp" />
     <ClCompile Include="ThirdParty\mc33_impl.cpp" />
     <ClCompile Include="Core\Rendering\Memory\UploadRing.cpp" />
+    <ClCompile Include="Core\Scene\Component\TransformComponent.cpp" />
     <ClCompile Include="Win32Application.cpp" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="Core\Scene\BaseScene.h" />
+    <ClInclude Include="Core\Scene\Component\Component.h" />
     <ClInclude Include="Core\DataStructures\ShaderTypes.h" />
     <ClInclude Include="Core\Geometry\MarchingCubes\GPU\GPUMarchingCubesShared.h" />
     <ClInclude Include="Core\Geometry\MarchingCubes\ITerrainBackend.h" />
@@ -223,7 +240,7 @@
     <ClInclude Include="Core\Geometry\Mesh\Mesh.h" />
     <ClInclude Include="Core\Input\InputState.h" />
     <ClInclude Include="Core\UI\ImGUIRenderer.h" />
-    <ClInclude Include="Core\Geometry\MarchingCubesTables.h" />
+    <ClInclude Include="Core\Geometry\MarchingCubes\MarchingCubesTables.h" />
     <ClInclude Include="Core\Assets\Material.h" />
     <ClInclude Include="Core\Rendering\LightManager.h" />
     <ClInclude Include="Core\Geometry\MarchingCubes\GPU\GPUBrushCS.h" />
@@ -240,6 +257,11 @@
     <ClInclude Include="Core\Rendering\PSO\DescriptorRing.h" />
     <ClInclude Include="Core\Rendering\PSO\DescriptorAllocator.h" />
     <ClInclude Include="Core\Assets\MaterialRegistry.h" />
+    <ClInclude Include="Core\Assets\MeshAsset.h" />
+    <ClInclude Include="Core\Assets\MeshRegistry.h" />
+    <ClInclude Include="Core\Scene\Component\MeshComponent.h" />
+    <ClInclude Include="Core\Scene\Component\RendererComponent.h" />
+    <ClInclude Include="ThirdParty\FBXImporter.h" />
     <ClInclude Include="pch.h" />
     <ClInclude Include="Core\Utils\Timer.h" />
     <ClInclude Include="Core\Rendering\UploadContext.h" />
@@ -255,6 +277,10 @@
     <ClInclude Include="Core\Trace\Profiler.h" />
     <ClInclude Include="Core\Assets\ResourceManager.h" />
     <ClInclude Include="Core\Assets\TextureRegistry.h" />
+    <ClInclude Include="Core\Assets\TextureAsset.h" />
+    <ClInclude Include="Core\Scene\SceneObject.h" />
+    <ClInclude Include="Core\Scene\Component\TransformComponent.h" />
+    <ClInclude Include="Core\Geometry\MarchingCubes\TerrainRendererComponent.h" />
     <ClInclude Include="Win32Application.h" />
   </ItemGroup>
   <ItemGroup>
@@ -294,6 +320,7 @@
       <EntryPointName Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">PSMain</EntryPointName>
       <EntryPointName Condition="'$(Configuration)|$(Platform)'=='Release|x64'">PSMain</EntryPointName>
     </FxCompile>
+    <None Include="Assets\Shaders\Material.hlsli" />
     <None Include="Assets\Shaders\PBR.hlsli">
       <FileType>Document</FileType>
       <EntryPointName Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">

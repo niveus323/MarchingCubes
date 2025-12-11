@@ -4,28 +4,23 @@
 #include "Core/UI/ImGUIRenderer.h"
 #include "Core/Geometry/MeshGenerator.h"
 #include "Core/Math/PhysicsHelper.h"
-#include "Core/Geometry/Mesh/MeshChunkRenderer.h"
+#include "Core/Scene/BaseScene.h"
+#include "Core/Assets/ResourceManager.h"
+#include "Core/Assets/MeshAsset.h"
+#include "Core/Scene/Component/MeshComponent.h"
+#include "Core/Geometry/MarchingCubes/TerrainRendererComponent.h"
+#include "Core/Rendering/RenderSystem.h"
 #include <algorithm>
 
 void MCTerraformEditor::OnDestroy()
 {
-	if (m_debugBrush)
-	{
-		if (GeometryBuffer* buf = m_debugBrush->GetGPUBuffer())
-			buf->ReleaseGPUResources();
-	}
-
-	if (m_debugCellMesh)
-	{
-		if (GeometryBuffer* buf = m_debugCellMesh->GetGPUBuffer()) 
-			buf->ReleaseGPUResources();
-	}
-
 	EditorApp::OnDestroy();
 }
 
 void MCTerraformEditor::InitScene(ID3D12GraphicsCommandList* cmd)
 {
+	m_scene = std::make_unique<BaseScene>(m_renderSystem.get());
+
 	m_lightManager->AddDirectional({ -1.0f, 1.0f, 0.0f }, { 1.0f, 1.0f, 1.0f });
 	m_lightDir = { 1.0f, -1.0f, 0.0f };
 
@@ -38,38 +33,40 @@ void MCTerraformEditor::InitScene(ID3D12GraphicsCommandList* cmd)
 			.device = m_device.Get(),
 			.grid = initialSphereField,
 			.desc = gridDesc,
-			.mode = TerrainMode::GPU_ORIGINAL,
+			.mode = TerrainMode::CPU_MC33,
 			.descriptorAllocator = GetDescriptorAllocator(),
 			.uploadContext = GetUploadContext()
 		};
 		m_terrain = std::make_unique<TerrainSystem>(terrainInfo);
 		m_terrain->requestRemesh(m_frameIndex, m_mcIso);
-
-		MeshChunkRenderer* terrainMesh = m_terrain->GetRenderer();
-		terrainMesh->SetDebugName("TerrainMesh");
-		terrainMesh->SetMaterial(0);
 	}
 
+	// Terrain Object 생성
+	{
+		m_terrainRenderer = m_scene->CreateObject<SceneObject>();
+		m_terrainRenderer->SetPosition(m_gridOrigin);
+		auto* terrainComponent = m_terrainRenderer->AddComponent<TerrainRendererComponent>();
+		terrainComponent->SetChunkRenderer(m_terrain->GetRenderer());
+		terrainComponent->SetMaterial(0);
+	}
 #ifdef _DEBUG	
-	// Debug Terrain Cell
+	// Debug Terrain Cell 생성
 	{
 		GeometryData debugcellData;
 		m_terrain->MakeDebugCell(debugcellData, false);
-		m_debugCellMesh = std::make_unique<Mesh>(m_device.Get(), debugcellData);
-		m_debugCellMesh->SetDebugName("TerrainCell");
-
-		m_renderSystem->RegisterStatic(m_debugCellMesh.get(), "Line", m_frameIndex);
-		GetUploadContext()->UploadStatic(m_debugCellMesh.get(), m_swapChainFence->GetCompletedValue());
-
+		auto mesh = std::make_unique<Mesh>(GetUploadContext(), debugcellData, "TerrainCell");
+		m_debugCell = m_scene->CreateObject<SceneObject>();
+		auto* meshComp = m_debugCell->AddComponent<MeshComponent>(mesh.get(), "Line");
+		m_editorMeshes.push_back(std::move(mesh));
 	}
 
-	// Debug Brush
+	// Debug Brush 생성
 	{
 		GeometryData debugBrushData = MeshGenerator::CreateSphereMeshData(m_brushRadius, { 1.0f, 0.0f, 0.0f, 0.4f });
-		m_debugBrush = std::make_unique<Mesh>(m_device.Get(), debugBrushData);
-		m_debugBrush->SetMaterial(0);
-		m_debugBrush->SetDebugName("DebugBrush");
-		m_renderSystem->RegisterDynamic(m_debugBrush.get(), "Wire");
+		auto mesh = std::make_unique<Mesh>(GetUploadContext(), debugBrushData, "DebugBrush");
+		m_debugBrush = m_scene->CreateObject<SceneObject>();
+		auto* meshComp = m_debugBrush->AddComponent<MeshComponent>(mesh.get(), "Wire");
+		m_editorMeshes.push_back(std::move(mesh));
 	}
 #endif // _DEBUG
 }
@@ -103,16 +100,22 @@ void MCTerraformEditor::UpdateScene(float deltaTime)
 #ifdef _DEBUG
 	if (m_inputState.GetKeyState(ActionKey::ToggleDebugView) == ActionKeyState::JustPressed)
 	{
-		m_debugViewEnabled = !m_debugViewEnabled;
+		SetDebugViewMode(m_hDefaultView);
 	}
 	else if (m_inputState.GetKeyState(ActionKey::ToggleWireFrame) == ActionKeyState::JustPressed)
 	{
-		m_wireFrameEnabled = !m_wireFrameEnabled;
-		m_renderSystem->SetWireViewEnabled(m_wireFrameEnabled);
+		if (m_renderSystem->IsOverrideActive("Filled", "Wire")) 
+		{
+			SetDebugViewMode(m_hDefaultView);
+		}
+		else 
+		{
+			SetDebugViewMode(m_hWireView);
+		}
 	}
 	else if (m_inputState.GetKeyState(ActionKey::ToggleDebugNormal) == ActionKeyState::JustPressed)
 	{
-		m_debugNormalEnabled = !m_debugNormalEnabled;
+		SetDebugViewMode(m_hNormalView); // Just Toggle
 	}
 #endif // _DEBUG
 
@@ -134,91 +137,54 @@ void MCTerraformEditor::UpdateScene(float deltaTime)
 			XMVECTOR rayOrigin, rayDir;
 			PhysicsUtil::MakeRay(static_cast<float>(m_inputState.m_mouseX), static_cast<float>(m_inputState.m_mouseY), *m_mainCamera.get(), rayOrigin, rayDir);
 
-			XMVECTOR rayOriginls = XMVector3TransformCoord(rayOrigin, terrainRenderer->GetWorldInvMatrix());
-			// normalized된 방향 벡터는 회전 행렬에 대한 역변환만 고려하면되지만 편의를 위해 WorldInvMatrix를 사용
-			XMVECTOR rayDirls = XMVector3Normalize(XMVector3TransformCoord(rayDir, terrainRenderer->GetWorldInvMatrix()));
+			std::vector<PhysicsUtil::RaycastTarget> targets;
+			auto& terrainChunks = terrainRenderer->GetChunkSlots();
+			for (const auto& chunk : terrainChunks)
+			{
+				targets.push_back(PhysicsUtil::RaycastTarget{
+					.data = &chunk.meshData,
+					.bounds = chunk.bounds,
+					.worldMatrix = m_terrainRenderer->GetTransformMatrix()
+				});
+			}
 
 			// RayCast로 terrainMesh를 피킹중인지 확인
-			XMFLOAT3 hitPosLS;
-			if (PhysicsUtil::IsHit(rayOriginls, rayDirls, terrainRenderer->GetCPUData(), terrainRenderer->GetBoundingBox(), hitPosLS))
+			XMFLOAT3 hitPos{};
+			if (PhysicsUtil::IsHit(targets, rayOrigin, rayDir, hitPos))
 			{
 #ifdef _DEBUG
 				// Hit가 발생한 위치에 원 세팅
-				{
-					XMVECTOR vHitposLS = XMLoadFloat3(&hitPosLS);
-					XMVECTOR vHitposGS = XMVector3TransformCoord(vHitposLS, terrainRenderer->GetWorldMatrix());
-
-					XMFLOAT3 pos;
-					XMStoreFloat3(&pos, vHitposGS);
-
-					m_debugBrush->SetPosition(pos);
-					m_debugBrush->UpdateConstants();
-				}
+				m_debugBrush->SetPosition(hitPos);
 #endif // DEBUG
-				BrushRequest req_brush{};
-				req_brush.hitpos = hitPosLS;
-				req_brush.radius = m_brushRadius;
-				req_brush.weight = m_brushStrength * (m_inputState.IsPressed(ActionKey::Ctrl) ? -1.0f : 1.0f);
-				req_brush.deltaTime = deltaTime;
-				req_brush.isoValue = m_mcIso;
+				XMVECTOR vHitposLS = XMVector3TransformCoord(XMLoadFloat3(&hitPos), XMMatrixInverse(nullptr, m_terrainRenderer->GetTransformMatrix()));
+				XMFLOAT3 hitposLS;
+				XMStoreFloat3(&hitposLS, vHitposLS);
+
+				BrushRequest req_brush{
+					.hitpos = hitposLS,
+					.radius = m_brushRadius,
+					.weight = m_brushStrength * (m_inputState.IsPressed(ActionKey::Ctrl) ? -1.0f : 1.0f),
+					.deltaTime = deltaTime,
+					.isoValue = m_mcIso
+				};
 				m_terrain->requestBrush(m_frameIndex, req_brush);
 			}
 		}
 	}
 
-	m_terrain->tryFetch(m_device.Get(), m_renderSystem.get(), "Filled");
+	m_terrain->tryFetch();
+	if (m_scene) m_scene->Update(deltaTime);
 }
 
 void MCTerraformEditor::OnUpload(ID3D12GraphicsCommandList* cmd)
 {
 	EditorApp::OnUpload(cmd);
-	uint64_t completed = m_swapChainFence->GetCompletedValue();
-
-	auto& terrainChunks = m_terrain->GetRenderer()->GetChunkDrawables();
-	for (auto chunk : terrainChunks)
-	{
-		if (chunk->IsUploadPending())
-		{
-			GetUploadContext()->UploadDrawable(chunk, completed);
-		}
-	}
-
-	if (m_debugBrush->IsUploadPending())
-	{
-		GetUploadContext()->UploadDrawable(m_debugBrush.get(), completed);
-	}
-
-	if (m_debugCellMesh->IsUploadPending())
-	{
-		GetUploadContext()->UploadDrawable(m_debugCellMesh.get(), completed);
-	}
+	if (m_scene) m_scene->Render();
 }
 
 void MCTerraformEditor::DrawScene(ID3D12GraphicsCommandList* cmd)
 {
 	EditorApp::DrawScene(cmd);
-
-	if (m_debugNormalEnabled)
-	{
-		PSOList* psoList = m_renderSystem->GetPSOList();
-		auto& buckets = m_renderSystem->GetBuckets();
-
-		cmd->SetPipelineState(psoList->Get(psoList->IndexOf("DrawNormal")));
-		for (int i = 0; i < psoList->Count(); ++i) {
-			auto* pso = psoList->Get(i);
-			if (!pso || !m_renderSystem->GetPsoEnabled(i)) continue;
-
-			for (auto& object : buckets[i].staticItems)
-			{
-				RecordDrawItem(cmd, object->GetDrawBinding());
-			}
-
-			for (auto& object : buckets[i].dynamicItems)
-			{
-				RecordDrawItem(cmd, object->GetDrawBinding());
-			}
-		}
-	}
 }
 
 void MCTerraformEditor::RenderCameraLightUI()
@@ -258,12 +224,17 @@ void MCTerraformEditor::RenderMarchingCubesUI()
 	ImGui::DragFloat("##Brush Radius", &m_brushRadius, 0.2f, 3.0f, 10.0f, "%.3f", ImGuiSliderFlags_AlwaysClamp);
 	if (ImGui::IsItemDeactivatedAfterEdit())
 	{
-		GeometryData newBrushMeshData;
-		MeshGenerator::CreateSphereMeshData(m_brushRadius, { 1.0f, 0.0f, 0.0f, 0.4f });
-		if (!m_renderSystem->UpdateDynamic(m_debugBrush.get(), newBrushMeshData))
+		GeometryData newBrushMeshData =	MeshGenerator::CreateSphereMeshData(m_brushRadius, { 1.0f, 0.0f, 0.0f, 0.4f });
+		if (m_debugBrush)
 		{
-			m_debugBrush->SetCPUData(newBrushMeshData);
-			m_renderSystem->RegisterDynamic(m_debugBrush.get(), "wire");
+			for (auto& mesh : m_editorMeshes) 
+			{
+				if (mesh->GetDebugName() == "DebugBrush") 
+				{
+					mesh->UpdateData(GetUploadContext(), newBrushMeshData);
+					break;
+				}
+			}
 		}
 	}
 
@@ -278,8 +249,7 @@ void MCTerraformEditor::RenderMarchingCubesUI()
 		m_terrain->setField(m_device.Get(), newSdf);
 		m_terrain->requestRemesh(m_frameIndex, m_mcIso);
 
-		m_debugCellMesh->SetPosition(m_gridOrigin);
-		m_debugCellMesh->UpdateConstants();
+		m_debugCell->SetPosition(m_gridOrigin);
 	}
 	ImGui::End();
 }

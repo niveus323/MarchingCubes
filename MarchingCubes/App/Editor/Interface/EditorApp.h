@@ -2,10 +2,10 @@
 #include "App/Common/DXAppBase.h"
 #include "Core/Rendering/Camera.h"
 #include "Core/Rendering/LightManager.h"
-#include "Core/Geometry/Mesh/Mesh.h"
 #include "Core/Input/InputState.h"
 #include "Core/Rendering/RenderSystem.h"
 #include "Core/Trace/Profiler.h"
+using DebugViewModeHandle = int;
 
 class EditorApp : public DXAppBase
 {
@@ -35,10 +35,17 @@ protected:
 	virtual void UpdateUI(float deltaTime);
 	virtual void OnUpload(ID3D12GraphicsCommandList* cmd) override;
 	virtual void DrawScene(ID3D12GraphicsCommandList* cmd);
-	// 렌더링 명령 추가 후 필요한 작업은 이쪽으로 (ex PostProcessing)
-	virtual void AfterDraw(ID3D12GraphicsCommandList* cmd) {}
+	virtual void AfterDraw(ID3D12GraphicsCommandList* cmd) {} // 렌더링 명령 추가 후 필요한 작업은 이쪽으로 (ex PostProcessing)
 
+	// PSO File
 	virtual std::vector<std::wstring> GetPSOFiles() const { return { L"EditorCommon.json" }; }
+
+	// Debug View Mode
+	DebugViewModeHandle RegisterDebugViewMode(std::string_view name, std::function<void(RenderSystem*)> func);
+	void SetDebugViewMode(std::string_view name);
+	void SetDebugViewMode(int index);
+	DebugViewModeHandle GetCurrentDebugViewMode() { return m_currentDebugViewMode; }
+
 private:
 	void InitGpuTimeStampResources();
 	void DestroyGpuTimeStampResources();
@@ -62,12 +69,13 @@ protected:
 	std::unique_ptr<LightManager> m_lightManager;
 	std::unique_ptr<RenderSystem> m_renderSystem;
 
-	// debug
+	// Debug
 #ifdef _DEBUG
-	bool m_debugViewEnabled = false;
-	bool m_wireFrameEnabled = false;
 	bool m_profileingEnabled = true;
 #endif // _DEBUG
+	DebugViewModeHandle m_hDefaultView = -1;
+	DebugViewModeHandle m_hWireView = -1;
+	DebugViewModeHandle m_hNormalView = -1;
 
 private:
 	ComPtr<ID3D12RootSignature> m_rootSignature;
@@ -86,5 +94,8 @@ private:
 
 	UI::FrameCallbackToken m_uiToken_Fps = 0;
 	UI::FrameCallbackToken m_uiToken_Profiler = 0;
+
+	std::vector<std::pair<std::string, std::function<void(RenderSystem*)>>> m_debugViewModes;
+	int m_currentDebugViewMode = 0;
 };
 

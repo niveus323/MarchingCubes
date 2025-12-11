@@ -50,9 +50,9 @@ ID3D12PipelineState* PSOList::Get(int index) const
     return m_states[index].Get();
 }
 
-int PSOList::IndexOf(const std::string& id) const
+int PSOList::IndexOf(std::string_view id) const
 {
-    auto it = m_idToIndex.find(id);
+    auto it = m_idToIndex.find(id.data());
     return (it == m_idToIndex.end()) ? -1 : it->second;
 }
 

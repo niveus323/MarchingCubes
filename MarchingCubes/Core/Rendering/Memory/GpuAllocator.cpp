@@ -16,6 +16,11 @@ GpuAllocator::GpuAllocator(ID3D12Device* device, GpuAllocatorInitInfo info)
 	uint64_t ibLargeSize = info.ibPoolBytes - ibSmallSize;
 	m_ibPool = std::make_unique<GPUBufferPool>(device, ibSmallSize, L"IBPool_Small");
 	m_ibPool_Large = std::make_unique<GPUBufferPool>(device, ibLargeSize, L"IBPool_Large");
+
+	uint64_t gbSmallSize = info.genericPoolBytes >> 2;
+	uint64_t gbLargeSize = info.genericPoolBytes - gbSmallSize;
+	m_genericPool = std::make_unique<GPUBufferPool>(device, gbSmallSize, L"GenericPool_Small");
+	m_genericPool_Large = std::make_unique<GPUBufferPool>(device, gbLargeSize, L"GenericPool_Large");
 }
 
 GpuAllocator::GpuAllocator(ID3D12Device* device, uint64_t cbRingBytes, uint64_t stagingRingBytes, uint64_t vbPoolBytes, uint64_t ibPoolBytes) :
@@ -29,7 +34,7 @@ void GpuAllocator::Alloc(ID3D12Device* device, const AllocDesc& desc, BufferHand
 		if (!pool->SubAlloc(device, desc.size, desc.align, outHandle, desc.owner))
 			return false;
 		return true;
-	};
+		};
 
 	auto AllocFromRing = [](UploadRing* ring, ID3D12Device* device, const AllocDesc& desc, BufferHandle& outHandle) {
 		uint64_t offset = UINT64_MAX;
@@ -42,7 +47,7 @@ void GpuAllocator::Alloc(ID3D12Device* device, const AllocDesc& desc, BufferHand
 		outHandle.gpuVA = ring->GetResource()->GetGPUVirtualAddress() + offset;
 		outHandle.cpuPtr = cpuPtr;
 		return true;
-	};
+		};
 
 	auto PromoteAndAlloc = [](ID3D12Device* device, const AllocDesc& desc, BufferHandle& outHandle, std::vector<PromotedResource>& promotedResources, uint64_t lastCompletedFenceValue) {
 		for (auto& promoted : promotedResources)
@@ -69,7 +74,7 @@ void GpuAllocator::Alloc(ID3D12Device* device, const AllocDesc& desc, BufferHand
 			size |= size >> 16;
 			size |= size >> 32;
 			return ++size;
-		};
+			};
 
 		uint64_t grown = std::max<uint64_t>(desc.size, pow2Round(desc.size));
 		PromotedResource slot{};
@@ -79,7 +84,7 @@ void GpuAllocator::Alloc(ID3D12Device* device, const AllocDesc& desc, BufferHand
 		slot.size = grown;
 		slot.refCount = 1;
 		promotedResources.push_back(slot);
-		
+
 		outHandle.res = slot.res.Get();
 		outHandle.offset = 0;
 		outHandle.size = desc.size;
@@ -87,15 +92,44 @@ void GpuAllocator::Alloc(ID3D12Device* device, const AllocDesc& desc, BufferHand
 		outHandle.gpuVA = slot.res->GetGPUVirtualAddress();
 
 		return;
-	};
+		};
 
 	switch (desc.kind)
 	{
-		case AllocDesc::Kind::VB:
-		case AllocDesc::Kind::IB:
+		case AllocDesc::Kind::DEFAULT:
 		{
-			const bool isVB = (desc.kind == AllocDesc::Kind::VB);
-			const uint64_t promoteMin = isVB ? PROMOTE_VB_MIN : PROMOTE_IB_MIN;
+			uint64_t promoteMin = UINT32_MAX;
+			GPUBufferPool* pool_small = nullptr;
+			GPUBufferPool* pool_large = nullptr;
+
+			switch (desc.usage)
+			{
+				case AllocDesc::Usage::GENERIC:
+				{
+					pool_small = m_genericPool.get();
+					pool_large = m_genericPool_Large.get();
+				}
+				break;
+				case AllocDesc::Usage::VERTEX:
+				{
+					promoteMin = PROMOTE_VB_MIN;
+					pool_small = m_vbPool.get();
+					pool_large = m_vbPool_Large.get();
+				}
+				break;
+				case AllocDesc::Usage::INDEX:
+				{
+					promoteMin = PROMOTE_IB_MIN;
+					pool_small = m_ibPool.get();
+					pool_large = m_ibPool_Large.get();
+				}
+				break;
+				default:
+				{
+					Log::Print("GPUAllocator", "Invalid Aloc Usage");
+				}
+				return;
+			}
 
 			// 승격 기준을 넘었다면 승격
 			if (desc.size >= promoteMin && desc.lifetime == AllocDesc::LifeTime::LONG)
@@ -105,21 +139,18 @@ void GpuAllocator::Alloc(ID3D12Device* device, const AllocDesc& desc, BufferHand
 				return;
 			}
 
-			GPUBufferPool* pool_small = isVB ? m_vbPool.get() : m_ibPool.get();
-			GPUBufferPool* pool_large = isVB ? m_vbPool_Large.get() : m_ibPool_Large.get();
-
 			auto tryPool = [](GPUBufferPool* pool, ID3D12Device* device, const AllocDesc& desc, BufferHandle& outHandle)->bool {
 				return pool && pool->SubAlloc(device, desc.size, desc.align, outHandle, desc.owner);
-			};
+				};
 
-			const uint64_t cutOffMin = isVB ? m_vbPool->GetCapacity() >> 4 : m_ibPool->GetCapacity() >> 4;
+			const uint64_t cutOffMin = pool_small->GetCapacity() >> 4;
 			const uint64_t cutOffMax = cutOffMin << 2;
-			const uint64_t cutoff = std::clamp<uint64_t>(static_cast<uint64_t>(isVB ? 2 * PROMOTE_VB_MIN : 2 * PROMOTE_IB_MIN), cutOffMin, cutOffMax);
+			const uint64_t cutoff = std::clamp<uint64_t>(promoteMin * 2ull, cutOffMin, cutOffMax);
 			bool ok = (desc.size > cutoff) ?
-				tryPool(pool_large, device, desc, outHandle) || tryPool(pool_small, device, desc, outHandle) : 
+				tryPool(pool_large, device, desc, outHandle) || tryPool(pool_small, device, desc, outHandle) :
 				tryPool(pool_small, device, desc, outHandle) || tryPool(pool_large, device, desc, outHandle);
 
-			if (!ok) 
+			if (!ok)
 			{
 				AllocFromFallback(device, desc, outHandle);
 			}
@@ -127,7 +158,7 @@ void GpuAllocator::Alloc(ID3D12Device* device, const AllocDesc& desc, BufferHand
 		}
 		break;
 		case AllocDesc::Kind::CB:
-		case AllocDesc::Kind::Staging:
+		case AllocDesc::Kind::STAGING:
 		{
 			if (!AllocFromRing((desc.kind == AllocDesc::Kind::CB) ? m_cbRing.get() : m_stagingRing.get(), device, desc, outHandle))
 			{
@@ -135,6 +166,12 @@ void GpuAllocator::Alloc(ID3D12Device* device, const AllocDesc& desc, BufferHand
 				AllocFromFallback(device, desc, outHandle);
 			}
 			return;
+		}
+		break;
+		case AllocDesc::Kind::READBACK:
+		case AllocDesc::Kind::STRUCTURED_UAV:
+		{
+			AllocFromFallback(device, desc, outHandle);
 		}
 		break;
 		default: // Do Nothing
@@ -200,7 +237,7 @@ void GpuAllocator::Reclaim(uint64_t completedFenceValue)
 	{
 		if (iter->fenceValue && iter->fenceValue <= completedFenceValue && iter->refCount == 0)
 			iter = m_fallbackUploads.erase(iter);
-		else 
+		else
 			++iter;
 	}
 
@@ -215,33 +252,40 @@ void GpuAllocator::Reclaim(uint64_t completedFenceValue)
 
 void GpuAllocator::AllocFromFallback(ID3D12Device* device, const AllocDesc& desc, BufferHandle& outHandle)
 {
-	bool bForUpload = (desc.kind == AllocDesc::Kind::Staging || desc.kind == AllocDesc::Kind::CB);
-	auto FindRemainSlot = [](std::vector<Fallback>& fallbacks, D3D12_HEAP_TYPE neededType, uint64_t size, uint64_t completedFenceValue) {
+	const bool bForUpload = (desc.kind == AllocDesc::Kind::STAGING || desc.kind == AllocDesc::Kind::CB);
+	const bool bReadback = (desc.kind == AllocDesc::Kind::READBACK);
+	const D3D12_HEAP_TYPE heapType = (bForUpload) ? D3D12_HEAP_TYPE_UPLOAD : (bReadback ? D3D12_HEAP_TYPE_READBACK : D3D12_HEAP_TYPE_DEFAULT);
+
+	auto FindRemainSlot = [](std::vector<Fallback>& fallbacks, AllocDesc::Kind kind, D3D12_HEAP_TYPE neededType, uint64_t size, uint64_t completedFenceValue) {
 		for (size_t i = 0; i < fallbacks.size(); ++i)
 		{
 			Fallback& fallback = fallbacks[i];
+			if (fallback.refCount != 0 || fallback.fenceValue > completedFenceValue || fallback.desc.kind != kind) continue;
 			D3D12_HEAP_PROPERTIES hp;
 			fallback.res->GetHeapProperties(&hp, nullptr);
-			if (fallback.refCount || hp.Type != neededType || fallback.fenceValue > completedFenceValue || size > fallback.desc.size) continue;
+
+			if (hp.Type != neededType || size > fallback.desc.size) continue;
 
 			// fallbackBuffer에 할당 가능하면 이 슬롯을 리턴
 			return static_cast<int>(i);
 		}
 		return -1;
-	};
+		};
 
-	int slot = FindRemainSlot(m_fallbackUploads, bForUpload ? D3D12_HEAP_TYPE_UPLOAD : D3D12_HEAP_TYPE_DEFAULT, desc.size, m_lastCompletedFenceValue);
+	int slot = FindRemainSlot(m_fallbackUploads, desc.kind, heapType, desc.size, m_lastCompletedFenceValue);
 	if (slot < 0)
 	{
-		D3D12_HEAP_PROPERTIES hp = CD3DX12_HEAP_PROPERTIES(bForUpload ? D3D12_HEAP_TYPE_UPLOAD : D3D12_HEAP_TYPE_DEFAULT);
-		D3D12_RESOURCE_DESC dc = CD3DX12_RESOURCE_DESC::Buffer(desc.size);
-		D3D12_RESOURCE_STATES initial = bForUpload ? D3D12_RESOURCE_STATE_GENERIC_READ : D3D12_RESOURCE_STATE_COMMON;
+		D3D12_HEAP_PROPERTIES hp = CD3DX12_HEAP_PROPERTIES(heapType);
+		D3D12_RESOURCE_DESC dc = (desc.kind == AllocDesc::Kind::STRUCTURED_UAV)
+			? CD3DX12_RESOURCE_DESC::Buffer(desc.size, D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS)
+			: CD3DX12_RESOURCE_DESC::Buffer(desc.size);
+		D3D12_RESOURCE_STATES initial = bForUpload ? D3D12_RESOURCE_STATE_GENERIC_READ : (bReadback ? D3D12_RESOURCE_STATE_COPY_DEST : D3D12_RESOURCE_STATE_COMMON);
 		ComPtr<ID3D12Resource> buffer;
 		ThrowIfFailed(device->CreateCommittedResource(&hp, D3D12_HEAP_FLAG_NONE, &dc, initial, nullptr, IID_PPV_ARGS(&buffer)));
 
 		Fallback result{};
 		result.desc = desc;
-		if (bForUpload)
+		if (heapType == D3D12_HEAP_TYPE_UPLOAD || heapType == D3D12_HEAP_TYPE_READBACK)
 		{
 			uint8_t* mapped = nullptr;
 			ThrowIfFailed(buffer->Map(0, nullptr, reinterpret_cast<void**>(&mapped)));

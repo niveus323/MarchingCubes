@@ -21,17 +21,28 @@ void MaterialRegistry::BuildTable(ID3D12GraphicsCommandList* cmd)
 	std::vector<MaterialConstants> constants;
 	constants.reserve(m_materials.size());
 
-	uint32_t textureBaseSlot = m_textureRegistry->GetDescriptorBaseSlot();
+	std::unordered_map<uint32_t, uint32_t> indexCache;
+	TextureRegistry* texReg = m_textureRegistry;
+	auto cachedIndex = [&indexCache, texReg](uint32_t handle) {
+			if (handle == UINT32_MAX) return UINT32_MAX;
+			auto it = indexCache.find(handle);
+			if (it != indexCache.end()) return it->second;
+
+			uint32_t idx = texReg->GetBindlessIndex(handle);
+			indexCache.emplace(handle, idx);
+			return idx;
+	};
+
 	for (const auto& src : m_materials)
 	{
 		MaterialConstants dst = src.GetConstants();
+		dst.baseTextures.diffuseIndex = cachedIndex(src.GetDiffuseHandle());
+		dst.baseTextures.normalIndex = cachedIndex(src.GetNormalHandle());
+		dst.baseTextures.armIndex = cachedIndex(src.GetARMHandle());
+		dst.baseTextures.displacementIndex = cachedIndex(src.GetDisplacementHandle());
+		dst.baseTextures.roughnessIndex = cachedIndex(src.GetRoughHandle());
+		dst.baseTextures.emissiveIndex = cachedIndex(src.GetEmissiveHandle());
 
-		uint32_t handle = src.GetDiffuseHandle();
-		if (handle != UINT32_MAX && textureBaseSlot != UINT32_MAX)
-		{
-			const auto& texRes = m_textureRegistry->GetTexture(handle);
-			dst.diffuse.texIndex = texRes.diffuseTexSlot - textureBaseSlot;
-		}
 		constants.push_back(dst);
 	}
 
@@ -50,7 +61,7 @@ void MaterialRegistry::BindDescriptorTable(ID3D12GraphicsCommandList* cmd) const
 	cmd->SetGraphicsRootDescriptorTable(m_rootSlot, m_descriptorAllocator->GetStaticGpu(m_descriptorSlot));
 }
 
-uint32_t MaterialRegistry::AddMaterial(const MaterialCPU& data)
+uint32_t MaterialRegistry::AddMaterial(const Material& data)
 {
 	m_materials.push_back(data);
 	return static_cast<uint32_t>(m_materials.size() - 1);

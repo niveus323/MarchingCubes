@@ -16,7 +16,7 @@ class GPUBufferPool
 public:
 	GPUBufferPool(ID3D12Device* device, uint64_t totalSize, const wchar_t* debugName = L"GPUBufferPool");
 	~GPUBufferPool();
-	bool SubAlloc(ID3D12Device* device, uint64_t bytes, uint64_t align, BufferHandle& out, const char* owner = nullptr);
+	bool SubAlloc(ID3D12Device* device, uint64_t bytes, uint64_t align, BufferHandle& out, std::string_view owner = "");
 	void FreeLater(const BufferHandle& r, uint64_t fence); // retire만 표시
 	void Reclaim(uint64_t completedFence); // retireFence ≤ completedFence 회수
 

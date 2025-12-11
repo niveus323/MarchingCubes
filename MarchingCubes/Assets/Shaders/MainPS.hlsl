@@ -2,6 +2,7 @@
 #include "Common.hlsli"
 #include "PBR.hlsli"
 #include "Texture.hlsli"
+#include "Material.hlsli"
 
 // Vertex-to-pixel output structure
 struct PSInput
@@ -10,52 +11,24 @@ struct PSInput
     float3 WorldPos : TEXCOORD0;
     float3 WorldNormal : TEXCOORD1;
     float2 TexCoord : TEXCOORD2;
+    float3 WorldTangent : TEXCOORD3;
+    float TangentSign : TEXCOORD4;
     float4 Color : COLOR0;
 };
-
-float3 SampleMaterialTexture(float2 uv, float3 worldPos, float3 normal, TextureParams param)
-{
-    uint texIndex = param.texIndex;
-    uint mappingType = param.mappingType;
-    if (texIndex == INVALID_TEXTURE_INDEX)
-        return float3(1.0, 1.0, 1.0);
-    
-    if (mappingType == ETextureMappingType::TRIPLANAR)
-    {
-        return SampleTriplanar(gMaterialTextures[texIndex], gLinearSampler, worldPos, normal, param.triplanar.scale, param.triplanar.sharpness);
-    }
-    else
-    {
-        // default UV mapping
-        return gMaterialTextures[texIndex].Sample(gLinearSampler, uv).rgb;
-    }
-    
-    return float3(1.0, 1.0, 1.0);
-}
 
 // Pixel Shader: output interpolated color
 float4 PSMain(PSInput input) : SV_TARGET
 {
-    MaterialBuffer mat = gMaterials[gMaterialIndex];
-    float3 albedo = mat.albedo * SampleMaterialTexture(input.TexCoord, input.WorldPos, input.WorldNormal, mat.diffuse);
-    float metalic = mat.metalic;
-    float specularStrength = mat.specularStrength;
-    float roughness = mat.roughness;
-    float ambientOcclusion = mat.ambientOcclusion;
-    float IOR = mat.IOR;
-    
-    uint shadingModel = mat.shadingModel;
-    float opacity = mat.opacity;
-    
-    float3 N = normalize(input.WorldNormal);
+    EvaluatedMaterial mat = EvaluateMaterial(gMaterials[gMaterialIndex], input.TexCoord, input.WorldPos, input.WorldNormal, input.WorldTangent, input.TangentSign);
     float3 V = normalize(gCameraPos - input.WorldPos);
-    
+    float3 N = mat.normal;
+        
     // Default Reflection For Fresnel Function
     float3 F0;
-    if (shadingModel == EShadingModel::TRANSLUCENT)
+    if (mat.shadingModel == EShadingModel::TRANSLUCENT)
     {
         // 금속, 유리 등의 환경 맵핑 처리
-        
+        float IOR = mat.IOR;
         float fd = pow((1.0f - IOR) / (1.0f + IOR), 2.0f);
         F0 = fd.xxx;
         
@@ -66,23 +39,23 @@ float4 PSMain(PSInput input) : SV_TARGET
         float3 T = refract(-V, N, 1.0f / IOR);
         
         float3 colRefl = gEnvMap.Sample(gLinearSampler, R).rgb;
-        float3 colRefr = gEnvMap.Sample(gLinearSampler, T).rgb * albedo;
+        float3 colRefr = gEnvMap.Sample(gLinearSampler, T).rgb * mat.albedo;
         
         float3 LoEnv = colRefl * F + colRefr * (1.0f - F);
         
         float alpha = 1.0f - F.r;
         
-        return float4(LoEnv, alpha);
+        return float4(LoEnv + mat.emissive, alpha);
     }
-    else if (shadingModel == EShadingModel::DIELECTRIC)
+    else if (mat.shadingModel == EShadingModel::DIELECTRIC)
     {
         // 유전체 모델
-        F0 = ComputeF0_Dielectric(IOR, metalic, albedo);
+        F0 = ComputeF0_Dielectric(mat.IOR, mat.metalic, mat.albedo);
     }
     else //EShadingModel::DEFAULT_LIT
     {
         //기본 모델 : albedo x specularStrength 조합
-        F0 = ComputeF0_Default(albedo, specularStrength, metalic);
+        F0 = ComputeF0_Default(mat.albedo, mat.specularStrength, mat.metalic);
     }
     
     // 모든 라이트 순회
@@ -129,25 +102,25 @@ float4 PSMain(PSInput input) : SV_TARGET
         float NdotV = max(dot(N, V), 0.0f);
         
         float3 F = FresnelSchlick(max(dot(H, V), 0.0f), F0);
-        float NDF = DistributionGGX(N, H, roughness);
-        float G = GeometrySmith(N, V, L, roughness);
+        float NDF = DistributionGGX(N, H, mat.roughness);
+        float G = GeometrySmith(N, V, L, mat.roughness);
         
         float3 numerator = NDF * G * F;
         float denominator = 4.0f * max(dot(N, V), 0.0f) * max(dot(N, L), 0.0f) + 0.001f;
         float3 specularBRDF = numerator / denominator;
         
         float3 kS = F;
-        float3 kD = (1.0f - kS) * (1.0f - metalic);
-        float3 diffuse = kD * albedo / PI;
+        float3 kD = (1.0f - kS) * (1.0f - mat.metalic);
+        float3 diffuse = kD * mat.albedo / PI;
         float3 Lo = (diffuse + specularBRDF) * g_Lights[i].radiance * NdotL;
         
         LoSum += Lo;
     }
     
     // Ambient + Gamma
-    float3 ambient = 0.03f * albedo * ambientOcclusion;
-    float3 color = ambient + LoSum;
+    float3 ambient = 0.03f * mat.albedo * mat.ambientOcclusion;
+    float3 color = ambient + LoSum + mat.emissive;
     color = pow(color, 1.0f / 2.2f);
     
-    return float4(color, 1.0f);
+    return float4(color, mat.opacity);
 }

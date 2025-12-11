@@ -43,7 +43,7 @@ public:
 
 protected:
     // 파생 클래스가 선택적으로 구현
-    virtual void OnUpload(ID3D12GraphicsCommandList* cmd) {};                           // Fence기반 해제/버퍼 업로드
+    virtual void OnUpload(ID3D12GraphicsCommandList* cmd) {};                           // 리소스 버퍼 할당
     virtual void OnRender() {};                                                         // 프레임 렌더링
     virtual void OnAfterSwapchainCreated() {}                                           // 오프스크린/힙/업로드/프레임 자원
     virtual void OnInitSubSystems() {}                                                  // 서브 시스템

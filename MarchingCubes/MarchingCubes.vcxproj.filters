@@ -48,7 +48,7 @@
     <ClCompile Include="Core\UI\ImGUIRenderer.cpp">
       <Filter>소스 파일</Filter>
     </ClCompile>
-    <ClCompile Include="Core\Geometry\MarchingCubesTables.cpp">
+    <ClCompile Include="Core\Geometry\MarchingCubes\MarchingCubesTables.cpp">
       <Filter>소스 파일</Filter>
     </ClCompile>
     <ClCompile Include="Core\Geometry\MeshGenerator.cpp">
@@ -144,6 +144,39 @@
     <ClCompile Include="Core\Assets\MaterialRegistry.cpp">
       <Filter>소스 파일</Filter>
     </ClCompile>
+    <ClCompile Include="Core\Assets\TextureAsset.cpp">
+      <Filter>소스 파일</Filter>
+    </ClCompile>
+    <ClCompile Include="Core\Assets\MeshAsset.cpp">
+      <Filter>소스 파일</Filter>
+    </ClCompile>
+    <ClCompile Include="Core\Assets\MeshRegistry.cpp">
+      <Filter>소스 파일</Filter>
+    </ClCompile>
+    <ClCompile Include="Core\Scene\BaseScene.cpp">
+      <Filter>소스 파일</Filter>
+    </ClCompile>
+    <ClCompile Include="Core\Scene\SceneObject.cpp">
+      <Filter>소스 파일</Filter>
+    </ClCompile>
+    <ClCompile Include="Core\Scene\Component\Component.cpp">
+      <Filter>소스 파일</Filter>
+    </ClCompile>
+    <ClCompile Include="Core\Scene\Component\MeshComponent.cpp">
+      <Filter>소스 파일</Filter>
+    </ClCompile>
+    <ClCompile Include="Core\Scene\Component\TransformComponent.cpp">
+      <Filter>소스 파일</Filter>
+    </ClCompile>
+    <ClCompile Include="Core\Geometry\MarchingCubes\TerrainRendererComponent.cpp">
+      <Filter>소스 파일</Filter>
+    </ClCompile>
+    <ClCompile Include="ThirdParty\FBXImporter.cpp">
+      <Filter>소스 파일</Filter>
+    </ClCompile>
+    <ClCompile Include="Core\Scene\Component\RendererComponent.cpp">
+      <Filter>소스 파일</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="pch.h">
@@ -194,7 +227,7 @@
     <ClInclude Include="Core\UI\ImGUIRenderer.h">
       <Filter>헤더 파일</Filter>
     </ClInclude>
-    <ClInclude Include="Core\Geometry\MarchingCubesTables.h">
+    <ClInclude Include="Core\Geometry\MarchingCubes\MarchingCubesTables.h">
       <Filter>헤더 파일</Filter>
     </ClInclude>
     <ClInclude Include="Core\Rendering\RenderUtils.h">
@@ -302,6 +335,39 @@
     <ClInclude Include="Core\Assets\MaterialRegistry.h">
       <Filter>헤더 파일</Filter>
     </ClInclude>
+    <ClInclude Include="Core\Assets\TextureAsset.h">
+      <Filter>헤더 파일</Filter>
+    </ClInclude>
+    <ClInclude Include="Core\Assets\MeshAsset.h">
+      <Filter>헤더 파일</Filter>
+    </ClInclude>
+    <ClInclude Include="Core\Assets\MeshRegistry.h">
+      <Filter>헤더 파일</Filter>
+    </ClInclude>
+    <ClInclude Include="Core\Scene\BaseScene.h">
+      <Filter>헤더 파일</Filter>
+    </ClInclude>
+    <ClInclude Include="Core\Scene\SceneObject.h">
+      <Filter>헤더 파일</Filter>
+    </ClInclude>
+    <ClInclude Include="Core\Scene\Component\Component.h">
+      <Filter>헤더 파일</Filter>
+    </ClInclude>
+    <ClInclude Include="Core\Scene\Component\MeshComponent.h">
+      <Filter>헤더 파일</Filter>
+    </ClInclude>
+    <ClInclude Include="Core\Scene\Component\TransformComponent.h">
+      <Filter>헤더 파일</Filter>
+    </ClInclude>
+    <ClInclude Include="Core\Geometry\MarchingCubes\TerrainRendererComponent.h">
+      <Filter>헤더 파일</Filter>
+    </ClInclude>
+    <ClInclude Include="ThirdParty\FBXImporter.h">
+      <Filter>헤더 파일</Filter>
+    </ClInclude>
+    <ClInclude Include="Core\Scene\Component\RendererComponent.h">
+      <Filter>헤더 파일</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <None Include="..\Directory.Builds.targets" />
@@ -310,6 +376,7 @@
     <None Include="packages.config" />
     <None Include="App\Editor\EditorAppPSO.json" />
     <None Include="Assets\Shaders\Texture.hlsli" />
+    <None Include="Assets\Shaders\Material.hlsli" />
   </ItemGroup>
   <ItemGroup>
     <FxCompile Include="Assets\Shaders\MainVS.hlsl" />

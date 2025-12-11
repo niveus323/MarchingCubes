@@ -2,6 +2,8 @@
 #include <stdexcept>
 #include <DirectXMath.h>
 #include <span>
+#include <filesystem>
+#include <cwctype>
 
 // Note that while ComPtr is used to manage the lifetime of resources on the CPU,
 // it has no understanding of the lifetime of resources on the GPU. Apps must account
@@ -33,6 +35,14 @@ inline std::string UTF16ToUTF8(const wchar_t* wstr)
     return result;
 }
 
+inline std::wstring ToLowerCopy(const std::wstring& s)
+{
+    std::wstring r = s;
+    std::transform(r.begin(), r.end(), r.begin(),
+        [](wchar_t c) { return static_cast<wchar_t>(std::towlower(c)); });
+    return r;
+}
+
 namespace MathHelper
 {
     static inline uint32_t SafeSub(uint32_t a, uint32_t b)
@@ -60,10 +70,10 @@ inline void ThrowIfFailed(HRESULT hr)
     }
 }
 
-inline void ThrowIfFalse(bool result, const char* msg)
+inline void ThrowIfFalse(bool result, std::string_view msg)
 {
     if (!result)
-        throw std::runtime_error(msg);
+        throw std::runtime_error(msg.data());
 }
 
 enum class AssetType 
@@ -75,19 +85,22 @@ enum class AssetType
     Data, 
 };
 
-inline std::wstring GetFullPath(AssetType type, LPCWSTR name)
+inline std::filesystem::path GetFullPath(AssetType type, LPCWSTR name)
 {
     const wchar_t* root = nullptr;
+
     switch (type)
     {
-    case AssetType::Default: root = ASSETS_ROOT; break;
-    case AssetType::Shader:  root = SHADERS_ROOT; break;
-    case AssetType::Texture: root = TEXTURES_ROOT; break;
-    default:                  root = ASSETS_ROOT; break;
+        case AssetType::Default: root = ASSETS_ROOT; break;
+        case AssetType::Shader:  root = SHADERS_ROOT; break;
+        case AssetType::Texture: root = TEXTURES_ROOT; break;
+        default:                 root = ASSETS_ROOT; break;
     }
-    return std::wstring(root) + L"/" + std::wstring(name);
-}
 
+    std::filesystem::path p{ root };  
+    p /= name;                        
+    return p;
+}
 std::wstring GetShaderFullPath(LPCWSTR shaderName);
 
 HRESULT ReadDataFromFile(LPCWSTR filename, byte** data, uint32_t* size);

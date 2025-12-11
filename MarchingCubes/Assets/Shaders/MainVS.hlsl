@@ -6,6 +6,7 @@ struct VSInput
 {
     float3 Position : POSITION;
     float3 Normal : NORMAL;
+    float4 Tangent : TANGENT; // xyz : tagnent, w: handedness
     float2 TexCoord : TEXCOORD0;
     float4 Color : COLOR;       // For Debugging
 };
@@ -17,6 +18,8 @@ struct PSInput
     float3 WorldPos : TEXCOORD0;
     float3 WorldNormal : TEXCOORD1;
     float2 TexCoord : TEXCOORD2;
+    float3 WorldTangent : TEXCOORD3;
+    float TangentSign : TEXCOORD4;
     float4 Color : COLOR0;
 };
 
@@ -24,12 +27,17 @@ struct PSInput
 PSInput VSMain(VSInput input)
 {
     PSInput output;
+    
     float4 modelPos = float4(input.Position, 1.0f);
     float4 worldPos = mul(modelPos, gWorld);
     output.Position = mul(worldPos, gViewProj);
     output.WorldPos = worldPos.xyz;
+    
     float3x3 worldInvT = transpose((float3x3) gWorldInv);
     output.WorldNormal = normalize(mul(input.Normal, worldInvT));
+    output.WorldTangent = normalize(mul(input.Tangent.xyz, worldInvT));
+    output.TangentSign = input.Tangent.w;
+    
     output.TexCoord = input.TexCoord;
     output.Color = input.Color;
     return output;

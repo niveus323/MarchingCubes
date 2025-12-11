@@ -22,7 +22,7 @@ StaticBufferRegistry::StaticBufferRegistry(ID3D12Device* device, uint64_t vbSize
 {
 }
 
-uint32_t StaticBufferRegistry::CreateStatic(ID3D12Device* device, uint32_t vbBytes, uint32_t ibBytes, uint32_t vertexStride, DXGI_FORMAT ibFormat, BufferHandle* outVB, BufferHandle* outIB, const char* debugName)
+uint32_t StaticBufferRegistry::CreateStatic(ID3D12Device* device, uint32_t vbBytes, uint32_t ibBytes, uint32_t vertexStride, DXGI_FORMAT ibFormat, BufferHandle* outVB, BufferHandle* outIB, std::string_view debugName)
 {
 	uint32_t vbHandle = CreateStaticVB(device, vbBytes, vertexStride, debugName);
 	if (outVB)
@@ -30,7 +30,7 @@ uint32_t StaticBufferRegistry::CreateStatic(ID3D12Device* device, uint32_t vbByt
 		VBEntry& vbEntry = m_vbEntries[vbHandle];
 		outVB->res = vbEntry.res.Get();
 		wchar_t wname[128]{};
-		MultiByteToWideChar(CP_UTF8, 0, debugName, -1, wname, 128);
+		MultiByteToWideChar(CP_UTF8, 0, debugName.data(), -1, wname, 128);
 		NAME_D3D12_OBJECT_ALIAS(vbEntry.res, wname);
 		outVB->offset = 0ull;
 		outVB->size = vbEntry.res->GetDesc().Width;
@@ -43,7 +43,7 @@ uint32_t StaticBufferRegistry::CreateStatic(ID3D12Device* device, uint32_t vbByt
 	{
 		outIB->res = ibEntry.res.Get();
 		wchar_t wname[128]{};
-		MultiByteToWideChar(CP_UTF8, 0, debugName, -1, wname, 128);
+		MultiByteToWideChar(CP_UTF8, 0, debugName.data(), -1, wname, 128);
 		NAME_D3D12_OBJECT_ALIAS(ibEntry.res, wname);
 		outIB->offset = 0ull;
 		outIB->size = ibEntry.res->GetDesc().Width;
@@ -84,7 +84,7 @@ void StaticBufferRegistry::Release(uint32_t handle)
 	}
 }
 
-uint32_t StaticBufferRegistry::CreateStaticVB(ID3D12Device* device, uint32_t vbBytes, uint32_t vertexStride, const char* debugName)
+uint32_t StaticBufferRegistry::CreateStaticVB(ID3D12Device* device, uint32_t vbBytes, uint32_t vertexStride, std::string_view debugName)
 {
 	// 사용 가능한 슬롯이 있으면 사용하고 아니면 새로 추가
 	uint32_t vbHandle = UINT_MAX;
@@ -120,7 +120,7 @@ uint32_t StaticBufferRegistry::CreateStaticVB(ID3D12Device* device, uint32_t vbB
     return vbHandle;
 }
 
-uint32_t StaticBufferRegistry::CreateStaticIB(ID3D12Device* device, uint32_t ibBytes, DXGI_FORMAT ibFormat, const char* debugName)
+uint32_t StaticBufferRegistry::CreateStaticIB(ID3D12Device* device, uint32_t ibBytes, DXGI_FORMAT ibFormat, std::string_view debugName)
 {
 	uint32_t ibHandle = UINT_MAX;
 	for (uint32_t i = 0; i < m_ibEntries.size(); ++i)

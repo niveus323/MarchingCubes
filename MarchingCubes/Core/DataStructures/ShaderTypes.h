@@ -2,9 +2,6 @@
 #include <DirectXMath.h>
 using namespace DirectX;
 
-// alignment
-static constexpr uint32_t CB_ALIGN = 256u;
-
 struct alignas(16) CameraConstants
 {
 	XMFLOAT4X4 viewProjMatrix;
@@ -42,9 +39,15 @@ struct alignas(16) TriplanarParams
 
 struct alignas(16) TextureParams
 {
-	uint32_t texIndex = UINT32_MAX;
+	uint32_t diffuseIndex = UINT32_MAX;
+	uint32_t normalIndex = UINT32_MAX;
+	uint32_t armIndex = UINT32_MAX;
+	uint32_t displacementIndex = UINT32_MAX;
+
+	uint32_t roughnessIndex = UINT32_MAX;
+	uint32_t emissiveIndex = UINT32_MAX;
 	ETextureMappingTypes mappingType = ETextureMappingTypes::DefaultUV;
-	uint32_t _padding[2];
+	uint32_t _padding;
 
 	TriplanarParams triplanar;
 };
@@ -54,8 +57,8 @@ struct alignas(16) MaterialConstants
 	XMFLOAT3 albedo;    // albedo 색상 (RGB)
 	float metallic;				 // [0,1]
 
-	float roughness;			 // [0,1]
 	float specularStrength;		 // 비금속 반사 강도 [0,0.08]
+	float roughness;			 // [0,1]
 	float ao;					 // AmbientOcclusion
 	float ior;					 // Dielectric 모델 전용 굴절률
 
@@ -63,7 +66,7 @@ struct alignas(16) MaterialConstants
 	float opacity = 1.0f;
 	uint32_t _padding[2];
 
-	TextureParams diffuse;
+	TextureParams baseTextures;
 };
 
 enum class ELightType : uint32_t

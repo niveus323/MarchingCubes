@@ -27,7 +27,7 @@ GPUBufferPool::~GPUBufferPool()
 }
 
 // 서브할당 & 복사 헬퍼
-bool GPUBufferPool::SubAlloc(ID3D12Device* device, uint64_t bytes, uint64_t align, BufferHandle& out, const char* owner)
+bool GPUBufferPool::SubAlloc(ID3D12Device* device, uint64_t bytes, uint64_t align, BufferHandle& out, std::string_view owner)
 {
 	bytes = AlignUp64(bytes, align);
 	for (size_t i = 0; i < m_free.size(); ++i)

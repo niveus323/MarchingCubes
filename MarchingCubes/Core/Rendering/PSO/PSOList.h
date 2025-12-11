@@ -14,8 +14,8 @@ public:
 
     int  Count() const { return (int)m_states.size(); }
     ID3D12PipelineState* Get(int index) const;
-    int  IndexOf(const std::string& id) const;
-    const std::string& IdAt(int index) const { return m_ids[index]; }
+    int  IndexOf(std::string_view id) const;
+    std::string_view IdAt(int index) const { return m_ids[index]; }
 
     static ComPtr<ID3DBlob> LoadFileBlob(const std::string& path);
 private:

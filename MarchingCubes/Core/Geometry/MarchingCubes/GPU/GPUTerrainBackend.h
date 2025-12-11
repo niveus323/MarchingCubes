@@ -14,6 +14,7 @@ struct OutVertex
 {
 	XMFLOAT3 position;
 	XMFLOAT3 normal;
+	XMFLOAT4 tangent;
 	int idA; // 엣지 A 인덱스 번호
 	int idB; // 엣지 B 인덱스 번호
 };
@@ -33,7 +34,7 @@ public:
 	{
 		DescriptorAllocator* descriptorAllocator = nullptr;
 		UploadContext* uplaodContext = nullptr;
-		// ComputeSystem* computeSystem = nullptr; // 나중에 추가 예정
+		// ComputeSystem* computeSystem = nullptr; // TODO : Compute System 구현 시 추가
 	};
 
 	explicit GPUTerrainBackend(ID3D12Device* device, const GridDesc& gridDesc, const GPUTerrainInitInfo& init);

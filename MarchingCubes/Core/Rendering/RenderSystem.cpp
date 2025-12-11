@@ -1,6 +1,7 @@
 #include "pch.h"
 #include "RenderSystem.h"
 #include "Core/DataStructures/Data.h"
+#include <unordered_map>
 
 RenderSystem::RenderSystem(RenderSystemInitInfo init_info) :
 	m_info(std::move(init_info))
@@ -15,8 +16,8 @@ RenderSystem::RenderSystem(RenderSystemInitInfo init_info) :
 	for (auto& psoFile : m_info.psoFiles)
 	{
 		int schema = 0;
-		std::wstring fileDir = GetFullPath(AssetType::Default, L"PSO/") + psoFile;
-		auto specs = LoadPSOJsonResolved(fileDir.c_str(), &schema);
+		std::filesystem::path filePath = GetFullPath(AssetType::Default, L"PSO") / psoFile;
+		auto specs = LoadPSOJsonResolved(filePath.c_str(), &schema);
 		mergedSpecs.insert(mergedSpecs.end(), specs.begin(), specs.end());
 	}
 
@@ -32,7 +33,6 @@ RenderSystem::RenderSystem(RenderSystemInitInfo init_info) :
 	m_buckets.resize(m_psoList->Count());
 
 	m_bundleRecorder = std::make_unique<BundleRecorder>(device, rootSignature, m_psoList.get(), 2);
-	m_passEnabled.resize(m_psoList->Count(), true);
 }
 
 RenderSystem::RenderSystem(ID3D12Device* device, ID3D12RootSignature* rootSignature, const D3D12_INPUT_LAYOUT_DESC& inputLayout, const std::vector<std::wstring>& psoFiles) :
@@ -48,180 +48,112 @@ RenderSystem::~RenderSystem()
 {
 	for (auto& bucket : m_buckets)
 	{
-		bucket.dynamicItems.clear();
-		bucket.staticItems.clear();
+		bucket.renderItems.clear();
 	}
 }
 
 void RenderSystem::PrepareRender(_In_ UploadContext* uploadContext, _In_ DescriptorAllocator* descriptorAllocator, const CameraConstants& cameraData, const LightBlobView& lightData, uint32_t frameIndex)
 {
-	// Upload Per-Object Constants
-	for (int i = 0; i < m_buckets.size(); ++i)
-	{
-		auto& bucket = m_buckets[i];
-		for (auto& drawable : bucket.dynamicItems)
-		{
-			// Per-Frame CB 업데이트
-			if (GeometryBuffer* buf = drawable->GetGPUBuffer())
-			{
-				ObjectConstants cb = drawable->GetObjectConstants();
-				uploadContext->UploadObjectConstants(frameIndex, buf, cb);
-			}
-		}
-
-		for (IDrawable* drawable : bucket.staticItems)
-		{
-			// Per-Frame CB 업데이트
-			if (GeometryBuffer* buf = drawable->GetGPUBuffer())
-			{
-				ObjectConstants cb = drawable->GetObjectConstants();
-				uploadContext->UploadObjectConstants(frameIndex, buf, cb);
-			}
-		}
-	}
-
 	uploadContext->UploadContstants(frameIndex, &cameraData, sizeof(CameraConstants), m_cameraBuf);
 	
-	const uint32_t lightCBSize = AlignUp(sizeof(LightConstantsHeader) + kMaxLights * sizeof(Light), CB_ALIGN);
+	const uint32_t lightCBSize = AlignUp(sizeof(LightConstantsHeader) + kMaxLights * sizeof(Light), D3D12_CONSTANT_BUFFER_DATA_PLACEMENT_ALIGNMENT);
 	const uint32_t blobSizeToCopy = (lightData.size <= lightCBSize) ? lightData.size : lightCBSize;
 	uploadContext->UploadContstants(frameIndex, lightData.data, blobSizeToCopy, m_lightsBuf);
 	uint32_t lightsSlot = descriptorAllocator->AllocateDynamic(frameIndex);
 	D3D12_CPU_DESCRIPTOR_HANDLE lightsCpu = descriptorAllocator->GetDynamicCpu(frameIndex, lightsSlot);
 	D3D12_CONSTANT_BUFFER_VIEW_DESC desc = {};
 	desc.BufferLocation = m_lightsBuf.gpuVA;
-	desc.SizeInBytes = static_cast<UINT>(m_lightsBuf.size);
+	desc.SizeInBytes = AlignUp(blobSizeToCopy, D3D12_CONSTANT_BUFFER_DATA_PLACEMENT_ALIGNMENT);
 	m_info.device->CreateConstantBufferView(&desc, lightsCpu);
 	m_lightsGpu = descriptorAllocator->GetDynamicGpu(frameIndex, lightsSlot);
 }
 
 // 렌더링 
-void RenderSystem::RenderFrame(ID3D12GraphicsCommandList* cmd)
+void RenderSystem::RenderFrame(_In_ ID3D12GraphicsCommandList* cmd, _In_ UploadContext* uploadContext)
 {
 	// Bind Common RootCBV
 	cmd->SetGraphicsRootConstantBufferView(0, m_cameraBuf.gpuVA);
-	//cmd->SetGraphicsRootConstantBufferView(2, m_lightsBuf.gpuVA);
 	cmd->SetGraphicsRootDescriptorTable(2, m_lightsGpu);
 
 	// PSO 별로 Draw Command 실행
-	for (int i = 0; i < m_psoList->Count(); ++i) {
+	for (int i = 0; i < m_psoList->Count(); ++i) 
+	{
 		auto* pso = m_psoList->Get(i);
 		auto& bucket = m_buckets[i];
-		if (!pso || !m_passEnabled[i]) continue;
-
-#ifdef _DEBUG
-		cmd->SetPipelineState(m_wireViewEnabled ? m_psoList->Get(m_psoList->IndexOf("Wire")) : pso);
-#else
+		if (!pso || bucket.renderItems.empty()) continue;
 		cmd->SetPipelineState(pso);
-#endif // _DEBUG
-
-		for (auto& item : bucket.staticItems)
+		for (auto& item : bucket.renderItems)
 		{
-			RecordDrawItem(cmd, item->GetDrawBinding());
-		}
+			// Object CB 세팅
+			ObjectConstants objConsts{
+				.materialIndex = item.materialIndex
+			};
 
-		// 동적 오브젝트 렌더
-		for (auto& item : bucket.dynamicItems)
-		{
-			RecordDrawItem(cmd, item->GetDrawBinding());
+			// row-major -> column-major 변환
+			XMMATRIX worldMatrix = XMLoadFloat4x4(&item.worldMatrix);
+			XMStoreFloat4x4(&objConsts.worldMatrix, XMMatrixTranspose(worldMatrix));
+			XMStoreFloat4x4(&objConsts.worldInvMatrix, XMMatrixInverse(nullptr, worldMatrix));
+			
+			BufferHandle cbHandle;
+			uploadContext->UploadContstants(0, &objConsts, sizeof(ObjectConstants), cbHandle);
+			cmd->SetGraphicsRootConstantBufferView(1, cbHandle.gpuVA);
+			DrawItem(cmd, item);
 		}
+		bucket.renderItems.clear();
 	}
 }
 
-bool RenderSystem::IsDynamicRegistered(IDrawable* drawable, const std::string& psoName)
+bool RenderSystem::SubmitRenderItem(const RenderItem& item, std::string_view psoName)
 {
-	int psoIdx = GetPSOIndex(psoName);
-	auto& bucket = m_buckets[psoIdx];
-
-	for (auto& object : bucket.dynamicItems)
+	std::string finalPSO(psoName);
+	if (!m_psoOverrides.empty())
 	{
-		if (object == drawable) return true;
-	}
-
-	return false;
-}
-
-// 정적 오브젝트 등록
-bool RenderSystem::RegisterStatic(IDrawable* drawable, const std::string& psoName, uint32_t frameIndex)
-{
-	int psoIdx = GetPSOIndex(psoName);
-	auto& bucket = m_buckets[psoIdx];
-	for (auto& object : bucket.staticItems)
-	{
-		if (object == drawable)
+		auto it = m_psoOverrides.find(finalPSO);
+		if (it != m_psoOverrides.end())
 		{
-			Log::Print("RenderSystem", "RegisterStatic : Already Registered Object!!!!");
-			return false;
+			finalPSO = it->second;
 		}
 	}
-	bucket.staticItems.push_back(drawable);
+
+	SubmitToBucket(finalPSO, item);
+	if (!m_psoExtensions.empty())
+	{
+		auto range = m_psoExtensions.equal_range(std::string(psoName));
+		for (auto it = range.first; it != range.second; ++it)
+		{
+			const std::string& extPSO = it->second;
+			SubmitToBucket(extPSO, item);
+		}
+	}
+
 	return true;
 }
 
-// 동적 오브젝트 등록
-bool RenderSystem::RegisterDynamic(IDrawable* drawable, const std::string& psoName)
+void RenderSystem::RemovePSOExtension(const std::string& from, const std::string& to)
 {
-	int psoIdx = GetPSOIndex(psoName);
-	auto& bucket = m_buckets[psoIdx];
-
-	for (auto& object : bucket.dynamicItems)
+	auto range = m_psoExtensions.equal_range(from);
+	for (auto iter = range.first; iter != range.second; ++iter)
 	{
-		if (object == drawable)
+		if (iter->second == to)
 		{
-			Log::Print("RenderSystem", "RegisterDynamic : Already Registered Object!!!!");
-			return false;
+			m_psoExtensions.erase(iter);
+			break;
 		}
 	}
-	drawable->SetUploadPending(true);
-	bucket.dynamicItems.push_back(drawable);
-	return true;
 }
 
-bool RenderSystem::UnRegisterStatic(IDrawable* drawable, const std::string& psoName)
+void RenderSystem::SubmitToBucket(std::string_view psoName, const RenderItem& item)
 {
 	int psoIdx = GetPSOIndex(psoName);
 	auto& bucket = m_buckets[psoIdx];
-	size_t result = std::erase_if(bucket.staticItems, [drawable](IDrawable* object) { return drawable == object; });
-	return result > 0;
-}
 
-bool RenderSystem::UnRegisterDynamic(IDrawable* drawable, const std::string& psoName)
-{
-	int psoIdx = GetPSOIndex(psoName);
-	auto& bucket = m_buckets[psoIdx];
-	size_t result = std::erase_if(bucket.dynamicItems, [drawable](const IDrawable* item) { return drawable == item; });
-
-	if (GeometryBuffer* buffer = drawable->GetGPUBuffer())
-		buffer->ReleaseGPUResources();
-
-	return result > 0;
-}
-
-// 동적 오브젝트 갱신
-bool RenderSystem::UpdateDynamic(IDrawable* drawable, const GeometryData& data)
-{
-	if (!drawable) return false;
-
-	// 동적 오브젝트 리스트에 있는지 체크
-	bool found = false;
-	for (auto& bucket : m_buckets)
+	for (auto& iter : bucket.renderItems)
 	{
-		for (auto& object : bucket.dynamicItems)
+		if (iter.meshBuffer == item.meshBuffer)
 		{
-			if (object == drawable)
-			{
-				found = true;
-				break;
-			}
+			Log::Print("RenderSystem", "SubmitRenderItem : Already Registered Object!!!!");
+			return;
 		}
-		if (found) break;
 	}
-
-	if (found)
-	{
-		drawable->SetCPUData(data);
-		drawable->SetUploadPending(true);
-	}
-
-	// 없었다면 등록하도록 유도
-	return found;
+	bucket.renderItems.push_back(item);
 }

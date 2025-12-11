@@ -10,11 +10,12 @@ namespace MeshGenerator
 		GeometryData result;
 		result.topology = D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST;
 
-		result.vertices.push_back(Vertex{ 
-			.pos = {0.0f, radius, 0.0f}, 
-			.normal = {0.0f, 1.0f, 0.0f}, 
+		result.vertices.push_back(Vertex{
+			.pos = {0.0f, radius, 0.0f},
+			.normal = {0.0f, 1.0f, 0.0f},
+			.tangent = {1.0f, 0.0f, 0.0f, 1.0f},
 			.texCoord = {0.0f, 0.0f},
-			.color = color 
+			.color = color
 		});
 
 		for (uint32_t stack = 1; stack < stackCount; ++stack)
@@ -34,18 +35,30 @@ namespace MeshGenerator
 					.texCoord = {u, v},
 					.color = color
 				};
+
 				XMVECTOR n = XMVector3Normalize(XMLoadFloat3(&vertex.pos));
 				XMStoreFloat3(&vertex.normal, n);
+
+				float tx = -radius * sinf(phi) * sinf(theta);
+				float ty = 0.0f;
+				float tz = radius * sinf(phi) * cosf(theta);
+
+				XMVECTOR t = XMVector3Normalize(XMVectorSet(tx, ty, tz, 0.0f));
+				XMFLOAT3 tan;
+				XMStoreFloat3(&tan, t);
+
+				vertex.tangent = { tan.x, tan.y, tan.z, 1.0f };
 
 				result.vertices.push_back(vertex);
 			}
 		}
 
-		result.vertices.push_back(Vertex{ 
-			.pos = {0.0f, -radius, 0.0f}, 
+		result.vertices.push_back(Vertex{
+			.pos = {0.0f, -radius, 0.0f},
 			.normal = {0.0f, -1.0f, 0.0f},
+			.tangent = {1.0f, 0.0f, 0.0f, 1.0f},
 			.texCoord = {0.0f, 1.0f},
-			.color = color 
+			.color = color
 		});
 
 		for (uint32_t i = 1; i <= sliceCount; ++i)
@@ -109,11 +122,11 @@ namespace MeshGenerator
 			XMVECTOR n = XMVector3Normalize(XMLoadFloat3(&v.pos));
 			XMStoreFloat3(&v.normal, n);
 			result.vertices.push_back(v);
-		};
-		
+			};
+
 		auto idx = [&](int i, int j, int k) {
 			return i * (Y * Z) + j * Z + k;
-		};
+			};
 
 		for (int i = 0; i < X; ++i)
 		{
@@ -122,9 +135,9 @@ namespace MeshGenerator
 				for (int k = 0; k < Z; ++k)
 				{
 					// ÀÌ ¼¿ÀÇ Ã¹ Á¤Á¡ ÀÎµ¦½º
-					int base = idx(i,j,k);
+					int base = idx(i, j, k);
 					pushMCVertex(i, j, k);
-					
+
 					if (i + 1 < X)
 					{
 						result.indices.push_back(base);
@@ -136,7 +149,7 @@ namespace MeshGenerator
 						result.indices.push_back(base);
 						result.indices.push_back(idx(i, j + 1, k));
 					}
-					
+
 					if (k + 1 < Z)
 					{
 						result.indices.push_back(base);
