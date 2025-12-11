@@ -201,9 +201,9 @@ bool GPUTerrainBackend::tryFetch(std::vector<ChunkUpdate>& OutChunkUpdates)
 		uint32_t baseIndex = static_cast<uint32_t>(up.md.vertices.size());
 
 		GeometryData& md = up.md;
-		md.vertices.push_back(Vertex{ .pos = tri.A.position, .normal = tri.A.normal, .color = {1,1,1,1} });
-		md.vertices.push_back(Vertex{ .pos = tri.B.position, .normal = tri.B.normal, .color = {1,1,1,1} });
-		md.vertices.push_back(Vertex{ .pos = tri.C.position, .normal = tri.C.normal, .color = {1,1,1,1} });
+		md.vertices.push_back(Vertex{ .pos = tri.A.position, .normal = tri.A.normal , .tangent = tri.A.tangent});
+		md.vertices.push_back(Vertex{ .pos = tri.B.position, .normal = tri.B.normal , .tangent = tri.B.tangent});
+		md.vertices.push_back(Vertex{ .pos = tri.C.position, .normal = tri.C.normal , .tangent = tri.C.tangent});
 
 		md.indices.push_back(baseIndex + 0);
 		md.indices.push_back(baseIndex + 1);

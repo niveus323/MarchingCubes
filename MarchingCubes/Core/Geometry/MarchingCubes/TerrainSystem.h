@@ -33,7 +33,7 @@ public:
 	void requestRemesh(uint32_t frameIndex, float isoValue = 0.0f); // ÀüÃ¼ Remesh
 	void requestBrush(uint32_t frameIndex, const BrushRequest& r);
 
-	void tryFetch(ID3D12Device* device, RenderSystem* renderSystem, const std::string& psoName);
+	void tryFetch();
 
 	// ChunkRenderer
 	MeshChunkRenderer* GetRenderer() { return m_chunkRenderer.get(); }

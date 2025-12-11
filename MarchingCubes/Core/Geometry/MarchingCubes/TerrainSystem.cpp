@@ -87,26 +87,14 @@ void TerrainSystem::requestBrush(uint32_t frameIndex, const BrushRequest& r)
 	m_backend->requestBrush(frameIndex, r);
 }
 
-void TerrainSystem::tryFetch(ID3D12Device* device, RenderSystem* renderSystem, const std::string& psoName)
+void TerrainSystem::tryFetch()
 {
+	if (!m_backend || !m_uploadContext) return;
+
 	std::vector<ChunkUpdate> ups;
 	if (m_backend && m_backend->tryFetch(ups))
 	{
-		m_chunkRenderer->ApplyUpdates(device, ups);
-
-		auto pd = m_chunkRenderer->GetPendingDeletes();
-		for (auto& drawablePtr : pd)
-		{
-			renderSystem->UnRegisterDynamic(drawablePtr.get(), psoName);
-		}
-
-		auto chunks = m_chunkRenderer->GetChunkDrawables();
-		for (auto& drawable : chunks)
-		{
-			// 이미 등록되어 있으면 update
-			if (renderSystem->IsDynamicRegistered(drawable, psoName)) renderSystem->UpdateDynamic(drawable, *drawable->GetCPUData());
-			else renderSystem->RegisterDynamic(drawable, psoName);
-		}
+		m_chunkRenderer->ApplyUpdates(m_uploadContext, ups);
 	}
 }
 
@@ -239,10 +227,5 @@ void TerrainSystem::MakeDebugCell(GeometryData& outMeshData, bool bDrawFullCell)
 void TerrainSystem::EraseChunk(RenderSystem* renderSystem)
 {
 	m_chunkRenderer->Clear();
-	auto pd = m_chunkRenderer->GetPendingDeletes();
-	for (auto& drawablePtr : pd)
-	{
-		renderSystem->UnRegisterDynamic(drawablePtr.get(), "Filled");
-	}
 }
 #endif

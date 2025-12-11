@@ -1,66 +1,56 @@
 #include "pch.h"
 #include "Mesh.h"
-#include "Core/Math/PhysicsHelper.h"
+#include "Core/Rendering/UploadContext.h"
+#include "Core/DataStructures/Data.h"
 
-Mesh::Mesh(ID3D12Device* device, const GeometryData& data) :
+Mesh::Mesh(UploadContext* uploadcontext, const GeometryData& data, const std::vector<MeshSubmesh>& submeshes, std::string_view name) :
 	m_cpu(data),
-	m_buffer(device, data)
+	m_submeshes(submeshes),
+	m_debugName(name)
 {
-	// Default CB
-	XMMATRIX identity = XMMatrixIdentity();
-	XMStoreFloat4x4(&m_objectCB.worldMatrix, identity);
-	XMStoreFloat4x4(&m_objectCB.worldInvMatrix, XMMatrixInverse(nullptr, identity));
+	if (m_submeshes.empty())
+	{
+		MeshSubmesh sm;
+		sm.indexCount = static_cast<uint32_t>(m_cpu.indices.size());
+		sm.indexOffset = 0;
+		sm.baseVertexLocation = 0;
+		sm.materialIndex = 0;
+		m_submeshes.push_back(sm);
+	}
+
+	if (uploadcontext)
+	{
+		if (m_debugName.empty())
+		{
+			//임시 이름 세팅
+			SetDebugName("MeshInstance");
+		}
+		uploadcontext->UploadGeometry(&m_buffer, m_cpu, m_debugName);
+	}
+
+	BuildTriBounds();
 }
 
-Mesh::Mesh(ID3D12Device* device, const GeometryData& data, const ObjectConstants& cb) :
-	m_cpu(data),
-	m_buffer(device, data),
-	m_objectCB(cb)
+
+Mesh::Mesh(UploadContext* uploadcontext, const GeometryData& data, std::string_view name) : 
+	Mesh(uploadcontext, data, {}, name)
 {
 }
 
-DrawBindingInfo Mesh::GetDrawBinding() const
+void Mesh::UpdateData(UploadContext* uploadcontext, const GeometryData& data)
 {
-	DrawBindingInfo info{};
-	const BufferHandle& vb = m_buffer.GetCurrentVBHandle();
-	info.vbv = {
-		.BufferLocation = vb.res ? vb.res->GetGPUVirtualAddress() + vb.offset : 0,
-		.SizeInBytes = static_cast<UINT>(vb.size),
-		.StrideInBytes = static_cast<UINT>(sizeof(Vertex)),
-	};
+	m_cpu = data;
 
-	const BufferHandle& ib = m_buffer.GetCurrentIBHandle();
-	info.ibv = {
-		.BufferLocation = ib.res ? (ib.res->GetGPUVirtualAddress() + ib.offset) : 0,
-		.SizeInBytes = static_cast<UINT>(ib.size),
-		.Format = DXGI_FORMAT_R32_UINT
-	};
-	info.topology = m_buffer.GetTopology();
-	info.indexCount = static_cast<UINT>(m_cpu.indices.size());
-	info.objectCBGpuVA = m_buffer.GetCurrentCBHandle().gpuVA;
-	return info;
-}
+	if (m_submeshes.size() == 1)
+	{
+		m_submeshes[0].indexCount = static_cast<uint32_t>(m_cpu.indices.size());
+	}
 
-void Mesh::UpdateConstants()
-{
-	XMMATRIX worldTrans = XMMatrixTranspose(GetWorldMatrix());
-	XMMATRIX worldInvTrans = XMMatrixTranspose(GetWorldInvMatrix());
-
-	XMStoreFloat4x4(&m_objectCB.worldMatrix, worldTrans);
-	XMStoreFloat4x4(&m_objectCB.worldInvMatrix, worldInvTrans);
-}
-
-DirectX::XMMATRIX Mesh::GetWorldMatrix() const
-{
-	XMMATRIX T = XMMatrixTranslation(m_position.x, m_position.y, m_position.z);
-	XMMATRIX R = XMMatrixRotationQuaternion(ToQuatFromEuler(m_rotation));
-	XMMATRIX S = XMMatrixScaling(m_scale.x, m_scale.y, m_scale.z);
-	return S * R * T;
-}
-
-DirectX::XMMATRIX Mesh::GetWorldInvMatrix() const
-{
-	return XMMatrixInverse(nullptr, GetWorldMatrix());
+	if (uploadcontext)
+	{
+		uploadcontext->UploadGeometry(&m_buffer, m_cpu, m_debugName);
+	}
+	BuildTriBounds();
 }
 
 void Mesh::SetColor(const DirectX::XMFLOAT4& color)
@@ -71,46 +61,40 @@ void Mesh::SetColor(const DirectX::XMFLOAT4& color)
 	}
 }
 
-void Mesh::Move(const DirectX::XMFLOAT3& delta)
-{
-	m_position.x += delta.x;
-	m_position.y += delta.y;
-	m_position.z += delta.z;
-}
-
-void Mesh::Rotate(const DirectX::XMVECTOR& deltaQuat)
-{
-	using namespace DirectX;
-	XMVECTOR current = ToQuatFromEuler(m_rotation);
-	XMVECTOR result = XMQuaternionNormalize(XMQuaternionMultiply(current, deltaQuat));
-	m_rotation = ToEulerFromQuat(result);
-}
-
-void Mesh::Scale(const DirectX::XMFLOAT4& scaleFactor)
-{
-	m_scale.x *= scaleFactor.x;
-	m_scale.y *= scaleFactor.y;
-	m_scale.z *= scaleFactor.z;
-}
-
 void Mesh::BuildTriBounds()
 {
 	// AABB BroadPhase를 위한 Bound 세팅
+	m_triBounds.clear();
+	m_triBounds.reserve(m_submeshes.size());
+
 	const auto& vertices = m_cpu.vertices;
 	const auto& indices = m_cpu.indices;
-	size_t triCount = indices.size() / 3;
-	m_triBounds.clear();
-	m_triBounds.resize(triCount);
-
-	for (size_t t = 0; t < triCount; ++t)
+	for (const auto& submesh : m_submeshes)
 	{
-		XMFLOAT3 points[3]
+		// 유효하지 않은 서브메쉬 처리
+		if (submesh.indexCount == 0)
 		{
-			vertices[indices[3 * t + 0]].pos,
-			vertices[indices[3 * t + 1]].pos,
-			vertices[indices[3 * t + 2]].pos
-		};
+			m_triBounds.emplace_back(BoundingBox());
+			continue;
+		}
+		XMVECTOR vMin = XMVectorSet(FLT_MAX, FLT_MAX, FLT_MAX, 0.0f);
+		XMVECTOR vMax = XMVectorSet(-FLT_MAX, -FLT_MAX, -FLT_MAX, 0.0f);
 
-		BoundingBox::CreateFromPoints(m_triBounds[t], 3, points, sizeof(XMFLOAT3));
+		for (uint32_t i = 0; i < submesh.indexCount; ++i)
+		{
+			uint32_t vertexIndex = submesh.baseVertexLocation + indices[submesh.indexOffset + i];
+			if (vertexIndex < vertices.size())
+			{
+				XMVECTOR vPos = XMLoadFloat3(&vertices[vertexIndex].pos);
+				vMin = XMVectorMin(vMin, vPos);
+				vMax = XMVectorMax(vMax, vPos);
+			}
+		}
+
+		// 계산된 Min, Max를 기반으로 AABB 생성
+		BoundingBox submeshBox;
+		BoundingBox::CreateFromPoints(submeshBox, vMin, vMax);
+
+		m_triBounds.push_back(submeshBox);
 	}
 }

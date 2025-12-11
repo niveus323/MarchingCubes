@@ -13,7 +13,7 @@ class StaticBufferRegistry
 public:
 	explicit StaticBufferRegistry(ID3D12Device* device, StaticRegistryInitInfo info);
 	StaticBufferRegistry(ID3D12Device* device, uint64_t vbSize = 32ull << 20, uint64_t ibSize = 16ull << 20);
-	uint32_t CreateStatic(ID3D12Device* device, uint32_t vbBytes, uint32_t ibBytes, uint32_t vertexStride = 0, DXGI_FORMAT ibFormat = DXGI_FORMAT_R32_UINT, BufferHandle* outVB = nullptr, BufferHandle* outIB = nullptr, const char* debugName = nullptr);
+	uint32_t CreateStatic(ID3D12Device* device, uint32_t vbBytes, uint32_t ibBytes, uint32_t vertexStride = 0, DXGI_FORMAT ibFormat = DXGI_FORMAT_R32_UINT, BufferHandle* outVB = nullptr, BufferHandle* outIB = nullptr, std::string_view debugName = "");
 	void Release(uint32_t handle);
 
 	uint64_t GetVBCapacity() const { return m_vbCapacity; }
@@ -24,8 +24,8 @@ public:
 	std::vector<BufferBlock> GetIBFree() const { return m_ibFreeList; }
 
 private:
-	uint32_t CreateStaticVB(ID3D12Device* device, uint32_t vbBytes, uint32_t vertexStride = 0, const char* debugName = nullptr);
-	uint32_t CreateStaticIB(ID3D12Device* device, uint32_t ibBytes, DXGI_FORMAT ibFormat = DXGI_FORMAT_R32_UINT, const char* debugName = nullptr);
+	uint32_t CreateStaticVB(ID3D12Device* device, uint32_t vbBytes, uint32_t vertexStride = 0, std::string_view debugName = "");
+	uint32_t CreateStaticIB(ID3D12Device* device, uint32_t ibBytes, DXGI_FORMAT ibFormat = DXGI_FORMAT_R32_UINT, std::string_view debugName = "");
 	uint64_t AllocFromHeap(std::vector<BufferBlock>& freeList, uint32_t bytes);
 	void ReleaseVB(uint32_t vbHandle);
 	void ReleaseIB(uint32_t ibHandle);

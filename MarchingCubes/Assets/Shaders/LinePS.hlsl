@@ -10,6 +10,8 @@ struct PSInput
     float3 WorldPos : TEXCOORD0;
     float3 WorldNormal : TEXCOORD1;
     float2 TexCoord : TEXCOORD2;
+    float3 WorldTangent : TEXCOORD3;
+    float TangentSign : TEXCOORD4;
     float4 Color : COLOR0;
 };
 

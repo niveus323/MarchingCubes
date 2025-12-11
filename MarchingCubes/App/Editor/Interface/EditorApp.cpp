@@ -87,8 +87,9 @@ void EditorApp::OnInitPipelines()
 	{
 		{ "POSITION", 0, DXGI_FORMAT_R32G32B32_FLOAT,    0,  0, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
 		{ "NORMAL",   0, DXGI_FORMAT_R32G32B32_FLOAT,    0, 12, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
-		{ "TEXCOORD", 0, DXGI_FORMAT_R32G32_FLOAT,       0, 24, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
-		{ "COLOR",    0, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, 32, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 }
+		{ "TANGENT",  0, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, 24, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
+		{ "TEXCOORD", 0, DXGI_FORMAT_R32G32_FLOAT,       0, 40, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
+		{ "COLOR",    0, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, 48, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 }
 	};
 
 	//Create Main Root Signature.
@@ -102,7 +103,7 @@ void EditorApp::OnInitPipelines()
 		rootParams[3].InitAsDescriptorTable(1, &CD3DX12_DESCRIPTOR_RANGE1(D3D12_DESCRIPTOR_RANGE_TYPE_CBV, 1, 3)); // b3
 		rootParams[4].InitAsDescriptorTable(1, &CD3DX12_DESCRIPTOR_RANGE1(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 0)); // t0
 		rootParams[5].InitAsDescriptorTable(1, &CD3DX12_DESCRIPTOR_RANGE1(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 1)); // t1
-		rootParams[6].InitAsDescriptorTable(1, &CD3DX12_DESCRIPTOR_RANGE1(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, (uint32_t) - 1, 2, 0u, D3D12_DESCRIPTOR_RANGE_FLAG_DESCRIPTORS_VOLATILE)); // t2
+		rootParams[6].InitAsDescriptorTable(1, &CD3DX12_DESCRIPTOR_RANGE1(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, (uint32_t)-1, 2, 0u, D3D12_DESCRIPTOR_RANGE_FLAG_DESCRIPTORS_VOLATILE)); // t2
 
 		// Static Sampler 등록 ( 런타임에 바꿔야할 샘플러가 필요할 경우 Descriptor Table에 포함할 것.)
 		CD3DX12_STATIC_SAMPLER_DESC samplerDescs = CD3DX12_STATIC_SAMPLER_DESC(0, D3D12_FILTER_MIN_MAG_MIP_LINEAR); // s0
@@ -118,32 +119,55 @@ void EditorApp::OnInitPipelines()
 
 	D3D12_INPUT_LAYOUT_DESC inputLayout = { inputElementDesc, _countof(inputElementDesc) };
 	m_renderSystem = std::make_unique<RenderSystem>(m_device.Get(), m_rootSignature.Get(), inputLayout, GetPSOFiles());
-	m_renderSystem->SetPsoEnabled("DrawNormal", false);
 }
 
 void EditorApp::OnBuildInitialScene(ID3D12GraphicsCommandList* initCommand)
 {
 	m_mainCamera = std::make_unique<Camera>(static_cast<float>(m_width), static_cast<float>(m_height));
 	m_lightManager = std::make_unique<LightManager>(m_device.Get(), 3);
-	
-	if(ResourceManager* resourceManager = GetResourceManager())
-	{
-		uint32_t sandTexHandle = resourceManager->LoadTexture(GetFullPath(AssetType::Texture, L"gravelly_sand/gravelly_sand_diff_4k.png"));
 
-		MaterialCPU defaultMatCpu(MaterialConstants {
+	if (ResourceManager* resourceManager = GetResourceManager())
+	{
+		uint32_t sandTexHandle = resourceManager->LoadTexture(GetFullPath(AssetType::Texture, L"gravelly_sand/gravelly_sand_diffuse"));
+		uint32_t sandNormalHandle = resourceManager->LoadTexture(GetFullPath(AssetType::Texture, L"gravelly_sand/gravelly_sand_normal"));
+		uint32_t sandArmHandle = resourceManager->LoadTexture(GetFullPath(AssetType::Texture, L"gravelly_sand/gravelly_sand_arm"));
+		uint32_t sandDispHandle = resourceManager->LoadTexture(GetFullPath(AssetType::Texture, L"gravelly_sand/gravelly_sand_displace"));
+		
+		Material defaultMatCpu;
+		defaultMatCpu.SetMaterialConstants(MaterialConstants{
 			.albedo = {1.0f, 1.0f, 1.0f},
 			.metallic = 0.0f,
-			.roughness = 0.5f,
 			.specularStrength = 0.04f,
+			.roughness = 1.0f,
 			.ao = 1.0f,
 			.ior = 1.0f,
 			.shadingModel = EShadingModel::DefaultLit,
-			.opacity = 1.0f,
-			.diffuse = TextureParams{ 
-				.mappingType = ETextureMappingTypes::Triplanar 
-			}
-		}, sandTexHandle);
+			.opacity = 1.0f
+		});
+		defaultMatCpu.SetTextureMapping(ETextureMappingTypes::Triplanar);
+		defaultMatCpu.SetTriplanarParams(TriplanarParams{ .scale = 0.01f });
+		defaultMatCpu.SetDiffuseTex(sandTexHandle);
+		defaultMatCpu.SetNormalTex(sandNormalHandle);
+		defaultMatCpu.SetArmTex(sandArmHandle);
+		defaultMatCpu.SetDisplacementTex(sandDispHandle);
+
 		resourceManager->AddMaterial(defaultMatCpu);
+	}
+
+	// 기본 Debug View Mode 등록
+	{
+		m_hDefaultView = RegisterDebugViewMode("Default", [](RenderSystem* rs) {
+			rs->ClearPSOOverrides();
+		});
+
+		m_hWireView = RegisterDebugViewMode("Wireframe", [](RenderSystem* rs) {
+			rs->ClearPSOOverrides();
+			rs->SetPSOOverride("Filled", "Wire");
+		});
+
+		m_hNormalView = RegisterDebugViewMode("Visualize Normals", [](RenderSystem* rs) {
+			rs->TogglePSOExtension("Filled", "DrawNormal");
+		});
 	}
 
 	InitScene(initCommand);
@@ -290,12 +314,50 @@ void EditorApp::DrawScene(ID3D12GraphicsCommandList* cmd)
 
 	DescriptorAllocator* descriptorAllocator = GetDescriptorAllocator();
 	cmd->SetGraphicsRootSignature(m_rootSignature.Get());
-	ID3D12DescriptorHeap* ppHeaps[] = { descriptorAllocator->GetCbvSrvUavHeap(), descriptorAllocator->GetSamplerHeap(0)};
+	ID3D12DescriptorHeap* ppHeaps[] = { descriptorAllocator->GetCbvSrvUavHeap(), descriptorAllocator->GetSamplerHeap(0) };
 	cmd->SetDescriptorHeaps(_countof(ppHeaps), ppHeaps);
 	//cmd->SetGraphicsRootDescriptorTable(4, descriptorAllocator->GetStaticGpu(m_materialSlot)); // MaterialTable
 	if (ResourceManager* resourceManager = GetResourceManager()) resourceManager->BindDescriptorTable(cmd);
-	
-	m_renderSystem->RenderFrame(cmd);
+
+	m_renderSystem->RenderFrame(cmd, GetUploadContext());
+}
+
+DebugViewModeHandle EditorApp::RegisterDebugViewMode(std::string_view name, std::function<void(RenderSystem*)> func)
+{
+	for (int i = 0; i < m_debugViewModes.size(); ++i)
+	{
+		if (m_debugViewModes[i].first == name)
+		{
+			m_debugViewModes[i].second = func;
+			return i;
+		}
+	}
+
+	m_debugViewModes.push_back({ name.data(), func});
+	return static_cast<DebugViewModeHandle>(m_debugViewModes.size() - 1);
+}
+
+void EditorApp::SetDebugViewMode(std::string_view name)
+{
+	for (int i = 0; i < m_debugViewModes.size(); ++i)
+	{
+		if (m_debugViewModes[i].first == name)
+		{
+			SetDebugViewMode(i);
+			return;
+		}
+	}
+
+	Log::Print("Editor", "Failed to find debug mode: %s", name);
+}
+
+void EditorApp::SetDebugViewMode(int index)
+{
+	if (index >= 0 && index < m_debugViewModes.size())
+	{
+		m_currentDebugViewMode = index;
+		m_debugViewModes[index].second(m_renderSystem.get());
+	}
 }
 
 void EditorApp::InitGpuTimeStampResources()
@@ -462,7 +524,7 @@ void EditorApp::RenderProfilingUI()
 					dl->AddRect(b0, ImVec2(x1, p1.y), IM_COL32(255, 220, 0, 255), 3.0f);
 					ImGui::SetNextWindowBgAlpha(0.8f);
 					ImGui::BeginTooltip();
-					if (block.owner)
+					if (!block.owner.empty())
 					{
 						ImGui::Text("Owner : %s", block.owner);
 					}

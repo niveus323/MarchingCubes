@@ -1,4 +1,5 @@
 #pragma once
+#include <filesystem>
 #include <DirectXTex.h>
 
 // Forward Delclaration
@@ -32,8 +33,9 @@ struct TextureResource
     TextureMeta meta;
     ComPtr<ID3D12Resource> res;
 
-    uint32_t diffuseTexSlot = UINT32_MAX;
+    uint32_t bindlessSlot = UINT32_MAX;
 };
+
 
 class TextureRegistry
 {
@@ -51,9 +53,11 @@ public:
 	void syncGpu(ID3D12GraphicsCommandList* cmd);
 	void BindDescriptorTable(ID3D12GraphicsCommandList* cmd);
 
-	uint32_t LoadTexture(const std::wstring& path);
-	const TextureResource& GetTexture(size_t texHandle) { return m_textures[texHandle]; }
+	uint32_t LoadTexture(const std::filesystem::path& logicalPath);
+	const TextureResource& GetTexture(size_t texHandle) const { return m_textures[texHandle]; }
     uint32_t GetDescriptorBaseSlot() const { return m_descriptorBaseSlot; }
+    uint32_t GetBindlessIndex(uint32_t handle) const;
+
 private:
     TextureMeta FinalizeMeta(const D3D12_RESOURCE_DESC& desc);
 

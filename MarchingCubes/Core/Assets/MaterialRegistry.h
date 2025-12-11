@@ -23,7 +23,7 @@ public:
     void BuildTable(ID3D12GraphicsCommandList* cmd);
     void BindDescriptorTable(ID3D12GraphicsCommandList* cmd) const;
 
-    uint32_t AddMaterial(const MaterialCPU& data);
+    uint32_t AddMaterial(const Material& data);
     uint32_t LoadMaterial(const std::wstring& path);
 
 private:
@@ -34,7 +34,7 @@ private:
     uint32_t m_rootSlot = 4;
     uint32_t m_descriptorSlot = UINT32_MAX;
 
-    std::vector<MaterialCPU> m_materials;
+    std::vector<Material> m_materials;
     ComPtr<ID3D12Resource> m_materialBuffer;
 };
 

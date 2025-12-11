@@ -1,11 +1,18 @@
 ﻿#pragma once
 #include "Core/Geometry/Mesh/Mesh.h"
-#include <stdexcept>
 #include <DirectXMath.h>
+#include <Core\Rendering\Camera.h>
 
 namespace PhysicsUtil
 {
 	using namespace DirectX;
+
+	struct RaycastTarget
+	{
+		const GeometryData* data = nullptr;
+		BoundingBox bounds;
+		const XMMATRIX& worldMatrix;
+	};
 
 	static bool IntersectTriangle(const XMVECTOR& rayOrigin, const XMVECTOR& rayDir, const XMVECTOR& v0, const XMVECTOR& v1, const XMVECTOR& v2, float& outDist)
 	{
@@ -37,52 +44,59 @@ namespace PhysicsUtil
 		return true;
 	}
 	
-	static bool IsHit(const XMVECTOR& rayOrigin, const XMVECTOR& rayDir, const Mesh& mesh, XMFLOAT3& outHitpos)
+	static bool IsHit(const Mesh* mesh, const XMVECTOR& rayOriginWorld, const XMVECTOR& rayDirWorld, const XMMATRIX& worldMatrix, XMFLOAT3& outHitposWorld)
 	{
-		// TriBounds는 Local Space
-		// World Space Ray -> Local Space Ray 변환
-		XMMATRIX invWorld = mesh.GetWorldInvMatrix();
-		XMVECTOR rayOriginLocal = XMVector3TransformCoord(rayOrigin, invWorld);
-		XMVECTOR rayDirLocal = XMVector3Normalize(XMVector3TransformNormal(rayDir, invWorld));
+		if (!mesh) return false;
+
+		// Ray를 로컬 공간으로 변환
+		XMMATRIX invWorld = XMMatrixInverse(nullptr, worldMatrix);
+		XMVECTOR rayOriginLocal = XMVector3TransformCoord(rayOriginWorld, invWorld);
+		XMVECTOR rayDirLocal = XMVector3TransformNormal(rayDirWorld, invWorld);
+		rayDirLocal = XMVector3Normalize(rayDirLocal);
 
 		float closestDist = FLT_MAX;
-		XMVECTOR hitLocal = XMVectorZero();
 		bool hitFound = false;
 
-		const GeometryData* meshData = mesh.GetCPUData();
-		const auto& bounds = mesh.GetBounds();
-		const auto& I = meshData->indices;
-		size_t triCount = I.size() / 3;
-
-		for (size_t t = 0; t < triCount; ++t)
+		const GeometryData* meshData = mesh->GetCPUData();
+		const auto& bounds = mesh->GetBounds();
+		const auto& submeshes = mesh->GetSubmeshes();
+		for (size_t i = 0; i < submeshes.size(); ++i)
 		{
 			float distFromBoundingBox;
+			if (i < bounds.size() && (!bounds[i].Intersects(rayOriginLocal, rayOriginWorld, distFromBoundingBox) || distFromBoundingBox > closestDist))
+				continue;
 
-			// Mesh의 worldSpace Transform이 적용되지 않음.
-			if (!bounds[t].Intersects(rayOriginLocal, rayDirLocal, distFromBoundingBox) || distFromBoundingBox > closestDist)
+			const auto& sm = submeshes[i];
+			const auto& indices = meshData->indices;
+			const auto& vertices = meshData->vertices;
+
+			for (size_t k = 0; k < sm.indexCount / 3; ++k)
 			{
-				continue;  // 이 삼각형은 볼 필요 없음
-			}
+				uint32_t idx0 = indices[sm.indexOffset + k * 3 + 0];
+				uint32_t idx1 = indices[sm.indexOffset + k * 3 + 1];
+				uint32_t idx2 = indices[sm.indexOffset + k * 3 + 2];
 
-			XMVECTOR v0 = XMLoadFloat3(&meshData->vertices[I[3 * t + 0]].pos);
-			XMVECTOR v1 = XMLoadFloat3(&meshData->vertices[I[3 * t + 1]].pos);
-			XMVECTOR v2 = XMLoadFloat3(&meshData->vertices[I[3 * t + 2]].pos);
+				XMVECTOR v0 = XMLoadFloat3(&vertices[idx0].pos);
+				XMVECTOR v1 = XMLoadFloat3(&vertices[idx1].pos);
+				XMVECTOR v2 = XMLoadFloat3(&vertices[idx2].pos);
 
-			float dist;
-			if (IntersectTriangle(rayOriginLocal, rayDirLocal, v0, v1, v2, dist) && dist < closestDist)
-			{
-				closestDist = dist;
-				hitLocal = XMVectorAdd(rayOriginLocal, XMVectorScale(rayDirLocal, dist));
-				hitFound = true;
+				float dist;
+				if (IntersectTriangle(rayOriginLocal, rayOriginWorld, v0, v1, v2, dist))
+				{
+					if (dist < closestDist)
+					{
+						closestDist = dist;
+						hitFound = true;
+					}
+				}
 			}
 		}
+	
+		if (!hitFound) return false;
 
-		if (!hitFound)
-			return false;
-
-		XMVECTOR hitWorld = XMVector3TransformCoord(hitLocal, mesh.GetWorldMatrix());
-		XMStoreFloat3(&outHitpos, hitWorld);
-
+		XMVECTOR hitLocal = XMVectorAdd(rayOriginLocal, XMVectorScale(rayDirLocal, closestDist));
+		XMVECTOR hitWorld = XMVector3TransformCoord(hitLocal, worldMatrix);
+		XMStoreFloat3(&outHitposWorld, hitWorld);
 		return true;
 	}
 
@@ -90,45 +104,44 @@ namespace PhysicsUtil
 	* 여러 MeshData의 집합체에 대한 RayCast
 	* NOTE : 좌표계 통일 할 것
 	*/
-	static bool IsHit(const XMVECTOR& rayOrigin, const XMVECTOR& rayDir, const std::vector<const GeometryData*>& meshData, const std::vector<BoundingBox>& bounds, XMFLOAT3& outHitpos)
+	static bool IsHit(const std::vector<RaycastTarget>& targets, const XMVECTOR& rayOriginWorld, const XMVECTOR& rayDirWorld, XMFLOAT3& outHitposWorld)
 	{
 		float closestDist = FLT_MAX;
-		XMVECTOR hitLocal = XMVectorZero();
-		bool hitFound = false;
+		int hitIndex = -1;
 
-		for (size_t i = 0; i < meshData.size(); ++i)
+		for (int i = 0; i < targets.size(); ++i)
 		{
-			float distFromBoundingBox;
+			const auto& target = targets[i];
+			if (!target.data) continue;
 
-			if (!bounds[i].Intersects(rayOrigin, rayDir, distFromBoundingBox) || distFromBoundingBox > closestDist)
+			float distFromBox;
+			if (!target.bounds.Intersects(rayOriginWorld, rayDirWorld, distFromBox) || distFromBox > closestDist) continue;
+
+			const auto& vertices = target.data->vertices;
+			const auto& indices = target.data->indices;
+			for (size_t t = 0; t < indices.size() / 3; ++t)
 			{
-				continue;  // 이 MeshData는 볼 필요 없음
-			}
-
-			const GeometryData* md = meshData[i];
-			const auto& I = md->indices;
-			size_t triCount = I.size() / 3;
-
-			for (size_t t = 0; t < triCount; ++t)
-			{
-				XMVECTOR v0 = XMLoadFloat3(&md->vertices[I[3 * t + 0]].pos);
-				XMVECTOR v1 = XMLoadFloat3(&md->vertices[I[3 * t + 1]].pos);
-				XMVECTOR v2 = XMLoadFloat3(&md->vertices[I[3 * t + 2]].pos);
+				XMVECTOR v0 = XMLoadFloat3(&vertices[indices[3 * t + 0]].pos);
+				XMVECTOR v1 = XMLoadFloat3(&vertices[indices[3 * t + 1]].pos);
+				XMVECTOR v2 = XMLoadFloat3(&vertices[indices[3 * t + 2]].pos);
 
 				float dist;
-				if (IntersectTriangle(rayOrigin, rayDir, v0, v1, v2, dist) && dist < closestDist)
+				if (IntersectTriangle(rayOriginWorld, rayDirWorld, v0, v1, v2, dist))
 				{
-					closestDist = dist;
-					hitLocal = XMVectorAdd(rayOrigin, XMVectorScale(rayDir, dist));
-					hitFound = true;
+					if (dist < closestDist)
+					{
+						closestDist = dist;
+						hitIndex = i;
+					}
 				}
 			}
 		}
 
-		if (!hitFound)
-			return false;
+		if (hitIndex < 0) return false;
 
-		XMStoreFloat3(&outHitpos, hitLocal);
+		XMVECTOR hitLocal = XMVectorAdd(rayOriginWorld, XMVectorScale(rayDirWorld, closestDist));
+		XMVECTOR hitWorld = XMVector3TransformCoord(hitLocal, targets[hitIndex].worldMatrix);
+		XMStoreFloat3(&outHitposWorld, hitWorld);
 		return true;
 	}
 

@@ -6,8 +6,9 @@
     <SolutionRoot>$([System.String]::Copy('$(MSBuildThisFileDirectory)').Replace('\','/').TrimEnd('/'))</SolutionRoot>
     <ProjectRoot>$([System.String]::Copy('$(MSBuildProjectDirectory)').Replace('\','/').TrimEnd('/'))</ProjectRoot>
     <AssetsRoot>$(ProjectRoot)/Assets</AssetsRoot>
+    <ContentsRoot>$(ProjectRoot)/Contents</ContentsRoot>
     <ShadersRoot>$(AssetsRoot)/Shaders</ShadersRoot>
-    <TexturesRoot>$(AssetsRoot)/Texture</TexturesRoot>
+    <TexturesRoot>$(ContentsRoot)/Textures</TexturesRoot>
     <ThirdPartyRoot>$(SolutionRoot)/ThirdParty/</ThirdPartyRoot>
   </PropertyGroup>
   <PropertyGroup>

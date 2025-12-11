@@ -24,6 +24,7 @@ struct Vertex
 {
     float3 position;
     float3 normal;
+    float4 tangent; // xyz: tangent, w: handedness(+1)
     int2 id; // 이 정점이 어떤 Edge 사이의 정점인지를 표현. (A 포인트 인덱스 - B 포인트 인덱스) 
 }; 
 
@@ -86,6 +87,9 @@ Vertex CreateVertex(int3 coordA, int3 coordB)
     float3 nB = CalculateNormal(coordB);
     float3 normal = normalize(lerp(nA, nB, saturate(t)));
     
+    float3 up = (abs(normal.y) > 0.999f) ? float3(1.0f, 0.0f, 0.0f) : float3(0.0f, 1.0f, 0.0f);
+    float3 tangent = normalize(cross(up, normal));
+    
     // Edge ID
     int idxA = IndexFromCoord(coordA);
     int idxB = IndexFromCoord(coordB);
@@ -93,6 +97,7 @@ Vertex CreateVertex(int3 coordA, int3 coordB)
     Vertex v;
     v.position = position;
     v.normal = normal;
+    v.tangent = float4(tangent, 1.0f);
     v.id = int2(min(idxA, idxB), max(idxA, idxB));
     
     return v;

@@ -1,6 +1,8 @@
 #pragma once
 #include "Interface/EditorApp.h"
 #include "Core/Geometry/MarchingCubes/TerrainSystem.h"
+#include "Core/Scene/SceneObject.h"
+#include "Core/Scene/BaseScene.h"
 #include <unordered_map>
 #include <array>
 
@@ -27,10 +29,12 @@ private:
 private:
     // Marching Cubes
     std::unique_ptr<TerrainSystem> m_terrain;
-#ifdef _DEBUG
-    std::unique_ptr<Mesh> m_debugBrush;
-    std::unique_ptr<Mesh> m_debugCellMesh;
-#endif // _DEBUG
+    SceneObject* m_debugBrush = nullptr;
+    SceneObject* m_debugCell = nullptr;
+    SceneObject* m_terrainRenderer = nullptr;
+    SceneObject* m_whale = nullptr;
+    
+    // Settings
     DirectX::XMFLOAT3 m_gridOrigin = { 0,0,0 };
     int m_gridTiles = 100;
     int m_cellSize = 1;
@@ -43,8 +47,7 @@ private:
     UI::FrameCallbackToken cameraUIToken = 0;
     UI::FrameCallbackToken marchingCubesUIToken = 0;
     
-#ifdef _DEBUG
-    // Debug
-    bool m_debugNormalEnabled = false;
-#endif // _DEBUG
+    // Scene
+    std::unique_ptr<BaseScene> m_scene;
+    std::vector<std::unique_ptr<Mesh>> m_editorMeshes;
 };
