@@ -1,14 +1,16 @@
 #include "pch.h"
 #include "TerrainRendererComponent.h"
-#include "Core/Scene/SceneObject.h"
-#include "Core/Scene/BaseScene.h"
+#include "Core/Scene/Object/SceneObject.h"
+#include "Core/Scene/Scene.h"
+#include "Core/Engine/EngineCore.h"
 
 void TerrainRendererComponent::Submit()
 {
     if (!m_chunkRenderer) return;
 
-    RenderSystem* renderSystem = GetScene()->GetRenderSystem();
-    if (!renderSystem) return;
+    if (auto renderSystem = EngineCore::GetRenderSystem())
+    {
+        m_chunkRenderer->Submit(renderSystem, GetOwner<SceneObject>()->GetWorldTransform(), m_materialInstance);
+    }
 
-    m_chunkRenderer->Submit(renderSystem, m_owner->GetTransform(), m_materialInstance);
 }

@@ -1,0 +1,443 @@
+C:.
+¦¢  .gitattributes
+¦¢  .gitignore
+¦¢  Directory.Build.props
+¦¢  Directory.Builds.targets
+¦¢  MarchingCubes.sln
+¦¢  README.md
+¦¢  structure.txt
+¦¢  
+¦§¦¡MarchingCubes
+¦¢  ¦¢  imgui.ini
+¦¢  ¦¢  main.cpp
+¦¢  ¦¢  MarchingCubes.aps
+¦¢  ¦¢  MarchingCubes.rc
+¦¢  ¦¢  MarchingCubes.vcxproj
+¦¢  ¦¢  MarchingCubes.vcxproj.filters
+¦¢  ¦¢  MarchingCubes.vcxproj.user
+¦¢  ¦¢  packages.config
+¦¢  ¦¢  pch.h
+¦¢  ¦¢  resource.h
+¦¢  ¦¢  Win32Application.cpp
+¦¢  ¦¢  Win32Application.h
+¦¢  ¦¢  
+¦¢  ¦§¦¡App
+¦¢  ¦¢  ¦§¦¡Common
+¦¢  ¦¢  ¦¢      DXAppBase.cpp
+¦¢  ¦¢  ¦¢      DXAppBase.h
+¦¢  ¦¢  ¦¢      
+¦¢  ¦¢  ¦¦¦¡Editor
+¦¢  ¦¢      ¦¢  MCTerraformEditor.cpp
+¦¢  ¦¢      ¦¢  MCTerraformEditor.h
+¦¢  ¦¢      ¦¢  
+¦¢  ¦¢      ¦¦¦¡Interface
+¦¢  ¦¢              EditorApp.cpp
+¦¢  ¦¢              EditorApp.h
+¦¢  ¦¢              
+¦¢  ¦§¦¡Assets
+¦¢  ¦¢  ¦§¦¡Model
+¦¢  ¦¢  ¦¢  ¦§¦¡Killer-whale
+¦¢  ¦¢  ¦¢  ¦¢      killer-whale.FBX
+¦¢  ¦¢  ¦¢  ¦¢      
+¦¢  ¦¢  ¦¢  ¦¦¦¡mixamo
+¦¢  ¦¢  ¦¢          Idle.fbx
+¦¢  ¦¢  ¦¢          
+¦¢  ¦¢  ¦§¦¡PSO
+¦¢  ¦¢  ¦¢      EditorCommon.json
+¦¢  ¦¢  ¦¢      
+¦¢  ¦¢  ¦§¦¡Shaders
+¦¢  ¦¢  ¦¢      BrushCS.hlsl
+¦¢  ¦¢  ¦¢      Common.hlsli
+¦¢  ¦¢  ¦¢      HighlightPS.hlsl
+¦¢  ¦¢  ¦¢      LinePS.hlsl
+¦¢  ¦¢  ¦¢      MainPS.hlsl
+¦¢  ¦¢  ¦¢      MainVS.hlsl
+¦¢  ¦¢  ¦¢      MarchingCubesCS.hlsl
+¦¢  ¦¢  ¦¢      Material.hlsli
+¦¢  ¦¢  ¦¢      NormalGS.hlsl
+¦¢  ¦¢  ¦¢      PBR.hlsli
+¦¢  ¦¢  ¦¢      Texture.hlsli
+¦¢  ¦¢  ¦¢      
+¦¢  ¦¢  ¦¦¦¡Textures
+¦¢  ¦¢      ¦§¦¡gravelly_sand
+¦¢  ¦¢      ¦¢      gravelly_sand_arm.png
+¦¢  ¦¢      ¦¢      gravelly_sand_diffuse.png
+¦¢  ¦¢      ¦¢      gravelly_sand_displace.png
+¦¢  ¦¢      ¦¢      gravelly_sand_normal.png
+¦¢  ¦¢      ¦¢      gravelly_sand_rough.png
+¦¢  ¦¢      ¦¢      
+¦¢  ¦¢      ¦¦¦¡Killer-whale
+¦¢  ¦¢              Killer-whale-diffuse.png
+¦¢  ¦¢              Killer-whale-normal.png
+¦¢  ¦¢              
+¦¢  ¦§¦¡Contents
+¦¢  ¦¢  ¦§¦¡Scene
+¦¢  ¦¢  ¦¦¦¡Textures
+¦¢  ¦¢      ¦§¦¡gravelly_sand
+¦¢  ¦¢      ¦¢      gravelly_sand_arm.dds
+¦¢  ¦¢      ¦¢      gravelly_sand_diffuse.dds
+¦¢  ¦¢      ¦¢      gravelly_sand_displace.dds
+¦¢  ¦¢      ¦¢      gravelly_sand_normal.dds
+¦¢  ¦¢      ¦¢      gravelly_sand_rough.dds
+¦¢  ¦¢      ¦¢      
+¦¢  ¦¢      ¦¦¦¡Killer-whale
+¦¢  ¦¢              Killer-whale-diffuse.dds
+¦¢  ¦¢              Killer-whale-normal.dds
+¦¢  ¦¢              
+¦¢  ¦§¦¡Core
+¦¢  ¦¢  ¦§¦¡Assets
+¦¢  ¦¢  ¦¢  ¦¢  Material.cpp
+¦¢  ¦¢  ¦¢  ¦¢  Material.h
+¦¢  ¦¢  ¦¢  ¦¢  MaterialRegistry.cpp
+¦¢  ¦¢  ¦¢  ¦¢  MaterialRegistry.h
+¦¢  ¦¢  ¦¢  ¦¢  MeshAsset.cpp
+¦¢  ¦¢  ¦¢  ¦¢  MeshAsset.h
+¦¢  ¦¢  ¦¢  ¦¢  MeshRegistry.cpp
+¦¢  ¦¢  ¦¢  ¦¢  MeshRegistry.h
+¦¢  ¦¢  ¦¢  ¦¢  ResourceManager.cpp
+¦¢  ¦¢  ¦¢  ¦¢  ResourceManager.h
+¦¢  ¦¢  ¦¢  ¦¢  TextureAsset.cpp
+¦¢  ¦¢  ¦¢  ¦¢  TextureAsset.h
+¦¢  ¦¢  ¦¢  ¦¢  TextureRegistry.cpp
+¦¢  ¦¢  ¦¢  ¦¢  TextureRegistry.h
+¦¢  ¦¢  ¦¢  ¦¢  
+¦¢  ¦¢  ¦¢  ¦¦¦¡AssetsPipeline
+¦¢  ¦¢  ¦§¦¡DataStructures
+¦¢  ¦¢  ¦¢      Data.h
+¦¢  ¦¢  ¦¢      Drawable.cpp
+¦¢  ¦¢  ¦¢      Drawable.h
+¦¢  ¦¢  ¦¢      ShaderTypes.h
+¦¢  ¦¢  ¦¢      
+¦¢  ¦¢  ¦§¦¡Geometry
+¦¢  ¦¢  ¦¢  ¦¢  FluidSystem.cpp
+¦¢  ¦¢  ¦¢  ¦¢  FluidSystem.h
+¦¢  ¦¢  ¦¢  ¦¢  MeshGenerator.cpp
+¦¢  ¦¢  ¦¢  ¦¢  MeshGenerator.h
+¦¢  ¦¢  ¦¢  ¦¢  
+¦¢  ¦¢  ¦¢  ¦§¦¡MarchingCubes
+¦¢  ¦¢  ¦¢  ¦¢  ¦¢  ITerrainBackend.h
+¦¢  ¦¢  ¦¢  ¦¢  ¦¢  MarchingCubesTables.cpp
+¦¢  ¦¢  ¦¢  ¦¢  ¦¢  MarchingCubesTables.h
+¦¢  ¦¢  ¦¢  ¦¢  ¦¢  SdfField.h
+¦¢  ¦¢  ¦¢  ¦¢  ¦¢  TerrainRendererComponent.cpp
+¦¢  ¦¢  ¦¢  ¦¢  ¦¢  TerrainRendererComponent.h
+¦¢  ¦¢  ¦¢  ¦¢  ¦¢  TerrainSystem.cpp
+¦¢  ¦¢  ¦¢  ¦¢  ¦¢  TerrainSystem.h
+¦¢  ¦¢  ¦¢  ¦¢  ¦¢  
+¦¢  ¦¢  ¦¢  ¦¢  ¦§¦¡CPU
+¦¢  ¦¢  ¦¢  ¦¢  ¦¢  ¦¢  CPUTerrainBackend.cpp
+¦¢  ¦¢  ¦¢  ¦¢  ¦¢  ¦¢  CPUTerrainBackend.h
+¦¢  ¦¢  ¦¢  ¦¢  ¦¢  ¦¢  
+¦¢  ¦¢  ¦¢  ¦¢  ¦¢  ¦¦¦¡MC33
+¦¢  ¦¢  ¦¢  ¦¢  ¦¢          MC33TerrainBackend.cpp
+¦¢  ¦¢  ¦¢  ¦¢  ¦¢          MC33TerrainBackend.h
+¦¢  ¦¢  ¦¢  ¦¢  ¦¢          
+¦¢  ¦¢  ¦¢  ¦¢  ¦¦¦¡GPU
+¦¢  ¦¢  ¦¢  ¦¢          GPUBrushCS.cpp
+¦¢  ¦¢  ¦¢  ¦¢          GPUBrushCS.h
+¦¢  ¦¢  ¦¢  ¦¢          GPUMarchingCubesCS.cpp
+¦¢  ¦¢  ¦¢  ¦¢          GPUMarchingCubesCS.h
+¦¢  ¦¢  ¦¢  ¦¢          GPUMarchingCubesShared.h
+¦¢  ¦¢  ¦¢  ¦¢          GPUTerrainBackend.cpp
+¦¢  ¦¢  ¦¢  ¦¢          GPUTerrainBackend.h
+¦¢  ¦¢  ¦¢  ¦¢          SDFVolume3D.cpp
+¦¢  ¦¢  ¦¢  ¦¢          SDFVolume3D.h
+¦¢  ¦¢  ¦¢  ¦¢          
+¦¢  ¦¢  ¦¢  ¦¦¦¡Mesh
+¦¢  ¦¢  ¦¢          Mesh.cpp
+¦¢  ¦¢  ¦¢          Mesh.h
+¦¢  ¦¢  ¦¢          MeshChunkRenderer.cpp
+¦¢  ¦¢  ¦¢          MeshChunkRenderer.h
+¦¢  ¦¢  ¦¢          
+¦¢  ¦¢  ¦§¦¡Input
+¦¢  ¦¢  ¦¢      InputState.cpp
+¦¢  ¦¢  ¦¢      InputState.h
+¦¢  ¦¢  ¦¢      
+¦¢  ¦¢  ¦§¦¡Math
+¦¢  ¦¢  ¦¢      PhysicsHelper.cpp
+¦¢  ¦¢  ¦¢      PhysicsHelper.h
+¦¢  ¦¢  ¦¢      
+¦¢  ¦¢  ¦§¦¡Rendering
+¦¢  ¦¢  ¦¢  ¦¢  BundleRecorder.cpp
+¦¢  ¦¢  ¦¢  ¦¢  BundleRecorder.h
+¦¢  ¦¢  ¦¢  ¦¢  Camera.cpp
+¦¢  ¦¢  ¦¢  ¦¢  Camera.h
+¦¢  ¦¢  ¦¢  ¦¢  LightManager.cpp
+¦¢  ¦¢  ¦¢  ¦¢  LightManager.h
+¦¢  ¦¢  ¦¢  ¦¢  RenderSystem.cpp
+¦¢  ¦¢  ¦¢  ¦¢  RenderSystem.h
+¦¢  ¦¢  ¦¢  ¦¢  RenderUtils.h
+¦¢  ¦¢  ¦¢  ¦¢  UploadContext.cpp
+¦¢  ¦¢  ¦¢  ¦¢  UploadContext.h
+¦¢  ¦¢  ¦¢  ¦¢  
+¦¢  ¦¢  ¦¢  ¦§¦¡Memory
+¦¢  ¦¢  ¦¢  ¦¢      CommonMemory.h
+¦¢  ¦¢  ¦¢  ¦¢      GpuAllocator.cpp
+¦¢  ¦¢  ¦¢  ¦¢      GpuAllocator.h
+¦¢  ¦¢  ¦¢  ¦¢      GPUBufferPool.cpp
+¦¢  ¦¢  ¦¢  ¦¢      GPUBufferPool.h
+¦¢  ¦¢  ¦¢  ¦¢      StaticBufferRegistry.cpp
+¦¢  ¦¢  ¦¢  ¦¢      StaticBufferRegistry.h
+¦¢  ¦¢  ¦¢  ¦¢      UploadRing.cpp
+¦¢  ¦¢  ¦¢  ¦¢      UploadRing.h
+¦¢  ¦¢  ¦¢  ¦¢      
+¦¢  ¦¢  ¦¢  ¦¦¦¡PSO
+¦¢  ¦¢  ¦¢          DescriptorAllocator.cpp
+¦¢  ¦¢  ¦¢          DescriptorAllocator.h
+¦¢  ¦¢  ¦¢          DescriptorRing.cpp
+¦¢  ¦¢  ¦¢          DescriptorRing.h
+¦¢  ¦¢  ¦¢          PSOEnumLUT.h
+¦¢  ¦¢  ¦¢          PSOList.cpp
+¦¢  ¦¢  ¦¢          PSOList.h
+¦¢  ¦¢  ¦¢          PSOSpec.cpp
+¦¢  ¦¢  ¦¢          PSOSpec.h
+¦¢  ¦¢  ¦¢          
+¦¢  ¦¢  ¦§¦¡Scene
+¦¢  ¦¢  ¦¢  ¦¢  BaseScene.cpp
+¦¢  ¦¢  ¦¢  ¦¢  BaseScene.h
+¦¢  ¦¢  ¦¢  ¦¢  SceneObject.cpp
+¦¢  ¦¢  ¦¢  ¦¢  SceneObject.h
+¦¢  ¦¢  ¦¢  ¦¢  
+¦¢  ¦¢  ¦¢  ¦¦¦¡Component
+¦¢  ¦¢  ¦¢          Component.cpp
+¦¢  ¦¢  ¦¢          Component.h
+¦¢  ¦¢  ¦¢          MeshComponent.cpp
+¦¢  ¦¢  ¦¢          MeshComponent.h
+¦¢  ¦¢  ¦¢          RendererComponent.cpp
+¦¢  ¦¢  ¦¢          RendererComponent.h
+¦¢  ¦¢  ¦¢          TransformComponent.cpp
+¦¢  ¦¢  ¦¢          TransformComponent.h
+¦¢  ¦¢  ¦¢          
+¦¢  ¦¢  ¦§¦¡Trace
+¦¢  ¦¢  ¦¢      Log.h
+¦¢  ¦¢  ¦¢      Profiler.cpp
+¦¢  ¦¢  ¦¢      Profiler.h
+¦¢  ¦¢  ¦¢      
+¦¢  ¦¢  ¦§¦¡UI
+¦¢  ¦¢  ¦¢      ImGUIRenderer.cpp
+¦¢  ¦¢  ¦¢      ImGUIRenderer.h
+¦¢  ¦¢  ¦¢      UIRenderer.h
+¦¢  ¦¢  ¦¢      
+¦¢  ¦¢  ¦¦¦¡Utils
+¦¢  ¦¢          DXHelper.cpp
+¦¢  ¦¢          DXHelper.h
+¦¢  ¦¢          Timer.cpp
+¦¢  ¦¢          Timer.h
+¦¢  ¦¢          
+¦¢  ¦§¦¡ThirdParty
+¦¢  ¦¢      FBXImporter.cpp
+¦¢  ¦¢      FBXImporter.h
+¦¢  ¦¢      mc33_impl.cpp
+¦¢  ¦¢      
+¦¢  ¦¦¦¡x64
+¦¢      ¦¦¦¡Debug
+¦¢          ¦¢  BaseScene.obj
+¦¢          ¦¢  BundleRecorder.obj
+¦¢          ¦¢  Camera.obj
+¦¢          ¦¢  Component.obj
+¦¢          ¦¢  CPUTerrainBackend.obj
+¦¢          ¦¢  DescriptorAllocator.obj
+¦¢          ¦¢  DescriptorRing.obj
+¦¢          ¦¢  Drawable.obj
+¦¢          ¦¢  DXAppBase.obj
+¦¢          ¦¢  DXHelper.obj
+¦¢          ¦¢  EditorApp.obj
+¦¢          ¦¢  FBXImporter.obj
+¦¢          ¦¢  FluidSystem.obj
+¦¢          ¦¢  GeometryEditor.obj
+¦¢          ¦¢  GpuAllocator.obj
+¦¢          ¦¢  GPUBrushCS.obj
+¦¢          ¦¢  GPUBufferPool.obj
+¦¢          ¦¢  GPUMarchingCubesCS.obj
+¦¢          ¦¢  GPUTerrainBackend.obj
+¦¢          ¦¢  ImGUIRenderer.obj
+¦¢          ¦¢  InputState.obj
+¦¢          ¦¢  LightManager.obj
+¦¢          ¦¢  main.obj
+¦¢          ¦¢  MarchingCubes.Build.CppClean.log
+¦¢          ¦¢  MarchingCubes.exe.recipe
+¦¢          ¦¢  MarchingCubes.log
+¦¢          ¦¢  MarchingCubes.pch
+¦¢          ¦¢  MarchingCubes.vcxproj.FileListAbsolute.txt
+¦¢          ¦¢  MarchingCubesTables.obj
+¦¢          ¦¢  Material.obj
+¦¢          ¦¢  MaterialRegistry.obj
+¦¢          ¦¢  MC33TerrainBackend.obj
+¦¢          ¦¢  mc33_impl.obj
+¦¢          ¦¢  MCTerraformEditor.obj
+¦¢          ¦¢  Mesh.obj
+¦¢          ¦¢  MeshAsset.obj
+¦¢          ¦¢  MeshChunkRenderer.obj
+¦¢          ¦¢  MeshComponent.obj
+¦¢          ¦¢  MeshGenerator.obj
+¦¢          ¦¢  MeshRegistry.obj
+¦¢          ¦¢  PhysicsHelper.obj
+¦¢          ¦¢  Profiler.obj
+¦¢          ¦¢  PSOList.obj
+¦¢          ¦¢  PSOSpec.obj
+¦¢          ¦¢  RendererComponent.obj
+¦¢          ¦¢  RenderSystem.obj
+¦¢          ¦¢  ResourceManager.obj
+¦¢          ¦¢  SceneObject.obj
+¦¢          ¦¢  SDFVolume3D.obj
+¦¢          ¦¢  StaticBufferRegistry.obj
+¦¢          ¦¢  TerrainRendererComponent.obj
+¦¢          ¦¢  TerrainSystem.obj
+¦¢          ¦¢  TextureAsset.obj
+¦¢          ¦¢  TextureRegistry.obj
+¦¢          ¦¢  Timer.obj
+¦¢          ¦¢  TransformComponent.obj
+¦¢          ¦¢  UploadContext.obj
+¦¢          ¦¢  UploadRing.obj
+¦¢          ¦¢  vc145.idb
+¦¢          ¦¢  vc145.pdb
+¦¢          ¦¢  vcpkg.applocal.log
+¦¢          ¦¢  Win32Application.obj
+¦¢          ¦¢  
+¦¢          ¦§¦¡MarchingCubes.tlog
+¦¢          ¦¢      CL.command.1.tlog
+¦¢          ¦¢      Cl.items.tlog
+¦¢          ¦¢      CL.read.1.tlog
+¦¢          ¦¢      CL.write.1.tlog
+¦¢          ¦¢      dxc.command.1.tlog
+¦¢          ¦¢      dxc.read.1.tlog
+¦¢          ¦¢      dxc.write.1.tlog
+¦¢          ¦¢      link.command.1.tlog
+¦¢          ¦¢      link.read.1.tlog
+¦¢          ¦¢      link.secondary.1.tlog
+¦¢          ¦¢      link.write.1.tlog
+¦¢          ¦¢      MarchingCubes.lastbuildstate
+¦¢          ¦¢      MarchingCubes.write.1u.tlog
+¦¢          ¦¢      
+¦¢          ¦§¦¡MarchingCubes_MD.tlog
+¦¢          ¦¦¦¡microsoft
+¦¢              ¦¦¦¡STL
+¦§¦¡packages
+¦¢  ¦§¦¡nlohmann.json.3.12.0
+¦¢  ¦¢  ¦¢  .signature.p7s
+¦¢  ¦¢  ¦¢  nlohmann.json.3.12.0.nupkg
+¦¢  ¦¢  ¦¢  
+¦¢  ¦¢  ¦¦¦¡build
+¦¢  ¦¢      ¦¦¦¡native
+¦¢  ¦¢          ¦¢  nlohmann.json.targets
+¦¢  ¦¢          ¦¢  
+¦¢  ¦¢          ¦¦¦¡include
+¦¢  ¦¢              ¦¦¦¡nlohmann
+¦¢  ¦¢                      json.hpp
+¦¢  ¦¢                      json_fwd.hpp
+¦¢  ¦¢                      
+¦¢  ¦¦¦¡WinPixEventRuntime.1.0.240308001
+¦¢      ¦¢  .signature.p7s
+¦¢      ¦¢  license.txt
+¦¢      ¦¢  ThirdPartyNotices.txt
+¦¢      ¦¢  WinPixEventRuntime.1.0.240308001.nupkg
+¦¢      ¦¢  WinPixEventRuntimeIcon.png
+¦¢      ¦¢  
+¦¢      ¦§¦¡bin
+¦¢      ¦¢  ¦§¦¡ARM64
+¦¢      ¦¢  ¦¢      WinPixEventRuntime.dll
+¦¢      ¦¢  ¦¢      WinPixEventRuntime.lib
+¦¢      ¦¢  ¦¢      WinPixEventRuntime_UAP.dll
+¦¢      ¦¢  ¦¢      WinPixEventRuntime_UAP.lib
+¦¢      ¦¢  ¦¢      
+¦¢      ¦¢  ¦¦¦¡x64
+¦¢      ¦¢          WinPixEventRuntime.dll
+¦¢      ¦¢          WinPixEventRuntime.lib
+¦¢      ¦¢          WinPixEventRuntime_UAP.dll
+¦¢      ¦¢          WinPixEventRuntime_UAP.lib
+¦¢      ¦¢          
+¦¢      ¦§¦¡build
+¦¢      ¦¢      WinPixEventRuntime.targets
+¦¢      ¦¢      
+¦¢      ¦¦¦¡Include
+¦¢          ¦¦¦¡WinPixEventRuntime
+¦¢                  pix3.h
+¦¢                  pix3_win.h
+¦¢                  PIXEvents.h
+¦¢                  PIXEventsCommon.h
+¦¢                  PIXEventsLegacy.h
+¦¢                  
+¦§¦¡ThirdParty
+¦¢  ¦§¦¡DirectX-Headers
+¦¢  ¦¢  ¦¢  LICENSE
+¦¢  ¦¢  ¦¢  
+¦¢  ¦¢  ¦¦¦¡include
+¦¢  ¦¢      ¦§¦¡directx
+¦¢  ¦¢      ¦¢      d3d12.h
+¦¢  ¦¢      ¦¢      d3d12.idl
+¦¢  ¦¢      ¦¢      d3d12compatibility.h
+¦¢  ¦¢      ¦¢      d3d12compatibility.idl
+¦¢  ¦¢      ¦¢      d3d12sdklayers.h
+¦¢  ¦¢      ¦¢      d3d12sdklayers.idl
+¦¢  ¦¢      ¦¢      d3d12shader.h
+¦¢  ¦¢      ¦¢      D3D12TokenizedProgramFormat.hpp
+¦¢  ¦¢      ¦¢      d3d12video.h
+¦¢  ¦¢      ¦¢      d3d12video.idl
+¦¢  ¦¢      ¦¢      d3dcommon.h
+¦¢  ¦¢      ¦¢      d3dcommon.idl
+¦¢  ¦¢      ¦¢      d3dx12.h
+¦¢  ¦¢      ¦¢      d3dx12_barriers.h
+¦¢  ¦¢      ¦¢      d3dx12_check_feature_support.h
+¦¢  ¦¢      ¦¢      d3dx12_core.h
+¦¢  ¦¢      ¦¢      d3dx12_default.h
+¦¢  ¦¢      ¦¢      d3dx12_pipeline_state_stream.h
+¦¢  ¦¢      ¦¢      d3dx12_property_format_table.h
+¦¢  ¦¢      ¦¢      d3dx12_render_pass.h
+¦¢  ¦¢      ¦¢      d3dx12_resource_helpers.h
+¦¢  ¦¢      ¦¢      d3dx12_root_signature.h
+¦¢  ¦¢      ¦¢      d3dx12_state_object.h
+¦¢  ¦¢      ¦¢      DirectML.h
+¦¢  ¦¢      ¦¢      dxcore.h
+¦¢  ¦¢      ¦¢      dxcore_interface.h
+¦¢  ¦¢      ¦¢      dxgicommon.h
+¦¢  ¦¢      ¦¢      dxgicommon.idl
+¦¢  ¦¢      ¦¢      dxgiformat.h
+¦¢  ¦¢      ¦¢      dxgiformat.idl
+¦¢  ¦¢      ¦¢      
+¦¢  ¦¢      ¦§¦¡dxguids
+¦¢  ¦¢      ¦¢      dxguids.h
+¦¢  ¦¢      ¦¢      
+¦¢  ¦¢      ¦¦¦¡wsl
+¦¢  ¦¢          ¦¢  winadapter.h
+¦¢  ¦¢          ¦¢  wrladapter.h
+¦¢  ¦¢          ¦¢  
+¦¢  ¦¢          ¦¦¦¡stubs
+¦¢  ¦¢              ¦¢  basetsd.h
+¦¢  ¦¢              ¦¢  oaidl.h
+¦¢  ¦¢              ¦¢  ocidl.h
+¦¢  ¦¢              ¦¢  rpc.h
+¦¢  ¦¢              ¦¢  rpcndr.h
+¦¢  ¦¢              ¦¢  unknwn.h
+¦¢  ¦¢              ¦¢  unknwnbase.h
+¦¢  ¦¢              ¦¢  winapifamily.h
+¦¢  ¦¢              ¦¢  
+¦¢  ¦¢              ¦¦¦¡wrl
+¦¢  ¦¢                      client.h
+¦¢  ¦¢                      implements.h
+¦¢  ¦¢                      
+¦¢  ¦§¦¡lib
+¦¢  ¦¢      MC33.lib
+¦¢  ¦¢      
+¦¢  ¦¦¦¡MC33_c
+¦¢          marching_cubes_33.h
+¦¢          
+¦¦¦¡x64
+    ¦¦¦¡Debug
+            BrushCS.cso
+            BrushRegionCS.cso
+            DirectXTex.dll
+            DrawNormalGS.cso
+            libfbxsdk.dll
+            LinePS.cso
+            LineShaders.cso
+            MachingCubesCS.cso
+            MainPS.cso
+            MainVS.cso
+            MarchingCubes.exe
+            MarchingCubes.pdb
+            MarchingCubesCS.cso
+            NormalGS.cso
+            PickID_PS.cso
+            shaders.cso
+            WinPixEventRuntime.dll
+            

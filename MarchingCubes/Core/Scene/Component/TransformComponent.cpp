@@ -1,6 +1,6 @@
 #include "pch.h"
 #include "TransformComponent.h"
-#include "Core/Scene/SceneObject.h"
+#include "Core/Scene/Object/SceneObject.h"
 
 DirectX::XMMATRIX TransformComponent::GetWorldMatrix() const
 {
@@ -13,21 +13,18 @@ DirectX::XMMATRIX TransformComponent::GetWorldMatrix() const
 	XMMATRIX S = XMMatrixScaling(scale.x, scale.y, scale.z);
 
 	XMMATRIX local = S * R * T;
+	
 	// °èÃþÇü Transform Àû¿ë
-	if (auto parent = m_owner->GetOwner())
+	while (GameObject* currentAncestor = GetOwner()->GetOwner())
 	{
-		if (auto P = parent->GetTransformComponent())
+		if (auto parentTransform = currentAncestor->GetComponent<TransformComponent>())
 		{
-			return local * P->GetWorldMatrix();
+			return local * parentTransform->GetWorldMatrix();
 		}
+
+		currentAncestor = currentAncestor->GetOwner();
 	}
-
 	return local;
-}
-
-DirectX::XMMATRIX TransformComponent::GetWorldInvMatrix() const
-{
-	return XMMatrixInverse(nullptr, GetWorldMatrix());
 }
 
 void TransformComponent::Move(const DirectX::XMFLOAT3& delta)
@@ -49,4 +46,36 @@ void TransformComponent::Scale(const DirectX::XMFLOAT4& scaleFactor)
 	m_transform.scale.x *= scaleFactor.x;
 	m_transform.scale.y *= scaleFactor.y;
 	m_transform.scale.z *= scaleFactor.z;
+}
+
+void TransformComponent::LookTo(const DirectX::XMFLOAT3& direction, const DirectX::XMFLOAT3& up)
+{
+	XMVECTOR vDir = XMLoadFloat3(&direction);
+	XMVECTOR vUp = XMLoadFloat3(&up);
+	if (XMVectorGetX(XMVector3LengthSq(vDir)) <= 0.00001f) return;
+
+	vDir = XMVector3Normalize(vDir);
+
+	if (XMVector3NearEqual(XMVectorAbs(vDir), XMVectorAbs(vUp), XMVectorSet(0.001f, 0.001f, 0.001f, 0.0f)))
+	{
+		vUp = XMVectorSet(0.0f, 0.0f, 1.0f, 0.0f);
+	}
+
+	XMMATRIX viewMat = XMMatrixLookToLH(XMVectorZero(), vDir, vUp);
+	XMMATRIX worldRotMat = XMMatrixTranspose(viewMat);
+	XMVECTOR rotQuat = XMQuaternionRotationMatrix(worldRotMat);
+	SetRotation(rotQuat);
+}
+
+void TransformComponent::LookAt(const DirectX::XMFLOAT3& targetPos, const DirectX::XMFLOAT3& up)
+{
+	XMVECTOR vPos = XMLoadFloat3(&m_transform.position);
+	XMVECTOR vTarget = XMLoadFloat3(&targetPos);
+
+	XMVECTOR vDir = XMVectorSubtract(vTarget, vPos);
+
+	XMFLOAT3 dir;
+	XMStoreFloat3(&dir, vDir);
+
+	LookTo(dir, up);
 }

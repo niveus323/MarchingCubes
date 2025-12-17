@@ -24,16 +24,10 @@
     <ClCompile Include="App\Common\DXAppBase.cpp">
       <Filter>소스 파일</Filter>
     </ClCompile>
-    <ClCompile Include="App\Editor\MCTerraformEditor.cpp">
-      <Filter>소스 파일</Filter>
-    </ClCompile>
     <ClCompile Include="Core\Geometry\Mesh\Mesh.cpp">
       <Filter>소스 파일</Filter>
     </ClCompile>
     <ClCompile Include="Core\Rendering\BundleRecorder.cpp">
-      <Filter>소스 파일</Filter>
-    </ClCompile>
-    <ClCompile Include="Core\Rendering\Camera.cpp">
       <Filter>소스 파일</Filter>
     </ClCompile>
     <ClCompile Include="Core\Input\InputState.cpp">
@@ -55,9 +49,6 @@
       <Filter>소스 파일</Filter>
     </ClCompile>
     <ClCompile Include="Core\Assets\Material.cpp">
-      <Filter>소스 파일</Filter>
-    </ClCompile>
-    <ClCompile Include="Core\Rendering\LightManager.cpp">
       <Filter>소스 파일</Filter>
     </ClCompile>
     <ClCompile Include="Core\Utils\DXHelper.cpp">
@@ -126,9 +117,6 @@
     <ClCompile Include="Core\Trace\Profiler.cpp">
       <Filter>소스 파일</Filter>
     </ClCompile>
-    <ClCompile Include="App\Editor\GeometryEditor.cpp">
-      <Filter>소스 파일</Filter>
-    </ClCompile>
     <ClCompile Include="Core\Rendering\PSO\DescriptorRing.cpp">
       <Filter>소스 파일</Filter>
     </ClCompile>
@@ -153,10 +141,7 @@
     <ClCompile Include="Core\Assets\MeshRegistry.cpp">
       <Filter>소스 파일</Filter>
     </ClCompile>
-    <ClCompile Include="Core\Scene\BaseScene.cpp">
-      <Filter>소스 파일</Filter>
-    </ClCompile>
-    <ClCompile Include="Core\Scene\SceneObject.cpp">
+    <ClCompile Include="Core\Scene\Object\SceneObject.cpp">
       <Filter>소스 파일</Filter>
     </ClCompile>
     <ClCompile Include="Core\Scene\Component\Component.cpp">
@@ -177,6 +162,33 @@
     <ClCompile Include="Core\Scene\Component\RendererComponent.cpp">
       <Filter>소스 파일</Filter>
     </ClCompile>
+    <ClCompile Include="Core\Scene\Component\CameraComponent.cpp">
+      <Filter>소스 파일</Filter>
+    </ClCompile>
+    <ClCompile Include="Core\Scene\Component\LightComponent.cpp">
+      <Filter>소스 파일</Filter>
+    </ClCompile>
+    <ClCompile Include="Contents\Scene\Scene_Terraform.cpp">
+      <Filter>소스 파일</Filter>
+    </ClCompile>
+    <ClCompile Include="Core\Engine\EngineCore.cpp">
+      <Filter>소스 파일</Filter>
+    </ClCompile>
+    <ClCompile Include="Core\Scene\Object\GameObject.cpp">
+      <Filter>소스 파일</Filter>
+    </ClCompile>
+    <ClCompile Include="Core\Scene\Object\PlayerController.cpp">
+      <Filter>소스 파일</Filter>
+    </ClCompile>
+    <ClCompile Include="Core\Scene\Scene.cpp">
+      <Filter>소스 파일</Filter>
+    </ClCompile>
+    <ClCompile Include="Core\Scene\Object\GameMode.cpp">
+      <Filter>소스 파일</Filter>
+    </ClCompile>
+    <ClCompile Include="Core\Scene\Object\Pawn.cpp">
+      <Filter>소스 파일</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="pch.h">
@@ -191,9 +203,6 @@
     <ClInclude Include="Core\Utils\DXHelper.h">
       <Filter>헤더 파일</Filter>
     </ClInclude>
-    <ClInclude Include="App\Editor\MCTerraformEditor.h">
-      <Filter>헤더 파일</Filter>
-    </ClInclude>
     <ClInclude Include="Core\Geometry\Mesh\Mesh.h">
       <Filter>헤더 파일</Filter>
     </ClInclude>
@@ -201,9 +210,6 @@
       <Filter>헤더 파일</Filter>
     </ClInclude>
     <ClInclude Include="Core\Rendering\BundleRecorder.h">
-      <Filter>헤더 파일</Filter>
-    </ClInclude>
-    <ClInclude Include="Core\Rendering\Camera.h">
       <Filter>헤더 파일</Filter>
     </ClInclude>
     <ClInclude Include="Core\DataStructures\ShaderTypes.h">
@@ -234,9 +240,6 @@
       <Filter>헤더 파일</Filter>
     </ClInclude>
     <ClInclude Include="Core\Assets\Material.h">
-      <Filter>헤더 파일</Filter>
-    </ClInclude>
-    <ClInclude Include="Core\Rendering\LightManager.h">
       <Filter>헤더 파일</Filter>
     </ClInclude>
     <ClInclude Include="Core\Math\PhysicsHelper.h">
@@ -317,9 +320,6 @@
     <ClInclude Include="Core\Trace\Profiler.h">
       <Filter>헤더 파일</Filter>
     </ClInclude>
-    <ClInclude Include="App\Editor\GeometryEditor.h">
-      <Filter>헤더 파일</Filter>
-    </ClInclude>
     <ClInclude Include="Core\Rendering\PSO\DescriptorRing.h">
       <Filter>헤더 파일</Filter>
     </ClInclude>
@@ -344,10 +344,10 @@
     <ClInclude Include="Core\Assets\MeshRegistry.h">
       <Filter>헤더 파일</Filter>
     </ClInclude>
-    <ClInclude Include="Core\Scene\BaseScene.h">
+    <ClInclude Include="Core\Scene\Scene.h">
       <Filter>헤더 파일</Filter>
     </ClInclude>
-    <ClInclude Include="Core\Scene\SceneObject.h">
+    <ClInclude Include="Core\Scene\Object\SceneObject.h">
       <Filter>헤더 파일</Filter>
     </ClInclude>
     <ClInclude Include="Core\Scene\Component\Component.h">
@@ -366,6 +366,30 @@
       <Filter>헤더 파일</Filter>
     </ClInclude>
     <ClInclude Include="Core\Scene\Component\RendererComponent.h">
+      <Filter>헤더 파일</Filter>
+    </ClInclude>
+    <ClInclude Include="Core\Scene\Component\CameraComponent.h">
+      <Filter>헤더 파일</Filter>
+    </ClInclude>
+    <ClInclude Include="Core\Scene\Component\LightComponent.h">
+      <Filter>헤더 파일</Filter>
+    </ClInclude>
+    <ClInclude Include="Contents\Scene\Scene_Terraform.h">
+      <Filter>헤더 파일</Filter>
+    </ClInclude>
+    <ClInclude Include="Core\Engine\EngineCore.h">
+      <Filter>헤더 파일</Filter>
+    </ClInclude>
+    <ClInclude Include="Core\Scene\Object\GameObject.h">
+      <Filter>헤더 파일</Filter>
+    </ClInclude>
+    <ClInclude Include="Core\Scene\Object\PlayerController.h">
+      <Filter>헤더 파일</Filter>
+    </ClInclude>
+    <ClInclude Include="Core\Scene\Object\GameMode.h">
+      <Filter>헤더 파일</Filter>
+    </ClInclude>
+    <ClInclude Include="Core\Scene\Object\Pawn.h">
       <Filter>헤더 파일</Filter>
     </ClInclude>
   </ItemGroup>

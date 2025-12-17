@@ -1,5 +1,5 @@
 #include "pch.h"
-#include "App\Editor\MCTerraformEditor.h"
+#include "App/Editor/Interface/EditorApp.h"
 #include <dxgidebug.h>
 
 
@@ -22,7 +22,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR, int nCmdShow)
 
     int exitCode = 0;
     {
-        MCTerraformEditor sample(1280, 720, L"MarchingCubes");
+        EditorApp sample(1280, 720, L"Editor");
         exitCode = Win32Application::Run(&sample, hInstance, nCmdShow);
     }
 

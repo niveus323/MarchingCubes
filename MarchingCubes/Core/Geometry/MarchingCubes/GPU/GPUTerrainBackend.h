@@ -56,7 +56,7 @@ private:
 	void resetRBSlot(uint32_t slot);
 	void prepareComputeEncoding();
 	void finishComputeEncoding();
-	void encodeFieldUpload(uint32_t frameIndex);
+	void encodeFieldUpload();
 	void encodeBrushPass(uint32_t frameIndex, DirectX::XMUINT3& regionMin, DirectX::XMUINT3& regionMax, SDFVolumeView& volView);
 	void encodeRemeshPass(uint32_t frameIndex, const DirectX::XMUINT3& regionMin, const DirectX::XMUINT3& regionMax, SDFVolumeView& volView);
 

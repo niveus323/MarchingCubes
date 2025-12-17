@@ -24,7 +24,7 @@ class RenderSystem
 {
 public:
 	explicit RenderSystem(RenderSystemInitInfo init_info);
-	RenderSystem(ID3D12Device* device, ID3D12RootSignature* rootSignature, const D3D12_INPUT_LAYOUT_DESC& inputLayout, const std::vector<std::wstring>& psoFiles);
+	RenderSystem(ID3D12Device* device, ID3D12RootSignature* rootSignature, const std::vector<D3D12_INPUT_ELEMENT_DESC>& inputElements, const std::vector<std::wstring>& psoFiles);
 	~RenderSystem();
 
 	void PrepareRender(_In_ UploadContext* uploadContext, _In_ DescriptorAllocator* descriptorAllocator, const CameraConstants& cameraData, const LightBlobView& lightData, uint32_t frameIndex);

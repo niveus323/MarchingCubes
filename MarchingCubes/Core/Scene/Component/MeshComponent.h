@@ -3,11 +3,12 @@
 #include "Core/DataStructures/Data.h"
 
 class Mesh;
+class SceneObject;
 
 class MeshComponent : public RendererComponent
 {
 public:
-	MeshComponent(SceneObject* owner) : RendererComponent(owner) {}
+	MeshComponent(SceneObject* owner);
 	MeshComponent(SceneObject* owner, Mesh* mesh, std::string_view psoName);
 	MeshComponent(SceneObject* owner, Mesh* mesh, const std::vector<std::string_view>& psoNames);
 	virtual ~MeshComponent() = default;

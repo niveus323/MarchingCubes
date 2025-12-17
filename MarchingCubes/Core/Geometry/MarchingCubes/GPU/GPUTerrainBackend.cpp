@@ -115,7 +115,7 @@ void GPUTerrainBackend::encode(uint32_t frameIndex)
 
 	prepareComputeEncoding();
 
-	if (m_fieldDirty) encodeFieldUpload(frameIndex);
+	if (m_fieldDirty) encodeFieldUpload();
 
 	SDFVolumeView volView = {
 		.tex = m_vol->density(),
@@ -323,7 +323,7 @@ void GPUTerrainBackend::finishComputeEncoding()
 	m_needsFetch = true;
 }
 
-void GPUTerrainBackend::encodeFieldUpload(uint32_t frameIndex)
+void GPUTerrainBackend::encodeFieldUpload()
 {
 	m_vol->uploadFromGRD(m_commandList.Get(), m_gridData.get());
 

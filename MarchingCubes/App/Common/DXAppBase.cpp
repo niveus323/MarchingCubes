@@ -5,6 +5,9 @@
 #include "Core/Rendering/Memory/StaticBufferRegistry.h"
 #include "Core/Rendering/UploadContext.h"
 #include "Core/Rendering/PSO/DescriptorAllocator.h"
+#include "Core/Engine/EngineCore.h"
+#include "Core/Input/InputState.h"
+#include "Core/Rendering/RenderSystem.h"
 using namespace Microsoft::WRL;
 
 static inline bool IsTearingSupported(IDXGIFactory6* factory) {
@@ -20,6 +23,8 @@ DXAppBase::DXAppBase(uint32_t width, uint32_t height, std::wstring name) :
 	m_height(height),
 	m_aspectRatio(static_cast<float>(width) / static_cast<float>(height)),
 	m_userWarpDevice(false),
+	m_viewport(0.0f, 0.0f, static_cast<float>(width), static_cast<float>(height)),
+	m_scissorRect(0, 0, static_cast<LONG>(width), static_cast<LONG>(height)),
 	m_title(name)
 {
 	std::fill(std::begin(m_fenceValues), std::end(m_fenceValues), 0ull);
@@ -35,18 +40,29 @@ void DXAppBase::OnInit()
 	CreateBackbuffersAndDefaultDSV(m_width, m_height);  
 	CreateFenceAndEvent();
 	CreateCommandObjects();
-	CreateSubsystems();
+	InitGpuTimeStampResources();
+	InitPipeline();
+	InitSubsystems();
 	OnAfterSwapchainCreated();                      
-	OnInitPipelines();
 	InitializeScene();
+	InitUI(m_commandList.Get());
 }
 
 void DXAppBase::OnDestroy()
 {
-	if (m_swapChain) {
-		m_swapChain->SetFullscreenState(FALSE, nullptr);
+	if (m_commandQueue && m_swapChainFence)
+	{
+		const uint64_t finalFence = ++m_nextFenceValue;
+		ThrowIfFailed(m_commandQueue->Signal(m_swapChainFence.Get(), finalFence));
+		ThrowIfFailed(m_swapChainFence->SetEventOnCompletion(finalFence, m_fenceEvent));
+		WaitForSingleObjectEx(m_fenceEvent, INFINITE, FALSE);
 	}
 
+	if (m_currentScene) m_currentScene->OnExit();
+	if (m_uiRenderer)	m_uiRenderer->ShutDown();
+	if (m_swapChain)  m_swapChain->SetFullscreenState(FALSE, nullptr);
+
+	DestroyGpuTimeStampResources();
 	DestroyFenceAndEvent();
 	DestroyBackbuffersAndDefaultDSV();
 
@@ -58,7 +74,12 @@ void DXAppBase::Render()
 	ThrowIfFailed(m_commandAllocators[m_frameIndex]->Reset());
 	ThrowIfFailed(m_commandList->Reset(m_commandAllocators[m_frameIndex].Get(), nullptr));
 	PrepareRender();
-	OnRender();
+	RenderFrame(m_commandList.Get());
+	if (m_uiRenderer)
+	{
+		m_uiRenderer->RenderFrame(m_commandList.Get());
+	}
+	GpuTimestampEndAndResolve(m_commandList.Get(), m_frameIndex);
 
 	// 렌더링 끝났음. Present 상태로 전환
 	m_commandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(CurrentBackbuffer(), D3D12_RESOURCE_STATE_RENDER_TARGET, D3D12_RESOURCE_STATE_PRESENT));
@@ -87,6 +108,12 @@ void DXAppBase::OnResize(uint32_t width, uint32_t height)
 	m_width = width;
 	m_height = height;
 
+	if (m_currentScene)
+	{
+		// 지금은 App 화면 전체를 씬 뷰포트로 사용하므로 x,y를 모두 0으로 세팅
+		m_currentScene->OnResize(0.0f, 0.0f, static_cast<float>(m_width), static_cast<float>(m_height));
+	}
+
 	DestroyBackbuffersAndDefaultDSV();
 	ThrowIfFailed(m_swapChain->ResizeBuffers( kFrameCount, width, height, m_backbufferFormat, m_tearingSupported ? DXGI_SWAP_CHAIN_FLAG_ALLOW_TEARING : 0));
 	m_frameIndex = m_swapChain->GetCurrentBackBufferIndex();
@@ -102,7 +129,14 @@ void DXAppBase::StartTimer()
 void DXAppBase::TickAndUpdate()
 {
 	float deltaTime = m_timer.Tick();
+	m_inputState->Update();
 	OnUpdate(deltaTime);
+	OnUpdateUI(deltaTime);
+
+	if (!m_uiRenderer->IsCapturingUI())
+	{
+		m_currentScene->Update(deltaTime);
+	}
 }
 
 _Use_decl_annotations_
@@ -119,9 +153,128 @@ void DXAppBase::ParseCommandLineArgs(WCHAR* argv[], int argc)
 	}
 }
 
-std::wstring DXAppBase::GetAssetFullPath(LPCWSTR assetName)
+void DXAppBase::OnPlatformEvent(uint32_t msg, WPARAM wParam, LPARAM lParam)
 {
-	return GetFullPath(AssetType::Default, assetName);
+	switch (msg)
+	{
+		case WM_KEYDOWN:
+		{
+			m_inputState->OnKeyDown(wParam);
+		}
+		break;
+		case WM_KEYUP:
+		{
+			m_inputState->OnKeyUp(wParam);
+		}
+		break;
+		case WM_MOUSEMOVE:
+		{
+			m_inputState->OnMouseMove(GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam));
+		}
+		break;
+		case WM_LBUTTONDOWN:
+		case WM_RBUTTONDOWN:
+		{
+			m_inputState->OnMouseDown(GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam), (msg == WM_LBUTTONDOWN) ? VK_LBUTTON : VK_RBUTTON);
+		}
+		break;
+		case WM_LBUTTONUP:
+		case WM_RBUTTONUP:
+		{
+			m_inputState->OnMouseUp(GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam), (msg == WM_LBUTTONUP) ? VK_LBUTTON : VK_RBUTTON);
+		}
+		break;
+		default:
+			break;
+	}
+}
+
+void DXAppBase::LoadScene(std::unique_ptr<Scene> newScene)
+{
+	// 기존 씬 해제
+	if (m_currentScene)
+	{
+		m_currentScene->OnExit();
+		m_currentScene.reset();
+	}
+
+	// 새 씬으로 교체
+	m_currentScene = std::move(newScene);
+	m_currentScene->OnResize(0.0f, 0.0f, static_cast<float>(m_width), static_cast<float>(m_height));
+	m_currentScene->Init();
+}
+
+
+void DXAppBase::InitUI(ID3D12GraphicsCommandList* cmd)
+{
+	if (m_currentScene)
+	{
+		m_currentScene->InitUI(m_uiRenderer.get());
+	}
+}
+
+void DXAppBase::RenderFrame(ID3D12GraphicsCommandList* cmd)
+{
+	// 렌더 타겟 생성됨, Back Buffer를 RenderTarget 상태로 전환
+	const auto rtvBarrier = CD3DX12_RESOURCE_BARRIER::Transition(CurrentBackbuffer(), D3D12_RESOURCE_STATE_PRESENT, D3D12_RESOURCE_STATE_RENDER_TARGET);
+	cmd->ResourceBarrier(1, &rtvBarrier);
+
+	CD3DX12_CPU_DESCRIPTOR_HANDLE dsvHandle(m_dsvHeap->GetCPUDescriptorHandleForHeapStart());
+	CD3DX12_CPU_DESCRIPTOR_HANDLE rtvHandle(m_rtvHeap->GetCPUDescriptorHandleForHeapStart(), m_frameIndex, m_rtvDescriptorSize);
+	cmd->OMSetRenderTargets(1, &rtvHandle, FALSE, &dsvHandle);
+
+	// RTV Clear 명령 추가.
+	const float clearColor[] = { 0.0f, 0.0f, 0.2f, 1.0f };
+	cmd->ClearRenderTargetView(rtvHandle, clearColor, 0, nullptr);
+	cmd->ClearDepthStencilView(dsvHandle, D3D12_CLEAR_FLAG_DEPTH, 1.0f, 0, 0, nullptr);
+
+	if (m_currentScene)
+	{
+		cmd->RSSetViewports(1, &m_currentScene->GetViewport());
+		cmd->RSSetScissorRects(1, &m_currentScene->GetScissorRect());
+	}
+	else
+	{
+		cmd->RSSetViewports(1, &m_viewport);
+		cmd->RSSetScissorRects(1, &m_scissorRect);
+	}
+
+	DescriptorAllocator* descriptorAllocator = GetDescriptorAllocator();
+	cmd->SetGraphicsRootSignature(m_rootSignature.Get());
+	ID3D12DescriptorHeap* ppHeaps[] = { descriptorAllocator->GetCbvSrvUavHeap(), descriptorAllocator->GetSamplerHeap(0) };
+	cmd->SetDescriptorHeaps(_countof(ppHeaps), ppHeaps);
+	if (ResourceManager* resourceManager = GetResourceManager()) resourceManager->BindDescriptorTable(cmd);
+
+	m_renderSystem->RenderFrame(cmd, GetUploadContext());
+}
+
+void DXAppBase::InitSubsystems()
+{
+	m_gpuAllocator = std::make_unique<GpuAllocator>(m_device.Get());
+	m_staticBufferRegistry = std::make_unique<StaticBufferRegistry>(m_device.Get());
+	m_descriptorAllocator = std::make_unique<DescriptorAllocator>(m_device.Get());
+	m_uploadContext = std::make_unique<UploadContext>(m_device.Get(), m_gpuAllocator.get(), m_staticBufferRegistry.get(), m_descriptorAllocator.get());
+	m_resourceManager = std::make_unique<ResourceManager>(m_device.Get(), m_uploadContext.get(), m_descriptorAllocator.get());
+	m_renderSystem = std::make_unique<RenderSystem>(m_device.Get(), m_rootSignature.Get(), m_inputElements, GetPSOFiles());
+	m_inputState = std::make_unique<InputState>();
+
+	EngineCore::SetDevice(m_device.Get());
+	EngineCore::SetRenderSystem(m_renderSystem.get());
+	EngineCore::SetDescriptorAllocator(m_descriptorAllocator.get());
+	EngineCore::SetUploadContext(m_uploadContext.get());
+	EngineCore::SetResourceManager(m_resourceManager.get());
+	EngineCore::SetInputState(m_inputState.get());
+}
+
+void DXAppBase::OnAfterChainSwaped()
+{
+	EngineCore::SetFrameIndex(m_frameIndex);
+	m_descriptorAllocator->ResetDynamicSlots(m_frameIndex);
+
+	// GPU TimeStamp Readback
+	const double gpuMs = ComputeGpuFrameMsAfterCompleted(m_frameIndex);
+	// Timer에 GPU 프레임 시간(ms) 반영 → 평균/즉시 FPS 계산에 사용
+	GetTimer().PushGpuFrameMs(gpuMs);
 }
 
 _Use_decl_annotations_
@@ -263,6 +416,12 @@ void DXAppBase::CreateCommandObjects()
 	ThrowIfFailed(m_commandList->Close());
 }
 
+void DXAppBase::InitPipeline()
+{
+	CreateRootSignature();
+	CreateInputElements();
+}
+
 void DXAppBase::CreateBackbuffersAndDefaultDSV(uint32_t width, uint32_t height)
 {
 	//Descriptor Heap 생성
@@ -314,22 +473,12 @@ void DXAppBase::CreateBackbuffersAndDefaultDSV(uint32_t width, uint32_t height)
 	m_device->CreateDepthStencilView(m_depthStencil.Get(), nullptr, m_dsvHeap->GetCPUDescriptorHandleForHeapStart());
 }
 
-
-void DXAppBase::CreateSubsystems()
-{
-	m_gpuAllocator = std::make_unique<GpuAllocator>(m_device.Get());
-	m_staticBufferRegistry = std::make_unique<StaticBufferRegistry>(m_device.Get());
-	m_descriptorAllocator = std::make_unique<DescriptorAllocator>(m_device.Get());
-	m_uploadContext = std::make_unique<UploadContext>(m_device.Get(), m_gpuAllocator.get(), m_staticBufferRegistry.get(), m_descriptorAllocator.get());
-	m_resourceManager = std::make_unique<ResourceManager>(m_device.Get(), m_uploadContext.get(), m_descriptorAllocator.get());
-	OnInitSubSystems();
-}
-
 void DXAppBase::InitializeScene()
 {
 	ThrowIfFailed(m_commandAllocators[0]->Reset());
 	ThrowIfFailed(m_commandList->Reset(m_commandAllocators[0].Get(), nullptr));
 	OnBuildInitialScene(m_commandList.Get());
+	LoadScene(std::move(CreateDefaultScene()));
 	if (m_resourceManager) m_resourceManager->BuildTables(m_commandList.Get());
 	// Close CommandList
 	ThrowIfFailed(m_commandList->Close());
@@ -373,7 +522,9 @@ void DXAppBase::PrepareRender()
 	// 이번 프레임에 할당 가능한 공간 체크
 	m_uploadContext->Reclaim(m_swapChainFence->GetCompletedValue());
 	m_gpuAllocator->Reclaim(m_swapChainFence->GetCompletedValue());
+	GpuTimestampBegin(m_commandList.Get(), m_frameIndex);
 	OnUpload(m_commandList.Get());
+	if (m_currentScene) m_currentScene->Render();
 	m_resourceManager->syncGpu(m_commandList.Get());
 	m_uploadContext->Execute(m_commandList.Get());
 }
@@ -397,8 +548,7 @@ void DXAppBase::MoveToNextFrame()
 		ThrowIfFailed(m_swapChainFence->SetEventOnCompletion(lastFenceValue, m_fenceEvent));
 		WaitForSingleObjectEx(m_fenceEvent, INFINITE, FALSE);
 	}
-	m_descriptorAllocator->ResetDynamicSlots(m_frameIndex);
-
+	
 	OnAfterChainSwaped();
 }
 
@@ -424,4 +574,78 @@ void DXAppBase::WaitForGpu()
 
 	}
 	m_fenceValues[m_frameIndex] = lastFenceValue + 1;
+}
+
+void DXAppBase::InitGpuTimeStampResources()
+{
+	ThrowIfFailed(GetPresentQueue()->GetTimestampFrequency(&m_tsFreq));
+
+	// Query heap: 프레임당 2(시작/끝) * kFrameCount
+	D3D12_QUERY_HEAP_DESC qh{};
+	qh.Count = kFrameCount * 2;
+	qh.Type = D3D12_QUERY_HEAP_TYPE_TIMESTAMP;
+	qh.NodeMask = 0;
+	ThrowIfFailed(m_device->CreateQueryHeap(&qh, IID_PPV_ARGS(&m_tsQueryHeap)));
+
+	// Readback buffer
+	const uint64_t bufSize = sizeof(uint64_t) * (static_cast<uint64_t>(kFrameCount * 2));
+	D3D12_HEAP_PROPERTIES hp{};
+	hp.Type = D3D12_HEAP_TYPE_READBACK;
+	D3D12_RESOURCE_DESC rb{};
+	rb.Dimension = D3D12_RESOURCE_DIMENSION_BUFFER;
+	rb.Width = bufSize;
+	rb.Height = 1;
+	rb.DepthOrArraySize = 1;
+	rb.MipLevels = 1;
+	rb.Format = DXGI_FORMAT_UNKNOWN;
+	rb.SampleDesc = { 1,0 };
+	rb.Layout = D3D12_TEXTURE_LAYOUT_ROW_MAJOR;
+	ThrowIfFailed(m_device->CreateCommittedResource(
+		&hp, D3D12_HEAP_FLAG_NONE, &rb,
+		D3D12_RESOURCE_STATE_COPY_DEST, nullptr, IID_PPV_ARGS(&m_tsReadback)));
+
+	// map
+	ThrowIfFailed(m_tsReadback->Map(0, nullptr, reinterpret_cast<void**>(&m_tsMapped)));
+}
+
+void DXAppBase::DestroyGpuTimeStampResources()
+{
+	if (m_tsReadback)
+	{
+		m_tsReadback->Unmap(0, nullptr);
+		m_tsMapped = nullptr;
+	}
+	m_tsReadback.Reset();
+	m_tsQueryHeap.Reset();
+	m_tsFreq = 0;
+}
+
+void DXAppBase::GpuTimestampBegin(ID3D12GraphicsCommandList* cmd, uint32_t frameIndex)
+{
+	const uint32_t q0 = QueryIndexStart(frameIndex);
+	cmd->EndQuery(m_tsQueryHeap.Get(), D3D12_QUERY_TYPE_TIMESTAMP, q0);
+}
+
+void DXAppBase::GpuTimestampEndAndResolve(ID3D12GraphicsCommandList* cmd, uint32_t frameIndex)
+{
+	const uint32_t q0 = QueryIndexStart(frameIndex);
+	const uint32_t q1 = q0 + 1;
+	cmd->EndQuery(m_tsQueryHeap.Get(), D3D12_QUERY_TYPE_TIMESTAMP, q1);
+
+	// 시작/끝 2개를 readback 버퍼에 연속으로 Resolve
+	const uint64_t dstOffsetBytes = sizeof(uint64_t) * q0;
+	cmd->ResolveQueryData(m_tsQueryHeap.Get(), D3D12_QUERY_TYPE_TIMESTAMP, q0, 2, m_tsReadback.Get(), dstOffsetBytes);
+}
+
+double DXAppBase::ComputeGpuFrameMsAfterCompleted(uint32_t frameIndex)
+{
+	if (!m_tsMapped || m_tsFreq == 0) return 0.0;
+	const uint32_t q0 = QueryIndexStart(frameIndex);
+	const uint32_t q1 = q0 + 1;
+	const uint64_t t0 = m_tsMapped[q0];
+	const uint64_t t1 = m_tsMapped[q1];
+	if (t1 <= t0) return 0.0;
+
+	const double sec = double(t1 - t0) / double(m_tsFreq);
+	return sec * 1000.0;
 }

@@ -21,25 +21,26 @@ RenderSystem::RenderSystem(RenderSystemInitInfo init_info) :
 		mergedSpecs.insert(mergedSpecs.end(), specs.begin(), specs.end());
 	}
 
-	D3D12_INPUT_LAYOUT_DESC inputLayout{};
-	inputLayout.pInputElementDescs = m_info.inputElements.data();
-	inputLayout.NumElements = static_cast<UINT>(m_info.inputElements.size());
-	PSOList::BuildContext ctx{};
-	ctx.device = device;
-	ctx.root = rootSignature;
-	ctx.inputLayout = inputLayout;
-
+	PSOList::BuildContext ctx{
+		.device = device,
+		.root = rootSignature,
+		.inputLayout = D3D12_INPUT_LAYOUT_DESC{
+			.pInputElementDescs = m_info.inputElements.data(),
+			.NumElements = static_cast<UINT>(m_info.inputElements.size())
+		}
+	};
+	
 	m_psoList = std::make_unique<PSOList>(ctx, mergedSpecs);
 	m_buckets.resize(m_psoList->Count());
 
 	m_bundleRecorder = std::make_unique<BundleRecorder>(device, rootSignature, m_psoList.get(), 2);
 }
 
-RenderSystem::RenderSystem(ID3D12Device* device, ID3D12RootSignature* rootSignature, const D3D12_INPUT_LAYOUT_DESC& inputLayout, const std::vector<std::wstring>& psoFiles) :
+RenderSystem::RenderSystem(ID3D12Device* device, ID3D12RootSignature* rootSignature, const std::vector<D3D12_INPUT_ELEMENT_DESC>& inputElements, const std::vector<std::wstring>& psoFiles) :
 	RenderSystem(RenderSystemInitInfo{
 		.device = device,
 		.rootSignature = rootSignature,
-		.inputElements = std::vector<D3D12_INPUT_ELEMENT_DESC>(inputLayout.pInputElementDescs, inputLayout.pInputElementDescs + inputLayout.NumElements),
+		.inputElements = inputElements,
 		.psoFiles = psoFiles })
 {
 }
@@ -52,6 +53,7 @@ RenderSystem::~RenderSystem()
 	}
 }
 
+// PSO의 공용 CB를 업로드
 void RenderSystem::PrepareRender(_In_ UploadContext* uploadContext, _In_ DescriptorAllocator* descriptorAllocator, const CameraConstants& cameraData, const LightBlobView& lightData, uint32_t frameIndex)
 {
 	uploadContext->UploadContstants(frameIndex, &cameraData, sizeof(CameraConstants), m_cameraBuf);

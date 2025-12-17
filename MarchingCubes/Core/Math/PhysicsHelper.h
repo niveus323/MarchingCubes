@@ -1,7 +1,6 @@
 ﻿#pragma once
 #include "Core/Geometry/Mesh/Mesh.h"
 #include <DirectXMath.h>
-#include <Core\Rendering\Camera.h>
 
 namespace PhysicsUtil
 {
@@ -145,16 +144,14 @@ namespace PhysicsUtil
 		return true;
 	}
 
-	static void MakeRay(const float mouseX, const float mouseY, const Camera& cam, XMVECTOR& outRayOrigin, XMVECTOR& outRayDir)
+	static void MakeRay(const float mouseX, const float mouseY, const float viewportWidth, const float viewportHeight, const DirectX::XMMATRIX& viewproj, XMVECTOR& outRayOrigin, XMVECTOR& outRayDir)
 	{
 		// ScreenSpace -> NDC Space
-		const float viewportWidth = cam.GetViewportWidth();
-		const float viewportHeight = cam.GetViewportHeight();
 		float ndcX = (2.0f * mouseX / viewportWidth) - 1.0f;
 		float ndcY = 1.0f - (2.0f * mouseY / viewportHeight);
 
 		// NDC Space -> World Space
-		XMMATRIX invViewProj = XMMatrixInverse(nullptr, cam.GetViewProjMatrix());
+		XMMATRIX invViewProj = XMMatrixInverse(nullptr, viewproj);
 		XMVECTOR nearNDC = XMVectorSet(ndcX, ndcY, 0.0f, 1.0f);
 		XMVECTOR farNDC = XMVectorSet(ndcX, ndcY, 1.0f, 1.0f);
 		XMVECTOR worldNear = XMVector3TransformCoord(nearNDC, invViewProj);
