@@ -1,131 +1,50 @@
 ﻿#include "pch.h"
 #include "EditorApp.h"
-#include "Core/UI/ImGUIRenderer.h"
 #include "Core/Assets/ResourceManager.h"
+#include "Core/UI/ImGUIRenderer.h"
+#include "Core/Trace/Profiler.h"
+#include "Core/Input/InputState.h"
 #include <numeric>
 
 void EditorApp::OnDestroy()
 {
-	if (m_commandQueue && m_swapChainFence)
-	{
-		const uint64_t finalFence = ++m_nextFenceValue;
-		ThrowIfFailed(m_commandQueue->Signal(m_swapChainFence.Get(), finalFence));
-		ThrowIfFailed(m_swapChainFence->SetEventOnCompletion(finalFence, m_fenceEvent));
-		WaitForSingleObjectEx(m_fenceEvent, INFINITE, FALSE);
-	}
-
-	if (m_uiRenderer)	m_uiRenderer->ShutDown();
-	DestroyGpuTimeStampResources();
 	DXAppBase::OnDestroy();
 }
 
 void EditorApp::OnUpdate(float deltaTime)
 {
-	UpdateScene(deltaTime);
-	UpdateUI(deltaTime);
-
-	m_mainCamera->UpdateViewMatrix();
-	m_mainCamera->UpdateProjMatrix();
-	m_inputState.Update();
-
-}
-
-void EditorApp::OnRender()
-{
-	DrawScene(m_commandList.Get());
-	m_uiRenderer->RenderFrame(m_commandList.Get());
-	AfterDraw(m_commandList.Get());
-
-	GpuTimestampEndAndResolve(m_commandList.Get(), m_frameIndex);
-}
-
-void EditorApp::OnPlatformEvent(uint32_t msg, WPARAM wParam, LPARAM lParam)
-{
-	switch (msg)
+	if (m_inputState->IsPressed(ActionKey::Escape))
 	{
-		case WM_KEYDOWN:
-		{
-			m_inputState.OnKeyDown(wParam);
-		}
-		break;
-		case WM_KEYUP:
-		{
-			m_inputState.OnKeyUp(wParam);
-		}
-		break;
-		case WM_MOUSEMOVE:
-		{
-			m_inputState.OnMouseMove(GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam));
-		}
-		break;
-		case WM_LBUTTONDOWN:
-		case WM_RBUTTONDOWN:
-		{
-			m_inputState.OnMouseDown(GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam), (msg == WM_LBUTTONDOWN) ? VK_LBUTTON : VK_RBUTTON);
-		}
-		break;
-		case WM_LBUTTONUP:
-		case WM_RBUTTONUP:
-		{
-			m_inputState.OnMouseUp(GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam), (msg == WM_LBUTTONUP) ? VK_LBUTTON : VK_RBUTTON);
-		}
-		break;
-		default:
-			break;
+		PostQuitMessage(0);
+		return;
 	}
 
-}
-
-void EditorApp::OnAfterSwapchainCreated()
-{
-	InitGpuTimeStampResources();
-}
-
-void EditorApp::OnInitPipelines()
-{
-	D3D12_INPUT_ELEMENT_DESC inputElementDesc[] =
+#ifdef _DEBUG
+	if (m_inputState->GetKeyState(ActionKey::ToggleDebugView) == ActionKeyState::JustPressed)
 	{
-		{ "POSITION", 0, DXGI_FORMAT_R32G32B32_FLOAT,    0,  0, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
-		{ "NORMAL",   0, DXGI_FORMAT_R32G32B32_FLOAT,    0, 12, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
-		{ "TANGENT",  0, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, 24, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
-		{ "TEXCOORD", 0, DXGI_FORMAT_R32G32_FLOAT,       0, 40, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
-		{ "COLOR",    0, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, 48, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 }
-	};
-
-	//Create Main Root Signature.
-	{
-		// Define Root Parameter : b0 (CameraBuffer), b1 (ObjectBuffer), b2 (LightBuffer), b3 (TriplanarBuffer) ,t0 (Materials), t1 (EnvMap), t2(TexTable), s0 (LinearSampler)
-		CD3DX12_ROOT_PARAMETER1  rootParams[7];
-		ZeroMemory(rootParams, sizeof(rootParams));
-		rootParams[0].InitAsConstantBufferView(0); // b0
-		rootParams[1].InitAsConstantBufferView(1); // b1
-		rootParams[2].InitAsDescriptorTable(1, &CD3DX12_DESCRIPTOR_RANGE1(D3D12_DESCRIPTOR_RANGE_TYPE_CBV, 1, 2)); // b2
-		rootParams[3].InitAsDescriptorTable(1, &CD3DX12_DESCRIPTOR_RANGE1(D3D12_DESCRIPTOR_RANGE_TYPE_CBV, 1, 3)); // b3
-		rootParams[4].InitAsDescriptorTable(1, &CD3DX12_DESCRIPTOR_RANGE1(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 0)); // t0
-		rootParams[5].InitAsDescriptorTable(1, &CD3DX12_DESCRIPTOR_RANGE1(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 1)); // t1
-		rootParams[6].InitAsDescriptorTable(1, &CD3DX12_DESCRIPTOR_RANGE1(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, (uint32_t)-1, 2, 0u, D3D12_DESCRIPTOR_RANGE_FLAG_DESCRIPTORS_VOLATILE)); // t2
-
-		// Static Sampler 등록 ( 런타임에 바꿔야할 샘플러가 필요할 경우 Descriptor Table에 포함할 것.)
-		CD3DX12_STATIC_SAMPLER_DESC samplerDescs = CD3DX12_STATIC_SAMPLER_DESC(0, D3D12_FILTER_MIN_MAG_MIP_LINEAR); // s0
-
-		CD3DX12_VERSIONED_ROOT_SIGNATURE_DESC rootSignatureDesc{};
-		rootSignatureDesc.Init_1_1(_countof(rootParams), rootParams, 1, &samplerDescs, D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT);
-
-		ComPtr<ID3DBlob> signature;
-		ThrowIfFailed(D3DX12SerializeVersionedRootSignature(&rootSignatureDesc, D3D_ROOT_SIGNATURE_VERSION_1_1, &signature, nullptr));
-		ThrowIfFailed(m_device->CreateRootSignature(0, signature->GetBufferPointer(), signature->GetBufferSize(), IID_PPV_ARGS(m_rootSignature.ReleaseAndGetAddressOf())));
-		NAME_D3D12_OBJECT(m_rootSignature);
+		SetDebugViewMode(m_hDefaultView);
 	}
+	else if (m_inputState->GetKeyState(ActionKey::ToggleWireFrame) == ActionKeyState::JustPressed)
+	{
+		if (m_renderSystem->IsOverrideActive("Filled", "Wire"))
+		{
+			SetDebugViewMode(m_hDefaultView);
+		}
+		else
+		{
+			SetDebugViewMode(m_hWireView);
+		}
+	}
+	else if (m_inputState->GetKeyState(ActionKey::ToggleDebugNormal) == ActionKeyState::JustPressed)
+	{
+		SetDebugViewMode(m_hNormalView); // Just Toggle
+	}
+#endif // _DEBUG
 
-	D3D12_INPUT_LAYOUT_DESC inputLayout = { inputElementDesc, _countof(inputElementDesc) };
-	m_renderSystem = std::make_unique<RenderSystem>(m_device.Get(), m_rootSignature.Get(), inputLayout, GetPSOFiles());
 }
 
 void EditorApp::OnBuildInitialScene(ID3D12GraphicsCommandList* initCommand)
 {
-	m_mainCamera = std::make_unique<Camera>(static_cast<float>(m_width), static_cast<float>(m_height));
-	m_lightManager = std::make_unique<LightManager>(m_device.Get(), 3);
-
 	if (ResourceManager* resourceManager = GetResourceManager())
 	{
 		uint32_t sandTexHandle = resourceManager->LoadTexture(GetFullPath(AssetType::Texture, L"gravelly_sand/gravelly_sand_diffuse"));
@@ -169,20 +88,9 @@ void EditorApp::OnBuildInitialScene(ID3D12GraphicsCommandList* initCommand)
 			rs->TogglePSOExtension("Filled", "DrawNormal");
 		});
 	}
-
-	InitScene(initCommand);
-	InitUICommon(initCommand);
 }
 
-void EditorApp::OnAfterChainSwaped()
-{
-	// GPU TimeStamp Readback
-	const double gpuMs = ComputeGpuFrameMsAfterCompleted(m_frameIndex);
-	// Timer에 GPU 프레임 시간(ms) 반영 → 평균/즉시 FPS 계산에 사용
-	GetTimer().PushGpuFrameMs(gpuMs);
-}
-
-void EditorApp::InitUICommon(ID3D12GraphicsCommandList* cmd)
+void EditorApp::InitUI(ID3D12GraphicsCommandList* cmd)
 {
 	std::unique_ptr<ImGUIRenderer> imguiRenderer = std::make_unique<ImGUIRenderer>();
 
@@ -217,15 +125,7 @@ void EditorApp::InitUICommon(ID3D12GraphicsCommandList* cmd)
 	}
 
 	m_uiRenderer = std::move(imguiRenderer);
-	InitUI();
 
-	// profiler
-	m_profilerOwner = std::make_shared<Profiler>();
-	m_profiler = m_profilerOwner;
-}
-
-void EditorApp::InitUI()
-{
 	m_uiToken_Fps = m_uiRenderer->AddFrameRenderCallbackToken(std::bind(&EditorApp::RenderFpsUI, this), UI::UICallbackOptions{
 		.priority = 0,
 		.rateHz = 0,
@@ -233,16 +133,24 @@ void EditorApp::InitUI()
 		.id = "Fps"
 		});
 
+	// TODO : Profiler 에디터로 옮기기
 	m_uiToken_Profiler = m_uiRenderer->AddFrameRenderCallbackToken(std::bind(&EditorApp::RenderProfilingUI, this), UI::UICallbackOptions{
 		.priority = 0,
 		.rateHz = 0,
 		.enabled = true,
 		.id = "Profiler"
 		});
+
+	// profiler
+	m_profilerOwner = std::make_shared<Profiler>();
+	m_profiler = m_profilerOwner;
+
+	DXAppBase::InitUI(cmd);
 }
 
-void EditorApp::UpdateUI(float deltaTime)
+void EditorApp::OnUpdateUI(float deltaTime)
 {
+	// TODO : Profiler 에디터로 옮기기
 	GpuAllocator* gpuAllocator = GetGpuAllocator();
 	StaticBufferRegistry* staticBufferRegistry = GetStaticBufferRegistry();
 	if (auto p = m_profiler.lock())
@@ -286,40 +194,82 @@ void EditorApp::UpdateUI(float deltaTime)
 	}
 }
 
-void EditorApp::OnUpload(ID3D12GraphicsCommandList* cmd)
+void EditorApp::CreateRootSignature()
 {
-	GpuTimestampBegin(m_commandList.Get(), m_frameIndex);
-	CameraConstants commonCameraData = m_mainCamera->BuildCameraConstants();
-	LightBlobView commonLightData = m_lightManager->BuildLightConstants();
-	m_renderSystem->PrepareRender(GetUploadContext(), GetDescriptorAllocator(), commonCameraData, commonLightData, m_frameIndex);
+	// Define Root Parameter : b0 (CameraBuffer), b1 (ObjectBuffer), b2 (LightBuffer), b3 (TriplanarBuffer) ,t0 (Materials), t1 (EnvMap), t2(TexTable), s0 (LinearSampler)
+	CD3DX12_ROOT_PARAMETER1  rootParams[7];
+	ZeroMemory(rootParams, sizeof(rootParams));
+	rootParams[0].InitAsConstantBufferView(0); // b0
+	rootParams[1].InitAsConstantBufferView(1); // b1
+	rootParams[2].InitAsDescriptorTable(1, &CD3DX12_DESCRIPTOR_RANGE1(D3D12_DESCRIPTOR_RANGE_TYPE_CBV, 1, 2)); // b2
+	rootParams[3].InitAsDescriptorTable(1, &CD3DX12_DESCRIPTOR_RANGE1(D3D12_DESCRIPTOR_RANGE_TYPE_CBV, 1, 3)); // b3
+	rootParams[4].InitAsDescriptorTable(1, &CD3DX12_DESCRIPTOR_RANGE1(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 0)); // t0
+	rootParams[5].InitAsDescriptorTable(1, &CD3DX12_DESCRIPTOR_RANGE1(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 1)); // t1
+	rootParams[6].InitAsDescriptorTable(1, &CD3DX12_DESCRIPTOR_RANGE1(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, (uint32_t)-1, 2, 0u, D3D12_DESCRIPTOR_RANGE_FLAG_DESCRIPTORS_VOLATILE)); // t2
+
+	// Static Sampler 등록 ( 런타임에 바꿔야할 샘플러가 필요할 경우 Descriptor Table에 포함할 것.)
+	CD3DX12_STATIC_SAMPLER_DESC samplerDescs = CD3DX12_STATIC_SAMPLER_DESC(0, D3D12_FILTER_MIN_MAG_MIP_LINEAR); // s0
+
+	CD3DX12_VERSIONED_ROOT_SIGNATURE_DESC rootSignatureDesc{};
+	rootSignatureDesc.Init_1_1(_countof(rootParams), rootParams, 1, &samplerDescs, D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT);
+
+	ComPtr<ID3DBlob> signature;
+	ThrowIfFailed(D3DX12SerializeVersionedRootSignature(&rootSignatureDesc, D3D_ROOT_SIGNATURE_VERSION_1_1, &signature, nullptr));
+	ThrowIfFailed(m_device->CreateRootSignature(0, signature->GetBufferPointer(), signature->GetBufferSize(), IID_PPV_ARGS(m_rootSignature.ReleaseAndGetAddressOf())));
+	NAME_D3D12_OBJECT(m_rootSignature);
 }
 
-void EditorApp::DrawScene(ID3D12GraphicsCommandList* cmd)
+void EditorApp::CreateInputElements()
 {
-	// 렌더 타겟 생성됨, Back Buffer를 RenderTarget 상태로 전환
-	const auto rtvBarrier = CD3DX12_RESOURCE_BARRIER::Transition(CurrentBackbuffer(), D3D12_RESOURCE_STATE_PRESENT, D3D12_RESOURCE_STATE_RENDER_TARGET);
-	cmd->ResourceBarrier(1, &rtvBarrier);
+	m_inputElements.push_back(D3D12_INPUT_ELEMENT_DESC{
+		.SemanticName = "POSITION",
+		.SemanticIndex = 0,
+		.Format = DXGI_FORMAT_R32G32B32_FLOAT,
+		.InputSlot = 0,
+		.AlignedByteOffset = 0,
+		.InputSlotClass = D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA,
+		.InstanceDataStepRate = 0
+	});
 
-	CD3DX12_CPU_DESCRIPTOR_HANDLE dsvHandle(m_dsvHeap->GetCPUDescriptorHandleForHeapStart());
-	CD3DX12_CPU_DESCRIPTOR_HANDLE rtvHandle(m_rtvHeap->GetCPUDescriptorHandleForHeapStart(), m_frameIndex, m_rtvDescriptorSize);
-	cmd->OMSetRenderTargets(1, &rtvHandle, FALSE, &dsvHandle);
+	m_inputElements.push_back(D3D12_INPUT_ELEMENT_DESC{ 
+		.SemanticName = "NORMAL",   
+		.SemanticIndex = 0, 
+		.Format = DXGI_FORMAT_R32G32B32_FLOAT,    
+		.InputSlot = 0, 
+		.AlignedByteOffset= 12, 
+		.InputSlotClass = D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 
+		.InstanceDataStepRate= 0 
+	});
+	
+	m_inputElements.push_back(D3D12_INPUT_ELEMENT_DESC{
+		.SemanticName = "TANGENT",
+		.SemanticIndex = 0,
+		.Format = DXGI_FORMAT_R32G32B32A32_FLOAT,
+		.InputSlot = 0,
+		.AlignedByteOffset = 24,
+		.InputSlotClass = D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA,
+		.InstanceDataStepRate = 0
+	});
 
-	// RTV Clear 명령 추가.
-	const float clearColor[] = { 0.0f, 0.0f, 0.2f, 1.0f };
-	cmd->ClearRenderTargetView(rtvHandle, clearColor, 0, nullptr);
-	cmd->ClearDepthStencilView(dsvHandle, D3D12_CLEAR_FLAG_DEPTH, 1.0f, 0, 0, nullptr);
+	m_inputElements.push_back(D3D12_INPUT_ELEMENT_DESC{
+		.SemanticName = "TEXCOORD",
+		.SemanticIndex = 0,
+		.Format = DXGI_FORMAT_R32G32_FLOAT,
+		.InputSlot = 0,
+		.AlignedByteOffset = 40,
+		.InputSlotClass = D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA,
+		.InstanceDataStepRate = 0
+	});
 
-	cmd->RSSetViewports(1, &m_viewport);
-	cmd->RSSetScissorRects(1, &m_scissorRect);
-
-	DescriptorAllocator* descriptorAllocator = GetDescriptorAllocator();
-	cmd->SetGraphicsRootSignature(m_rootSignature.Get());
-	ID3D12DescriptorHeap* ppHeaps[] = { descriptorAllocator->GetCbvSrvUavHeap(), descriptorAllocator->GetSamplerHeap(0) };
-	cmd->SetDescriptorHeaps(_countof(ppHeaps), ppHeaps);
-	//cmd->SetGraphicsRootDescriptorTable(4, descriptorAllocator->GetStaticGpu(m_materialSlot)); // MaterialTable
-	if (ResourceManager* resourceManager = GetResourceManager()) resourceManager->BindDescriptorTable(cmd);
-
-	m_renderSystem->RenderFrame(cmd, GetUploadContext());
+	m_inputElements.push_back(D3D12_INPUT_ELEMENT_DESC{
+		.SemanticName = "COLOR",
+		.SemanticIndex = 0,
+		.Format = DXGI_FORMAT_R32G32B32A32_FLOAT,
+		.InputSlot = 0,
+		.AlignedByteOffset = 48,
+		.InputSlotClass = D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA,
+		.InstanceDataStepRate = 0
+	});
 }
 
 DebugViewModeHandle EditorApp::RegisterDebugViewMode(std::string_view name, std::function<void(RenderSystem*)> func)
@@ -360,79 +310,6 @@ void EditorApp::SetDebugViewMode(int index)
 	}
 }
 
-void EditorApp::InitGpuTimeStampResources()
-{
-	ThrowIfFailed(GetPresentQueue()->GetTimestampFrequency(&m_tsFreq));
-
-	// Query heap: 프레임당 2(시작/끝) * kFrameCount
-	D3D12_QUERY_HEAP_DESC qh{};
-	qh.Count = kFrameCount * 2;
-	qh.Type = D3D12_QUERY_HEAP_TYPE_TIMESTAMP;
-	qh.NodeMask = 0;
-	ThrowIfFailed(m_device->CreateQueryHeap(&qh, IID_PPV_ARGS(&m_tsQueryHeap)));
-
-	// Readback buffer
-	const uint64_t bufSize = sizeof(uint64_t) * (static_cast<uint64_t>(kFrameCount * 2));
-	D3D12_HEAP_PROPERTIES hp{};
-	hp.Type = D3D12_HEAP_TYPE_READBACK;
-	D3D12_RESOURCE_DESC rb{};
-	rb.Dimension = D3D12_RESOURCE_DIMENSION_BUFFER;
-	rb.Width = bufSize;
-	rb.Height = 1;
-	rb.DepthOrArraySize = 1;
-	rb.MipLevels = 1;
-	rb.Format = DXGI_FORMAT_UNKNOWN;
-	rb.SampleDesc = { 1,0 };
-	rb.Layout = D3D12_TEXTURE_LAYOUT_ROW_MAJOR;
-	ThrowIfFailed(m_device->CreateCommittedResource(
-		&hp, D3D12_HEAP_FLAG_NONE, &rb,
-		D3D12_RESOURCE_STATE_COPY_DEST, nullptr, IID_PPV_ARGS(&m_tsReadback)));
-
-	// map
-	ThrowIfFailed(m_tsReadback->Map(0, nullptr, reinterpret_cast<void**>(&m_tsMapped)));
-}
-
-void EditorApp::DestroyGpuTimeStampResources()
-{
-	if (m_tsReadback)
-	{
-		m_tsReadback->Unmap(0, nullptr);
-		m_tsMapped = nullptr;
-	}
-	m_tsReadback.Reset();
-	m_tsQueryHeap.Reset();
-	m_tsFreq = 0;
-}
-
-void EditorApp::GpuTimestampBegin(ID3D12GraphicsCommandList* cmd, uint32_t frameIndex)
-{
-	const uint32_t q0 = QueryIndexStart(frameIndex);
-	cmd->EndQuery(m_tsQueryHeap.Get(), D3D12_QUERY_TYPE_TIMESTAMP, q0);
-}
-
-void EditorApp::GpuTimestampEndAndResolve(ID3D12GraphicsCommandList* cmd, uint32_t frameIndex)
-{
-	const uint32_t q0 = QueryIndexStart(frameIndex);
-	const uint32_t q1 = q0 + 1;
-	cmd->EndQuery(m_tsQueryHeap.Get(), D3D12_QUERY_TYPE_TIMESTAMP, q1);
-
-	// 시작/끝 2개를 readback 버퍼에 연속으로 Resolve
-	const uint64_t dstOffsetBytes = sizeof(uint64_t) * q0;
-	cmd->ResolveQueryData(m_tsQueryHeap.Get(), D3D12_QUERY_TYPE_TIMESTAMP, q0, 2, m_tsReadback.Get(), dstOffsetBytes);
-}
-
-double EditorApp::ComputeGpuFrameMsAfterCompleted(uint32_t frameIndex)
-{
-	if (!m_tsMapped || m_tsFreq == 0) return 0.0;
-	const uint32_t q0 = QueryIndexStart(frameIndex);
-	const uint32_t q1 = q0 + 1;
-	const uint64_t t0 = m_tsMapped[q0];
-	const uint64_t t1 = m_tsMapped[q1];
-	if (t1 <= t0) return 0.0;
-
-	const double sec = double(t1 - t0) / double(m_tsFreq);
-	return sec * 1000.0;
-}
 
 void EditorApp::RenderFpsUI()
 {

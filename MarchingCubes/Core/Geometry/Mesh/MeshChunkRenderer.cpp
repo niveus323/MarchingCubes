@@ -89,3 +89,18 @@ std::vector<BoundingBox> MeshChunkRenderer::GetBoundingBox() const
 	}
 	return out;
 }
+
+std::vector<ChunkSlot*> MeshChunkRenderer::GetChunkSlots()
+{
+	std::vector<ChunkSlot*> validSlots;
+	validSlots.reserve(m_chunks.size());
+
+	for (auto& [key, slot] : m_chunks)
+	{
+		if (slot.indexCount > 0)
+		{
+			validSlots.push_back(&slot);
+		}
+	}
+	return validSlots;
+}

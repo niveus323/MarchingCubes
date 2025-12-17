@@ -1,10 +1,16 @@
 #include "pch.h"
 #include "MeshComponent.h"
 #include "Core/Geometry/Mesh/Mesh.h"
-#include "Core/Scene/BaseScene.h"
-#include "Core/Scene/SceneObject.h"
+#include "Core/Scene/Scene.h"
+#include "Core/Scene/Object/SceneObject.h"
 #include "Core/Scene/Component/TransformComponent.h"
 #include "Core/Rendering/RenderSystem.h"
+#include "Core/Engine/EngineCore.h"
+
+MeshComponent::MeshComponent(SceneObject* owner) : 
+    RendererComponent(owner) 
+{
+}
 
 MeshComponent::MeshComponent(SceneObject* owner, Mesh* mesh, std::string_view psoName) :
     MeshComponent(owner)
@@ -64,7 +70,7 @@ void MeshComponent::Submit()
         return;
     }
 
-    auto renderSystem = GetScene()->GetRenderSystem();
+    auto renderSystem = EngineCore::GetRenderSystem();
     if (!renderSystem) 
     {
         Log::Print("MeshComponent", "Invalid RenderSystem");
@@ -82,7 +88,7 @@ void MeshComponent::Submit()
             .indexCount = mesh.indexCount,
             .indexOffset = mesh.indexOffset,
             .baseVertexLocation = mesh.baseVertexLocation,
-            .worldMatrix = m_owner->GetTransform(),
+            .worldMatrix = GetOwner<SceneObject>()->GetWorldTransform(),
             .materialIndex = mesh.materialIndex,
         };
         renderSystem->SubmitRenderItem(item, m_materials[i].psoName);

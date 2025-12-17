@@ -20,8 +20,6 @@ public:
 	void Execute(ID3D12GraphicsCommandList* cmdList);
 	void TrackPendingAllocations(uint64_t submitFenceValue);
 	void Reclaim(uint64_t completedFenceValue);
-	//void UploadDrawable(IDrawable* drawable, uint64_t completedFenceValue);
-	//void UploadStatic(IDrawable* drawable, uint64_t completedFenceValue);
 	void UploadObjectConstants(uint32_t frameIndex, GeometryBuffer* buf, const ObjectConstants& cb);
 	void UploadStructuredBuffer(ID3D12GraphicsCommandList* cmd, const void* srcData, uint64_t byteSize, ID3D12Resource* buffer, uint64_t dstOffset, std::string_view debugName = "");
 	void UploadContstants(uint32_t frameIndex, const void* srcData, uint32_t size, BufferHandle& outHandle);

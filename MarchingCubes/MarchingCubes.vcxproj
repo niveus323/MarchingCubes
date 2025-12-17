@@ -163,19 +163,17 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
+    <ClCompile Include="Core\Scene\Component\CameraComponent.cpp" />
     <ClCompile Include="Core\Scene\Component\Component.cpp" />
-    <ClCompile Include="Core\Scene\BaseScene.cpp" />
     <ClCompile Include="Core\Geometry\MarchingCubes\CPU\CPUTerrainBackend.cpp" />
     <ClCompile Include="Core\Geometry\MeshGenerator.cpp" />
     <ClCompile Include="Core\Math\PhysicsHelper.cpp" />
-    <ClCompile Include="Core\Rendering\Camera.cpp" />
     <ClCompile Include="Core\Rendering\BundleRecorder.cpp" />
+    <ClCompile Include="Core\Scene\Scene.cpp" />
     <ClCompile Include="Core\Utils\DXHelper.cpp" />
-    <ClCompile Include="App\Editor\MCTerraformEditor.cpp" />
     <ClCompile Include="App\Common\DXAppBase.cpp" />
     <ClCompile Include="Core\Input\InputState.cpp" />
     <ClCompile Include="Core\UI\ImGUIRenderer.cpp" />
-    <ClCompile Include="Core\Rendering\LightManager.cpp" />
     <ClCompile Include="Core\Geometry\MarchingCubes\GPU\GPUBrushCS.cpp" />
     <ClCompile Include="Core\Geometry\MarchingCubes\GPU\GPUMarchingCubesCS.cpp" />
     <ClCompile Include="Core\Geometry\MarchingCubes\GPU\GPUTerrainBackend.cpp" />
@@ -184,10 +182,16 @@
     <ClCompile Include="Core\DataStructures\Drawable.cpp" />
     <ClCompile Include="Core\Rendering\Memory\GPUBufferPool.cpp" />
     <ClCompile Include="Core\Rendering\Memory\GpuAllocator.cpp" />
-    <ClCompile Include="App\Editor\GeometryEditor.cpp" />
     <ClCompile Include="Core\Rendering\PSO\DescriptorRing.cpp" />
     <ClCompile Include="Core\Rendering\PSO\DescriptorAllocator.cpp" />
     <ClCompile Include="Core\Scene\Component\RendererComponent.cpp" />
+    <ClCompile Include="Core\Scene\Component\LightComponent.cpp" />
+    <ClCompile Include="Contents\Scene\Scene_Terraform.cpp" />
+    <ClCompile Include="Core\Engine\EngineCore.cpp" />
+    <ClCompile Include="Core\Scene\Object\GameObject.cpp" />
+    <ClCompile Include="Core\Scene\Object\PlayerController.cpp" />
+    <ClCompile Include="Core\Scene\Object\GameMode.cpp" />
+    <ClCompile Include="Core\Scene\Object\Pawn.cpp" />
     <ClCompile Include="ThirdParty\FBXImporter.cpp" />
     <ClCompile Include="main.cpp" />
     <ClCompile Include="Core\Geometry\Mesh\Mesh.cpp" />
@@ -210,7 +214,7 @@
     <ClCompile Include="Core\Assets\TextureAsset.cpp" />
     <ClCompile Include="Core\Assets\MeshAsset.cpp" />
     <ClCompile Include="Core\Assets\MeshRegistry.cpp" />
-    <ClCompile Include="Core\Scene\SceneObject.cpp" />
+    <ClCompile Include="Core\Scene\Object\SceneObject.cpp" />
     <ClCompile Include="Core\Scene\Component\MeshComponent.cpp" />
     <ClCompile Include="Core\Geometry\MarchingCubes\TerrainRendererComponent.cpp" />
     <ClCompile Include="ThirdParty\mc33_impl.cpp" />
@@ -219,7 +223,8 @@
     <ClCompile Include="Win32Application.cpp" />
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="Core\Scene\BaseScene.h" />
+    <ClInclude Include="Core\Scene\Component\CameraComponent.h" />
+    <ClInclude Include="Core\Scene\Scene.h" />
     <ClInclude Include="Core\Scene\Component\Component.h" />
     <ClInclude Include="Core\DataStructures\ShaderTypes.h" />
     <ClInclude Include="Core\Geometry\MarchingCubes\GPU\GPUMarchingCubesShared.h" />
@@ -227,14 +232,12 @@
     <ClInclude Include="Core\Geometry\MarchingCubes\SdfField.h" />
     <ClInclude Include="Core\Geometry\MeshGenerator.h" />
     <ClInclude Include="Core\Math\PhysicsHelper.h" />
-    <ClInclude Include="Core\Rendering\Camera.h" />
     <ClInclude Include="Core\Rendering\BundleRecorder.h" />
     <ClInclude Include="Core\DataStructures\Data.h" />
     <ClInclude Include="Core\Rendering\Memory\CommonMemory.h" />
     <ClInclude Include="Core\Rendering\PSO\PSOEnumLUT.h" />
     <ClInclude Include="Core\Rendering\RenderUtils.h" />
     <ClInclude Include="Core\Geometry\MarchingCubes\CPU\CPUTerrainBackend.h" />
-    <ClInclude Include="App\Editor\MCTerraformEditor.h" />
     <ClInclude Include="App\Common\DXAppBase.h" />
     <ClInclude Include="Core\Utils\DXHelper.h" />
     <ClInclude Include="Core\Geometry\Mesh\Mesh.h" />
@@ -242,7 +245,6 @@
     <ClInclude Include="Core\UI\ImGUIRenderer.h" />
     <ClInclude Include="Core\Geometry\MarchingCubes\MarchingCubesTables.h" />
     <ClInclude Include="Core\Assets\Material.h" />
-    <ClInclude Include="Core\Rendering\LightManager.h" />
     <ClInclude Include="Core\Geometry\MarchingCubes\GPU\GPUBrushCS.h" />
     <ClInclude Include="Core\Geometry\MarchingCubes\GPU\GPUMarchingCubesCS.h" />
     <ClInclude Include="Core\Geometry\MarchingCubes\GPU\GPUTerrainBackend.h" />
@@ -253,7 +255,6 @@
     <ClInclude Include="Core\DataStructures\Drawable.h" />
     <ClInclude Include="Core\Rendering\Memory\GPUBufferPool.h" />
     <ClInclude Include="Core\Rendering\Memory\GpuAllocator.h" />
-    <ClInclude Include="App\Editor\GeometryEditor.h" />
     <ClInclude Include="Core\Rendering\PSO\DescriptorRing.h" />
     <ClInclude Include="Core\Rendering\PSO\DescriptorAllocator.h" />
     <ClInclude Include="Core\Assets\MaterialRegistry.h" />
@@ -261,6 +262,13 @@
     <ClInclude Include="Core\Assets\MeshRegistry.h" />
     <ClInclude Include="Core\Scene\Component\MeshComponent.h" />
     <ClInclude Include="Core\Scene\Component\RendererComponent.h" />
+    <ClInclude Include="Core\Scene\Component\LightComponent.h" />
+    <ClInclude Include="Contents\Scene\Scene_Terraform.h" />
+    <ClInclude Include="Core\Engine\EngineCore.h" />
+    <ClInclude Include="Core\Scene\Object\GameObject.h" />
+    <ClInclude Include="Core\Scene\Object\PlayerController.h" />
+    <ClInclude Include="Core\Scene\Object\GameMode.h" />
+    <ClInclude Include="Core\Scene\Object\Pawn.h" />
     <ClInclude Include="ThirdParty\FBXImporter.h" />
     <ClInclude Include="pch.h" />
     <ClInclude Include="Core\Utils\Timer.h" />
@@ -278,7 +286,7 @@
     <ClInclude Include="Core\Assets\ResourceManager.h" />
     <ClInclude Include="Core\Assets\TextureRegistry.h" />
     <ClInclude Include="Core\Assets\TextureAsset.h" />
-    <ClInclude Include="Core\Scene\SceneObject.h" />
+    <ClInclude Include="Core\Scene\Object\SceneObject.h" />
     <ClInclude Include="Core\Scene\Component\TransformComponent.h" />
     <ClInclude Include="Core\Geometry\MarchingCubes\TerrainRendererComponent.h" />
     <ClInclude Include="Win32Application.h" />

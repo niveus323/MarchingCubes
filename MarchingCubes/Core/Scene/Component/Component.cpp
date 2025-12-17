@@ -1,9 +1,9 @@
 #include "pch.h"
 #include "Component.h"
-#include "Core/Scene/SceneObject.h"
-#include "Core/Scene/BaseScene.h"
+#include "Core/Scene/Object/GameObject.h"
+#include "Core/Scene/Scene.h"
 
-BaseScene* Component::GetScene()
+Scene* Component::GetScene()
 {
 	return m_owner->GetScene();
 }

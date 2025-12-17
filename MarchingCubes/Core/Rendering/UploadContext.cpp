@@ -61,7 +61,6 @@ void UploadContext::Execute(ID3D12GraphicsCommandList* cmd)
 			const uint64_t ibOffset = staging.offset + pending.vbAligned;
 			cmd->CopyBufferRegion(pending.ibHandle.res, pending.ibHandle.offset, staging.res, ibOffset, pending.ibSize);
 		}
-		//pending.drawable->SetUploadPending(false);
 		pending.state = PendingUpload::UploadState::Recorded;
 	}
 
@@ -121,125 +120,6 @@ void UploadContext::Reclaim(uint64_t completedFenceValue)
 	if (it != m_pendingUploads.end())
 		m_pendingUploads.erase(it, m_pendingUploads.end());
 }
-
-//// VB/IB 스테이징
-//void UploadContext::UploadDrawable(IDrawable* drawable, uint64_t completedFenceValue)
-//{
-//	if (!drawable) return;
-//
-//	const GeometryData* cpuData = drawable->GetCPUData();
-//	GeometryBuffer* buf = drawable->GetGPUBuffer();
-//	if (!cpuData || !buf) return;
-//
-//	const uint64_t vbBytes = cpuData->vertices.size() * sizeof(Vertex);
-//	const uint64_t ibBytes = cpuData->indices.size() * sizeof(uint32_t);
-//	uint64_t vbAligned = AlignUp64(vbBytes, 4ull); // 4byte 정렬
-//	uint64_t ibAligned = AlignUp64(ibBytes, 4ull); // R32_UINT 사용하므로 4bytes 정렬
-//	uint64_t totalBytes = vbAligned + ibAligned;
-//
-//	// Default VB/IB 바인딩되어있는지 확인하고 없으면 할당받는다.
-//	EnsureDefaultVB(buf, vbBytes, drawable->GetDebugName());
-//	EnsureDefaultIB(buf, ibBytes, drawable->GetDebugName());
-//
-//	// Stage VB/IB
-//	BufferHandle stagingHandle{};
-//	m_allocator->Alloc(m_device, GPUAllocDesc::MakeStagingBufferDesc(totalBytes, 4u, AllocDesc::LifeTime::SHORT, drawable->GetDebugName()), stagingHandle);
-//
-//	uint8_t* ptr = stagingHandle.cpuPtr;
-//	assert(ptr && "Staging Handle Pointer is Invalid !!!!");
-//
-//	memcpy(ptr, cpuData->vertices.data(), vbBytes);
-//	memcpy(ptr + vbAligned, cpuData->indices.data(), ibBytes);
-//
-//	drawable->SetUploadPending(true);
-//
-//	bool already = false;
-//	for (auto& e : m_pendingUploads)
-//	{
-//		// 이미 copy 대기 상태였다면 Upload 버퍼만 교체
-//		if (e.state == PendingUpload::UploadState::Enqueued && e.drawable == drawable)
-//		{
-//			already = true;
-//			e.vbHandle = buf->GetCurrentVBHandle();
-//			e.ibHandle = buf->GetCurrentIBHandle();
-//			e.stagingHandle = stagingHandle;
-//			break;
-//		}
-//	}
-//	if (!already)
-//	{
-//		PendingUpload pu{};
-//		pu.stagingHandle = stagingHandle;
-//		pu.vbHandle = buf->GetCurrentVBHandle();
-//		pu.ibHandle = buf->GetCurrentIBHandle();
-//		pu.state = PendingUpload::UploadState::Enqueued;
-//		pu.vbSize = vbBytes;
-//		pu.ibSize = ibBytes;
-//		pu.vbAligned = vbAligned;
-//		pu.drawable = drawable;
-//		m_pendingUploads.push_back(std::move(pu));
-//	}
-//}
-//
-//void UploadContext::UploadStatic(IDrawable* drawable, uint64_t completedFenceValue)
-//{
-//	if (!drawable) return;
-//
-//	const GeometryData* cpuData = drawable->GetCPUData();
-//	GeometryBuffer* buf = drawable->GetGPUBuffer();
-//	if (!cpuData || !buf) return;
-//
-//	const uint32_t vbBytes = static_cast<uint32_t>(cpuData->vertices.size() * sizeof(Vertex));
-//	const uint32_t ibBytes = static_cast<uint32_t>(cpuData->indices.size() * sizeof(uint32_t));
-//	uint32_t vbAligned = AlignUp(vbBytes, 4u); // 4byte 정렬
-//	uint32_t ibAligned = AlignUp(ibBytes, 4u); // R32_UINT 사용하므로 4bytes 정렬
-//	uint32_t totalBytes = vbAligned + ibAligned;
-//
-//	BufferHandle defaultVBHandle{}, defaultIBHandle{};
-//	m_staticBufferRegistry->CreateStatic(m_device, vbBytes, ibBytes, sizeof(Vertex), DXGI_FORMAT_R32_UINT, &defaultVBHandle, &defaultIBHandle, drawable->GetDebugName());
-//
-//	buf->SwapVBHandle(defaultVBHandle);
-//	buf->SwapIBHandle(defaultIBHandle);
-//
-//	// Stage VB/IB
-//	BufferHandle stagingHandle{};
-//	m_allocator->Alloc(m_device, GPUAllocDesc::MakeStagingBufferDesc(totalBytes, 4, AllocDesc::LifeTime::SHORT, drawable->GetDebugName()), stagingHandle);
-//
-//	uint8_t* ptr = stagingHandle.cpuPtr;
-//	assert(ptr && "Staging Handle Pointer is Invalid !!!!");
-//
-//	memcpy(ptr, cpuData->vertices.data(), vbBytes);
-//	memcpy(ptr + vbAligned, cpuData->indices.data(), ibBytes);
-//
-//	drawable->SetUploadPending(true);
-//
-//	bool already = false;
-//	for (auto& e : m_pendingUploads)
-//	{
-//		// 이미 copy 대기 상태였다면 Upload 버퍼만 교체
-//		if (e.state == PendingUpload::UploadState::Enqueued && e.drawable == drawable)
-//		{
-//			already = true;
-//			e.stagingHandle = stagingHandle;
-//			e.vbHandle = buf->GetCurrentVBHandle();
-//			e.ibHandle = buf->GetCurrentIBHandle();
-//			break;
-//		}
-//	}
-//	if (!already)
-//	{
-//		PendingUpload pu{};
-//		pu.stagingHandle = stagingHandle;
-//		pu.vbHandle = buf->GetCurrentVBHandle();
-//		pu.ibHandle = buf->GetCurrentIBHandle();
-//		pu.state = PendingUpload::UploadState::Enqueued;
-//		pu.vbSize = vbBytes;
-//		pu.ibSize = ibBytes;
-//		pu.vbAligned = vbAligned;
-//		pu.drawable = drawable;
-//		m_pendingUploads.push_back(std::move(pu));
-//	}
-//}
 
 // Object CB 업로드
 void UploadContext::UploadObjectConstants(uint32_t frameIndex, GeometryBuffer* buf, const ObjectConstants& cb)

@@ -8,6 +8,14 @@
 class UploadContext;
 class RenderSystem;
 
+struct ChunkSlot
+{
+	GeometryBuffer buffer;
+	GeometryData meshData;
+	uint32_t indexCount = 0;
+	DirectX::BoundingBox bounds;
+};
+
 class MeshChunkRenderer final
 {
 public:
@@ -19,16 +27,9 @@ public:
 	void Clear();
 
 	std::vector<BoundingBox> GetBoundingBox() const;	
-	auto GetChunkSlots() { return m_chunks | std::views::values | std::ranges::views::filter([](ChunkSlot slot) { return slot.indexCount > 0; }); }
+	std::vector<ChunkSlot*> GetChunkSlots();
 
 private:
-	struct ChunkSlot
-	{
-		GeometryBuffer buffer;
-		GeometryData meshData;
-		uint32_t indexCount = 0;
-		DirectX::BoundingBox bounds;
-	};
 	// Mesh
 	std::unordered_map<ChunkKey, ChunkSlot, ChunkKeyHash> m_chunks;
 };
