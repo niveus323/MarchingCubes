@@ -1,4 +1,5 @@
 #pragma once
+#include "Core/Engine/Refelction.h"
 
 //forward declaration
 class GameObject;
@@ -6,6 +7,7 @@ class Scene;
 
 class Component
 {
+	REFLECT_GENERATED_BODY()
 public:
 	Component(GameObject* owner) : m_owner(owner) {}
 	virtual ~Component() = default;

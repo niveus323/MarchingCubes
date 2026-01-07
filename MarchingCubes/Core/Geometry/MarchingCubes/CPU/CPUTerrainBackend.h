@@ -10,8 +10,9 @@ public:
 	// ITerrainBackend을(를) 통해 상속됨
 	void setGridDesc(const GridDesc&) override;
 	void setFieldPtr(std::shared_ptr<SdfField<float>> grid) override;
-	void requestBrush(uint32_t frameIndex, const BrushRequest& r) override;
+	void RequestBrush(const BrushRequest& r) override;
 	bool tryFetch(std::vector<ChunkUpdate>& OutChunkUpdate) override;
+	bool HasRequests() const override { return false; }
 
 protected:
 	GridDesc m_gridDesc{};

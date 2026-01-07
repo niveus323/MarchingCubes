@@ -18,14 +18,13 @@ static inline ChunkKey DecodeChunkKey(uint32_t idx, const XMUINT3& cells)
 	return k;
 }
 
-GPUTerrainBackend::GPUTerrainBackend(ID3D12Device* device, const GridDesc& gridDesc, const GPUTerrainInitInfo& init) :
+GPUTerrainBackend::GPUTerrainBackend(ID3D12Device* device, const GridDesc& gridDesc, DescriptorAllocator* descriptorAllocator) :
 	m_device(device),
 	m_grid(gridDesc),
-	m_descriptorAllocator(init.descriptorAllocator),
-	m_uploadContext(init.uplaodContext),
+	m_descriptorAllocator(descriptorAllocator),
 	m_fenceEvent(nullptr)
 {
-	m_vol = std::make_unique<SDFVolume3D>(device, m_uploadContext);
+	m_vol = std::make_unique<SDFVolume3D>(device);
 	m_brush = std::make_unique<GPUBrushCS>(device);
 	m_mc = std::make_unique<GPUMarchingCubesCS>(device);
 
@@ -90,44 +89,67 @@ void GPUTerrainBackend::setFieldPtr(std::shared_ptr<SdfField<float>> grid)
 	m_fieldDirty = true;
 }
 
-void GPUTerrainBackend::requestBrush(uint32_t frameIndex, const BrushRequest& r)
+void GPUTerrainBackend::RequestBrush(const BrushRequest& r)
 {
-	m_requestedBrush = r;
-	m_hasBrush = true;
+	m_brushQueue.push_back(r);
 
-	// Brush를 처리한다는건 메쉬 갱신이 필요하다는 뜻
-	requestRemesh(frameIndex, RemeshRequest(m_requestedRemesh.isoValue));
+	XMUINT3 regionMin, regionMax;
+	XMUINT3 brushCenter = computeBrushCenter(r.center, m_grid.origin, m_grid.cellsize);
+	computeBrushRegionCells(m_grid, brushCenter, r.radius, regionMin, regionMax);
+
+	uint32_t startCX = regionMin.x / s_chunkcubes;
+	uint32_t endCX = (regionMax.x + s_chunkcubes - 1) / s_chunkcubes;
+	uint32_t startCY = regionMin.y / s_chunkcubes;
+	uint32_t endCY = (regionMax.y + s_chunkcubes - 1) / s_chunkcubes;
+	uint32_t startCZ = regionMin.z / s_chunkcubes;
+	uint32_t endCZ = (regionMax.z + s_chunkcubes - 1) / s_chunkcubes;
+
+	for (uint32_t z = startCZ; z < endCZ; ++z)
+		for (uint32_t y = startCY; y < endCY; ++y)
+			for (uint32_t x = startCX; x < endCX; ++x)
+				m_pendingRemeshChunks.insert(ChunkKey{ x, y, z });
 }
 
-// 전체 Chunk 리빌드 요청
-void GPUTerrainBackend::requestRemesh(uint32_t frameIndex, const RemeshRequest& r)
+void GPUTerrainBackend::RequestRemesh(const std::set<ChunkKey>& chunkSet)
 {
-	m_requestedRemesh = r;
-	m_needsRemesh = true;
-
-	encode(frameIndex);
+	m_pendingRemeshChunks.insert(chunkSet.begin(), chunkSet.end());
 }
 
-void GPUTerrainBackend::encode(uint32_t frameIndex)
+void GPUTerrainBackend::ExecuteCompute(uint32_t frameIndex, UploadContext* uploadContext, DescriptorAllocator* descriptorAllocator)
 {
-	// encode가 발동하는 조건 : _GRD 갱신(m_fieldDirty == true), brush 사용(m_hasBrush == true)
-	if (!m_device || (!m_fieldDirty && !m_hasBrush && !m_needsRemesh)) return;
+	// _GRD 갱신(m_fieldDirty == true), brush 사용(m_hasBrush == true)
+	if (!HasRequests()) return;
 
 	prepareComputeEncoding();
 
-	if (m_fieldDirty) encodeFieldUpload();
+	if (m_fieldDirty) encodeFieldUpload(uploadContext);
 
-	SDFVolumeView volView = {
-		.tex = m_vol->density(),
-		.grid = m_grid,
-		.chunkCubes = s_chunkcubes,
-		.numChunkAxis = m_numChunkAxis
-	};
-	
 	XMUINT3 regionMin = { 0,0,0 };
 	XMUINT3 regionMax = m_grid.cells;
-	if (m_hasBrush) encodeBrushPass(frameIndex, regionMin, regionMax, volView);
-	if (m_needsRemesh) encodeRemeshPass(frameIndex, regionMin, regionMax, volView);
+	if (!m_brushQueue.empty())
+	{
+		// Density3D SRV -> UAV 전환
+		auto Density3DtoUav = CD3DX12_RESOURCE_BARRIER::Transition(m_vol->density(), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
+		m_commandList->ResourceBarrier(1, &Density3DtoUav);
+
+		for (const auto& req : m_brushQueue)
+		{
+			encodeBrushPass(frameIndex, uploadContext, req, regionMin, regionMax);
+		}
+
+		// Dispatch 후 상태 전환
+		auto backToSrv = CD3DX12_RESOURCE_BARRIER::Transition(m_vol->density(), D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
+		m_commandList->ResourceBarrier(1, &backToSrv);
+
+		m_brushQueue.clear();
+	}
+
+	if (!m_pendingRemeshChunks.empty())
+	{
+		encodeRemeshPass(frameIndex, uploadContext, std::move(m_pendingRemeshChunks), regionMin, regionMax);
+
+		m_pendingRemeshChunks.clear();
+	}
 
 	finishComputeEncoding();
 }
@@ -323,56 +345,49 @@ void GPUTerrainBackend::finishComputeEncoding()
 	m_needsFetch = true;
 }
 
-void GPUTerrainBackend::encodeFieldUpload()
+void GPUTerrainBackend::encodeFieldUpload(UploadContext* context)
 {
-	m_vol->uploadFromGRD(m_commandList.Get(), m_gridData.get());
+	m_vol->uploadFromGRD(m_commandList.Get(),context, m_gridData.get());
 
 	m_fieldDirty = false;
-	m_needsRemesh = true;
 }
 
-void GPUTerrainBackend::encodeBrushPass(uint32_t frameIndex, DirectX::XMUINT3& regionMin, DirectX::XMUINT3& regionMax, SDFVolumeView& volView)
+void GPUTerrainBackend::encodeBrushPass(uint32_t frameIndex, UploadContext* uploadContext, const BrushRequest& req, DirectX::XMUINT3& regionMin, DirectX::XMUINT3& regionMax)
 {
-	const int halo = 1;
-	const int r = (int)std::ceil(m_requestedBrush.radius / m_grid.cellsize);
+	const int r = (int)std::ceil(req.radius / m_grid.cellsize);
 
-	XMUINT3 brushCenter = computeBrushCenter(m_requestedBrush.hitpos, m_grid.origin, m_grid.cellsize);
-	computeBrushRegionCells(m_grid, brushCenter, m_requestedBrush.radius, regionMin, regionMax);
-
+	XMUINT3 brushCenter = computeBrushCenter(req.center, m_grid.origin, m_grid.cellsize);
+	computeBrushRegionCells(m_grid, brushCenter, req.radius, regionMin, regionMax);
+	
 	BrushCBData data{
-		.brushRadius = m_requestedBrush.radius,
-		.brushWeight = m_requestedBrush.weight,
-		.deltaTime = m_requestedBrush.deltaTime,
+		.brushRadius = req.radius,
+		.brushWeight = req.weight,
+		.deltaTime = req.deltaTime,
 		.gridCells = m_grid.cells,
 		.brushCenter = brushCenter,
 		.regionCellMin = regionMin,
 		.regionCellMax = regionMax
 	};
-
 	BufferHandle brushCB{};
-	m_uploadContext->UploadContstants(frameIndex, &data, sizeof(BrushCBData), brushCB);
+	uploadContext->UploadContstants(frameIndex, &data, sizeof(BrushCBData), brushCB);
 
 	uint32_t densityUavSlot = m_descriptorAllocator->AllocateDynamic(frameIndex);
 	DescriptorAllocator::CreateUAV_Texture3D(m_device, m_vol->density(), DXGI_FORMAT_R32_FLOAT, m_descriptorAllocator->GetDynamicCpu(frameIndex, densityUavSlot));
-	volView.uav = m_descriptorAllocator->GetDynamicGpu(frameIndex, densityUavSlot);
 
 	GPUBrushEncodingContext context{
 		.cmd = m_commandList.Get(),
-		.vol = volView,
 		.regionMin = regionMin,
 		.regionMax = regionMax,
-		.cbAddress = brushCB.gpuVA
+		.cbAddress = brushCB.gpuVA,
+		.densityUav = m_descriptorAllocator->GetDynamicGpu(frameIndex, densityUavSlot)
 	};
 	m_brush->encode(context);
-	m_hasBrush = false;
-
 }
 
-void GPUTerrainBackend::encodeRemeshPass(uint32_t frameIndex, const DirectX::XMUINT3& regionMin, const DirectX::XMUINT3& regionMax, SDFVolumeView& volView)
+void GPUTerrainBackend::encodeRemeshPass(uint32_t frameIndex, UploadContext* uploadContext, const std::set<ChunkKey>& chunkSet, const DirectX::XMUINT3& regionMin, const DirectX::XMUINT3& regionMax)
 {
 	uint32_t densitySrvSlot = m_descriptorAllocator->AllocateDynamic(frameIndex);
 	DescriptorAllocator::CreateSRV_Texture3D(m_device, m_vol->density(), DXGI_FORMAT_R32_FLOAT, m_descriptorAllocator->GetDynamicCpu(frameIndex, densitySrvSlot));
-	volView.srv = m_descriptorAllocator->GetDynamicGpu(frameIndex, densitySrvSlot);
 
 	uint32_t outUavSlot = m_descriptorAllocator->AllocateDynamic(frameIndex);
 	DescriptorAllocator::CreateUAV_Structured(m_device, m_outBuffer.Get(), sizeof(OutTriangle), m_descriptorAllocator->GetDynamicCpu(frameIndex, outUavSlot), m_outCounter.Get());
@@ -381,7 +396,7 @@ void GPUTerrainBackend::encodeRemeshPass(uint32_t frameIndex, const DirectX::XMU
 	m_commandList->ResourceBarrier(1, &trisToUav);
 
 	// 카운터 리셋(0)
-	m_uploadContext->ResetCounterUAV(m_commandList.Get(), m_outCounter.Get(), D3D12_RESOURCE_STATE_COMMON, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
+	uploadContext->ResetCounterUAV(m_commandList.Get(), m_outCounter.Get(), D3D12_RESOURCE_STATE_COMMON, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
 
 	XMUINT3 expandedMin, expandedMax;
 	computeChunkAlignedRegion(m_grid.cells, regionMin, regionMax, expandedMin, expandedMax);
@@ -389,27 +404,28 @@ void GPUTerrainBackend::encodeRemeshPass(uint32_t frameIndex, const DirectX::XMU
 	GridCBData data{
 		.gridCells = m_grid.cells,
 		.gridOrigin = m_grid.origin,
-		.isoValue = m_requestedRemesh.isoValue,
-		.numChunkAxis = volView.numChunkAxis,
-		.chunkCubes = volView.chunkCubes,
+		.isoValue = m_grid.isoValue,
+		.numChunkAxis = m_numChunkAxis,
+		.chunkCubes = s_chunkcubes,
 		.regionCellMin = expandedMin,
 		.regionCellMax = expandedMax
 	};
 
 	BufferHandle gridCB{};
-	m_uploadContext->UploadContstants(frameIndex, &data, sizeof(GridCBData), gridCB);
+	uploadContext->UploadContstants(frameIndex, &data, sizeof(GridCBData), gridCB);
 
 	DescriptorAllocator::CreateSRV_Structured(m_device, m_mc->triTable(), sizeof(int), m_descriptorAllocator->GetStaticCpu(m_triTableSlot));
 
 	GPUMCEncodingContext ctx{
 		.device = m_device,
 		.cmd = m_commandList.Get(),
-		.vol = volView,
-		.req = m_requestedRemesh,
+		.chunkCubes = s_chunkcubes,
+		.gridDimension = m_grid.cells,
 		.regionCellMin = expandedMin,
 		.regionCellMax = expandedMax,
 		.cbAddress = gridCB.gpuVA,
 		.triTableSrv = m_descriptorAllocator->GetStaticGpu(m_triTableSlot),
+		.densitySrv = m_descriptorAllocator->GetDynamicGpu(frameIndex, densitySrvSlot),
 		.outBufferUav = m_descriptorAllocator->GetDynamicGpu(frameIndex, outUavSlot)
 	};
 	m_mc->encode(ctx);
@@ -434,9 +450,6 @@ void GPUTerrainBackend::encodeRemeshPass(uint32_t frameIndex, const DirectX::XMU
 		CD3DX12_RESOURCE_BARRIER::Transition(m_outCounter.Get(), D3D12_RESOURCE_STATE_COPY_SOURCE, D3D12_RESOURCE_STATE_UNORDERED_ACCESS)
 	};
 	m_commandList->ResourceBarrier(_countof(backToUav), backToUav);
-
-	m_needsRemesh = false;
-
 }
 
 XMUINT3 GPUTerrainBackend::computeBrushCenter(const XMFLOAT3& hitpos, const XMFLOAT3& gridorigin, const float cellsize)

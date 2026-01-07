@@ -80,8 +80,8 @@ enum class ELightType : uint32_t
 * LightType 별 필요한 데이터
 * 기본 : type, radiance
 * Directional : dir
-* Point : pos, range
-* Spot : pos, range, spotDir, spotInnerCos
+* Point : center, range
+* Spot : center, range, spotDir, spotInnerCos
 */
 struct alignas(16) Light
 {

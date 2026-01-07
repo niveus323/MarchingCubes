@@ -1,6 +1,5 @@
 #include "pch.h"
 #include "CPUTerrainBackend.h"
-#include "Core/Math/PhysicsHelper.h"
 #include <algorithm>
 #include <cmath>
 
@@ -19,17 +18,16 @@ void CPUTerrainBackend::setFieldPtr(std::shared_ptr<SdfField<float>> grid)
 	m_grd = std::move(grid);
 }
 
-void CPUTerrainBackend::requestBrush(uint32_t frameIndex, const BrushRequest& r)
+void CPUTerrainBackend::RequestBrush(const BrushRequest& r)
 {
-    RemeshRequest remeshRequest;
-    remeshRequest.isoValue = r.isoValue;
-
+    std::set<ChunkKey> chunkset;
+    
     const XMUINT3 cells = m_gridDesc.cells;
     const XMFLOAT3 origin = m_gridDesc.origin;
     const float cellsize = m_gridDesc.cellsize;
 
     const float deltaTime = r.deltaTime;
-    const XMFLOAT3 hitPos = r.hitpos;
+    const XMFLOAT3 center = r.center;
     const float weight = r.weight;
     const float radius = r.radius;
 
@@ -41,27 +39,27 @@ void CPUTerrainBackend::requestBrush(uint32_t frameIndex, const BrushRequest& r)
 
     // 영향 범위 (Field 인덱스 공간으로 변환)
     auto sample = [cellsize](float p, float o) { return (p - o) / cellsize; };
-    int minX = std::max(0, int(std::floor(sample(hitPos.x - radius, origin.x))));
-    int maxX = std::min(SX - 1, int(std::ceil(sample(hitPos.x + radius, origin.x))));
-    int minY = std::max(0, int(std::floor(sample(hitPos.y - radius, origin.y))));
-    int maxY = std::min(SY - 1, int(std::ceil(sample(hitPos.y + radius, origin.y))));
-    int minZ = std::max(0, int(std::floor(sample(hitPos.z - radius, origin.z))));
-    int maxZ = std::min(SZ - 1, int(std::ceil(sample(hitPos.z + radius, origin.z))));
+    int minX = std::max(0, int(std::floor(sample(center.x - radius, origin.x))));
+    int maxX = std::min(SX - 1, int(std::ceil(sample(center.x + radius, origin.x))));
+    int minY = std::max(0, int(std::floor(sample(center.y - radius, origin.y))));
+    int maxY = std::min(SY - 1, int(std::ceil(sample(center.y + radius, origin.y))));
+    int minZ = std::max(0, int(std::floor(sample(center.z - radius, origin.z))));
+    int maxZ = std::min(SZ - 1, int(std::ceil(sample(center.z + radius, origin.z))));
 
     for (int z = minZ; z <= maxZ; ++z)
     {
         const float pz = origin.z + z * cellsize;
-        const float dz = pz - hitPos.z;
+        const float dz = pz - center.z;
 
         for (int y = minY; y <= maxY; ++y)
         {
             const float py = origin.y + y * cellsize;
-            const float dy = py - hitPos.y;
+            const float dy = py - center.y;
 
             for (int x = minX; x <= maxX; ++x)
             {
                 const float px = origin.x + x * cellsize;
-                const float dx = px - hitPos.x;
+                const float dx = px - center.x;
 
                 const float dist = std::sqrt(dx * dx + dy * dy + dz * dz);
                 if (dist > radius) continue; // 반경 밖은 영향 없음(빠른 스킵)
@@ -76,12 +74,12 @@ void CPUTerrainBackend::requestBrush(uint32_t frameIndex, const BrushRequest& r)
 
                 F = F + (desired - F) * k;
 
-                remeshRequest.chunkset.insert(ChunkKey{ x / m_gridDesc.chunkSize, y / m_gridDesc.chunkSize,  z / m_gridDesc.chunkSize });
+                chunkset.insert(ChunkKey{ x / m_gridDesc.chunkSize, y / m_gridDesc.chunkSize,  z / m_gridDesc.chunkSize });
             }
         }
     }
 
-    requestRemesh(frameIndex, remeshRequest);
+    RequestRemesh(chunkset);
 }
 
 bool CPUTerrainBackend::tryFetch(std::vector<ChunkUpdate>& OutChunkUpdates)

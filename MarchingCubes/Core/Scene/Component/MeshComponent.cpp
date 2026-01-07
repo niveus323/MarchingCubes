@@ -6,6 +6,11 @@
 #include "Core/Scene/Component/TransformComponent.h"
 #include "Core/Rendering/RenderSystem.h"
 #include "Core/Engine/EngineCore.h"
+#include "Core/Assets/ResourceManager.h"
+
+BEGIN_REFLECTION(MeshComponent, RendererComponent)
+    
+END_REFLECTION()
 
 MeshComponent::MeshComponent(SceneObject* owner) : 
     RendererComponent(owner) 
@@ -84,7 +89,7 @@ void MeshComponent::Submit()
         const auto& mesh = submeshes[i];
         RenderItem item{
             .meshBuffer = gpuBuffer,
-            .topology = m_mesh->GetCPUData()->topology,
+            .topology = m_mesh->GetTopology(),
             .indexCount = mesh.indexCount,
             .indexOffset = mesh.indexOffset,
             .baseVertexLocation = mesh.baseVertexLocation,
@@ -93,5 +98,28 @@ void MeshComponent::Submit()
         };
         renderSystem->SubmitRenderItem(item, m_materials[i].psoName);
     }
+}
+
+void MeshComponent::SetMeshByPath(const std::string& path)
+{
+    if (path == m_meshPath) return;
+
+    // ResourceManager를 통해 메쉬 로드 (이미 캐싱된 에셋만 Setter에 적용가능하다는 것을 전제로 작성)
+    auto asset = EngineCore::GetResourceManager()->GetMeshAsset(path);
+
+    if (asset)
+    {
+        m_meshPath = path;
+        
+    }
+}
+
+std::string MeshComponent::GetMaterialName(int slot) const
+{
+    return std::string();
+}
+
+void MeshComponent::SetMaterialByPath(int slot, const std::string& matPath)
+{
 }
 

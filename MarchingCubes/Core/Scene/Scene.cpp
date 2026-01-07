@@ -4,10 +4,13 @@
 #include "Core/Scene/Component/MeshComponent.h"
 #include "Core/Scene/Component/CameraComponent.h"
 #include "Core/Scene/Component/LightComponent.h"
-#include "Core/Engine/EngineCore.h"
-#include "Core/Rendering/RenderSystem.h"
-#include "Core/Scene/Object/GameMode.h"
-#include "Core/UI/ImGUIRenderer.h"
+#include "Core/Scene/Object/GameMode/GameMode.h"
+#include "Core/Scene/Object/Controller/PlayerController.h"
+#include "Core/Scene/Object/Controller/EditorController.h"
+#include "Core/Scene/Object/SpectatorPawn.h"
+#include "Core/Geometry/Mesh/Mesh.h"
+#include "Core/UI/UIRenderer.h"
+#include "Core/UI/Builder/UIBuilder.h"
 
 Scene::Scene()
 {
@@ -20,24 +23,80 @@ Scene::~Scene()
 
 void Scene::Init()
 {
-    // 디폴트로 GameMode 생성
-    m_gameMode = CreateObject<GameMode>();
 }
 
 void Scene::InitUI(IUIRenderer* ui)
 {
+    if (!m_isPlaying)
+    {
 #ifdef _DEBUG
-    ui->AddFrameRenderCallbackToken(std::bind(&Scene::RenderSceneGizmoUI, this), UI::UICallbackOptions{
-        .priority = 100,
-        .rateHz = 0,
-        .enabled = true,
-        .id = "SceneGizmo"
-        });
+        ui->AddFrameRenderCallbackToken(std::bind(&Scene::RenderSceneGizmoUI, this, std::placeholders::_1), UI::UICallbackOptions{
+            .layer = UI::EUILayer::Editor_Background,
+            .rateHz = 0,
+            .enabled = true,
+            .id = "SceneGizmo"
+            });
 #endif // _DEBUG
+        ui->AddFrameRenderCallbackToken( [this](IUIBuilder* builder) {
+                if (auto editorPC = dynamic_cast<EditorController*>(this->m_currentController))
+                {
+                    editorPC->RenderUI(builder);
+                }
+            },
+            UI::UICallbackOptions{
+                .layer = UI::EUILayer::Editor_Panel, 
+                .enabled = true,
+                .id = "EditorControllerUI"
+            }
+        );
+    }
+}
+
+void Scene::BeginPlay()
+{
+    m_isPlaying = true;
+    // 디폴트로 GameMode 생성
+    m_gameMode = CreateObject<GameMode>(); 
+    m_currentController = m_gameMode->GetController<PlayerController>();
+
+    // 게임용 메인 카메라 찾기
+    if (!m_mainCamera)
+    {
+        // 찾기 편하기 위해 CameraObject를 만드는게 나을 것 같다.
+        // Component로 찾으려고 하면 Object 전체 순회 + Component 순회가 발생.
+    }
+}
+
+void Scene::BeginEditor()
+{
+    auto editorPC = CreateObject<EditorController>();
+    auto spectator = CreateObject<SpectatorPawn>();
+    editorPC->Possess(spectator);
+    SetMainCamera(spectator->GetComponent<CameraComponent>());
+    m_currentController = editorPC;
+
+}
+
+void Scene::EndPlay()
+{
+    // TODO : GameMode, PlayerController 제거 및 동적 생성된 게임 용 오브젝트 제거
+    m_isPlaying = false;
+}
+
+void Scene::EndEditor()
+{
+    // TODO : EditorController, SpectatorPawn, Gizmo 등 에디터 용 오브젝트 제거
+
+    //m_editorMeshes.clear();
 }
 
 void Scene::OnExit()
 {
+    if (m_isPlaying) EndPlay();
+    else EndEditor();
+
+    ClearSubsystems();
+
     m_sceneObjectsCache.clear();
     m_rendererCache.clear();
     m_lightCache.clear();
@@ -78,33 +137,7 @@ void Scene::Update(float deltaTime)
 }
 
 void Scene::Render()
-{
-    if (auto renderSystem = EngineCore::GetRenderSystem())
-    {
-        CameraConstants sceneViewData = GetMainCamera()->GetCameraConstants();
-
-        uint32_t lightCount = (uint32_t)m_lightCache.size();
-        size_t headerSize = sizeof(LightConstantsHeader);
-        size_t dataSize = sizeof(Light) * lightCount;
-        size_t totalBytes = headerSize + dataSize;
-
-        if (m_lightUploadBuffer.size() < totalBytes) m_lightUploadBuffer.resize(totalBytes);
-
-        LightConstantsHeader header{ .lightCounts = lightCount };
-        memcpy(m_lightUploadBuffer.data(), &header, headerSize);
-
-        Light* lightDataPtr = reinterpret_cast<Light*>(m_lightUploadBuffer.data() + headerSize);
-        for (size_t i = 0; i < lightCount; ++i)
-        {
-            lightDataPtr[i] = m_lightCache[i]->GetLightInfo();
-        }
-
-        LightBlobView lightBlob;
-        lightBlob.data = m_lightUploadBuffer.data();
-        lightBlob.size = (uint32_t)totalBytes;
-        renderSystem->PrepareRender(EngineCore::GetUploadContext(), EngineCore::GetDescriptorAllocator(), sceneViewData, lightBlob, EngineCore::GetFrameIndex());
-    }
-	
+{	
 	for (const auto rendererComp : m_rendererCache)
 	{
 		rendererComp->Submit();
@@ -117,6 +150,35 @@ void Scene::AddObject(std::unique_ptr<GameObject> obj)
 	m_objects.push_back(std::move(obj));
 }
 
+CameraConstants Scene::GetCameraConstants()
+{
+    return GetMainCamera()->GetCameraConstants();
+}
+
+LightBlobView Scene::GetLightBlob()
+{
+    uint32_t lightCount = (uint32_t)m_lightCache.size();
+    size_t headerSize = sizeof(LightConstantsHeader);
+    size_t dataSize = sizeof(Light) * lightCount;
+    size_t totalBytes = headerSize + dataSize;
+
+    if (m_lightUploadBuffer.size() < totalBytes) m_lightUploadBuffer.resize(totalBytes);
+
+    LightConstantsHeader header{ .lightCounts = lightCount };
+    memcpy(m_lightUploadBuffer.data(), &header, headerSize);
+
+    Light* lightDataPtr = reinterpret_cast<Light*>(m_lightUploadBuffer.data() + headerSize);
+    for (size_t i = 0; i < lightCount; ++i)
+    {
+        lightDataPtr[i] = m_lightCache[i]->GetLightInfo();
+    }
+
+    return LightBlobView{
+        .data = m_lightUploadBuffer.data(),
+        .size = (uint32_t)totalBytes
+    };
+}
+
 void Scene::SetMainCamera(CameraComponent* cameraComp)
 {
     m_mainCamera = cameraComp;
@@ -126,71 +188,81 @@ void Scene::SetMainCamera(CameraComponent* cameraComp)
     }
 }
 
-void Scene::RenderSceneGizmoUI()
+void Scene::RenderSceneGizmoUI(IUIBuilder* ui)
 {
-#ifdef _DEBUG
     // 씬 뷰포트 좌측 하단에 붙어있는 기즈모
-    ImGuiViewport* mainViewport = ImGui::GetMainViewport();
-    float windowScreenX = mainViewport->Pos.x;
-    float windowScreenY = mainViewport->Pos.y;
+    UI::Vector2 mainViewportPos = ui->GetMainViewportPos();
+    float windowScreenX = mainViewportPos.x;
+    float windowScreenY = mainViewportPos.y;
 
     float gizmoSize = 100.0f;
     float gizmoX = (windowScreenX + GetViewportX());
     float gizmoY = (windowScreenY + GetViewportY()) + m_viewportHeight - gizmoSize;
-    ImGui::SetNextWindowPos(ImVec2(gizmoX, gizmoY), ImGuiCond_Always);
-    ImGui::SetNextWindowSize(ImVec2(gizmoSize, gizmoSize));
-    ImGui::SetNextWindowBgAlpha(0.0f);
-    ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0.0f, 0.0f));
-    ImGui::Begin("Gizmo", nullptr, ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoInputs | ImGuiWindowFlags_NoBackground);
-
-    ImDrawList* drawList = ImGui::GetWindowDrawList();
-    ImVec2 center = ImGui::GetCursorScreenPos();
-    center.x += 50.0f;
-    center.y += 50.0f;
-    float radius = 40.0f;
-
-    struct Axis {
-        XMVECTOR direction;
-        ImU32 color;
-        const char* label;
-        float zDepth;
-    };
-
-    std::vector<Axis> axes = {
-        { XMVectorSet(1, 0, 0, 0), IM_COL32(255, 50, 50, 255), "X", 0.0f },
-        { XMVectorSet(0, 1, 0, 0), IM_COL32(50, 255, 50, 255), "Y", 0.0f },
-        { XMVectorSet(0, 0, 1, 0), IM_COL32(50, 50, 255, 255), "Z", 0.0f }
-    };
-
-    XMMATRIX viewMat = m_mainCamera->GetViewMatrix();
-    for (auto& axis : axes)
+    if (ui->BeginOverlay("Gizmo", { gizmoX, gizmoY }, { gizmoSize, gizmoSize }))
     {
-        XMVECTOR viewDir = XMVector3TransformNormal(axis.direction, viewMat);
+        // 중심점 계산
+        UI::Vector2 center = ui->GetCursorScreenPos();
+        center.x += 50.0f;
+        center.y += 50.0f;
+        float radius = 40.0f;
 
-        axis.direction = viewDir;
-        axis.zDepth = XMVectorGetZ(viewDir);
+        struct Axis {
+            XMVECTOR direction;
+            UI::Color color;
+            const char* label;
+            float zDepth;
+        };
+
+        // UI::Color는 {r, g, b, a} (0.0~1.0)
+        std::vector<Axis> axes = {
+            { XMVectorSet(1, 0, 0, 0), {1.0f, 0.2f, 0.2f, 1.0f}, "X", 0.0f },
+            { XMVectorSet(0, 1, 0, 0), {0.2f, 1.0f, 0.2f, 1.0f}, "Y", 0.0f },
+            { XMVectorSet(0, 0, 1, 0), {0.2f, 0.2f, 1.0f, 1.0f}, "Z", 0.0f }
+        };
+
+        // 회전 계산
+        if (m_mainCamera)
+        {
+            XMMATRIX viewMat = m_mainCamera->GetViewMatrix();
+            for (auto& axis : axes)
+            {
+                XMVECTOR viewDir = XMVector3TransformNormal(axis.direction, viewMat);
+                axis.direction = viewDir;
+                axis.zDepth = XMVectorGetZ(viewDir);
+            }
+        }
+
+        // Z-Sort (뒤에 있는 축부터 그리기 위해)
+        std::sort(axes.begin(), axes.end(), [](const Axis& a, const Axis& b) {
+            return a.zDepth < b.zDepth;
+            });
+
+        for (const auto& axis : axes)
+        {
+            float x = XMVectorGetX(axis.direction);
+            float y = XMVectorGetY(axis.direction);
+
+            UI::Vector2 endPos = { center.x + x * radius, center.y - y * radius };
+
+            // 라인 그리기
+            ui->DrawLine(center, endPos, axis.color, 3.0f);
+
+            // 끝점 원 그리기
+            ui->DrawCircleFilled(endPos, 7.0f, axis.color);
+
+            // 텍스트 라벨 그리기 (중앙 정렬)
+            UI::Vector2 textSize = ui->CalcTextSize(axis.label);
+            UI::Vector2 textPos = {
+                endPos.x - textSize.x * 0.5f,
+                endPos.y - textSize.y * 0.5f
+            };
+            ui->DrawTextAt(textPos, { 1.0f, 1.0f, 1.0f, 1.0f }, axis.label);
+        }
+
+        // Pivot
+        ui->DrawCircleFilled(center, 4.0f, { 1.0f, 1.0f, 1.0f, 1.0f });
     }
 
-    std::sort(axes.begin(), axes.end(), [](const Axis& a, const Axis& b) {
-        return a.zDepth < b.zDepth;
-        });
-
-    for (const auto& axis : axes)
-    {
-        float x = XMVectorGetX(axis.direction);
-        float y = XMVectorGetY(axis.direction);
-
-        ImVec2 endPos = ImVec2(center.x + x * radius, center.y - y * radius);
-        drawList->AddLine(center, endPos, axis.color, 3.0f);
-        drawList->AddCircleFilled(endPos, 7.0f, axis.color);
-
-        ImVec2 textSize = ImGui::CalcTextSize(axis.label);
-        drawList->AddText(ImVec2(endPos.x - textSize.x * 0.5f, endPos.y - textSize.y * 0.5f), IM_COL32(255, 255, 255, 255), axis.label);
-    }
-
-    // Pivot
-    drawList->AddCircleFilled(center, 4.0f, IM_COL32(255, 255, 255, 255));
-    ImGui::End();
-    ImGui::PopStyleVar(1);
-#endif // _DEBUG
+    // 오버레이 종료
+    ui->EndOverlay();
 }

@@ -2,7 +2,6 @@
 #include "Core/Geometry/MarchingCubes/ITerrainBackend.h"
 #include <memory>
 #include <array>
-#include "GPUMarchingCubesShared.h"
 
 class DescriptorAllocator;
 class UploadContext;
@@ -30,24 +29,18 @@ struct OutTriangle
 class GPUTerrainBackend : public ITerrainBackend
 {
 public:
-	struct GPUTerrainInitInfo
-	{
-		DescriptorAllocator* descriptorAllocator = nullptr;
-		UploadContext* uplaodContext = nullptr;
-		// ComputeSystem* computeSystem = nullptr; // TODO : Compute System 구현 시 추가
-	};
-
-	explicit GPUTerrainBackend(ID3D12Device* device, const GridDesc& gridDesc, const GPUTerrainInitInfo& init);
+	explicit GPUTerrainBackend(ID3D12Device* device, const GridDesc& gridDesc, DescriptorAllocator* descriptorAllocator);
 	~GPUTerrainBackend();
 
 	// ITerrainBackend을(를) 통해 상속됨
-	void setGridDesc(const GridDesc& desc) override;
-	void setFieldPtr(std::shared_ptr<SdfField<float>> grid) override;
-	void requestBrush(uint32_t frameIndex, const BrushRequest& r) override;
-	void requestRemesh(uint32_t frameIndex, const RemeshRequest& r) override;
-	bool tryFetch(std::vector<ChunkUpdate>& OutChunkUpdates) override;
+	virtual void setGridDesc(const GridDesc& desc) override;
+	virtual void setFieldPtr(std::shared_ptr<SdfField<float>> grid) override;
+	virtual void RequestBrush(const BrushRequest& r) override;
+	virtual void RequestRemesh(const std::set<ChunkKey>& chunkSet) override;
+	virtual bool tryFetch(std::vector<ChunkUpdate>& OutChunkUpdates) override;
+	virtual bool HasRequests() const override { return m_fieldDirty || !m_brushQueue.empty() || !m_pendingRemeshChunks.empty(); }
 
-	void encode(uint32_t frameIndex);
+	void ExecuteCompute(uint32_t frameIndex, UploadContext* uploadContext, DescriptorAllocator* descriptorAllocator);
 
 private:
 	void ensureTriangleBuffer();
@@ -56,9 +49,9 @@ private:
 	void resetRBSlot(uint32_t slot);
 	void prepareComputeEncoding();
 	void finishComputeEncoding();
-	void encodeFieldUpload();
-	void encodeBrushPass(uint32_t frameIndex, DirectX::XMUINT3& regionMin, DirectX::XMUINT3& regionMax, SDFVolumeView& volView);
-	void encodeRemeshPass(uint32_t frameIndex, const DirectX::XMUINT3& regionMin, const DirectX::XMUINT3& regionMax, SDFVolumeView& volView);
+	void encodeFieldUpload(UploadContext* context);
+	void encodeBrushPass(uint32_t frameIndex, UploadContext* uploadContext, const BrushRequest& req, DirectX::XMUINT3& regionMin, DirectX::XMUINT3& regionMax);
+	void encodeRemeshPass(uint32_t frameIndex, UploadContext* uploadContext, const std::set<ChunkKey>& chunkSet, const DirectX::XMUINT3& regionMin, const DirectX::XMUINT3& regionMax);
 
 	static XMUINT3 computeBrushCenter(const DirectX::XMFLOAT3& hitpos, const DirectX::XMFLOAT3& gridorigin, const float cellsize);
 	static void computeBrushRegionCells(const GridDesc& grid, const DirectX::XMUINT3& brushCenter, const float brushRadius, DirectX::XMUINT3& outRegionMin, DirectX::XMUINT3& outRegionMax);
@@ -71,7 +64,6 @@ private:
 
 	ID3D12Device* m_device = nullptr;
 	DescriptorAllocator* m_descriptorAllocator = nullptr;
-	UploadContext* m_uploadContext = nullptr;
 
 	ComPtr<ID3D12CommandQueue> m_commandQueue;
 	ComPtr<ID3D12CommandAllocator> m_commandAllocator[kRBFrameCount];
@@ -102,12 +94,11 @@ private:
 	uint32_t m_numChunks = 0;
 
 	std::shared_ptr<SdfField<float>>     m_gridData;
-	BrushRequest m_requestedBrush{};
-	RemeshRequest m_requestedRemesh{};
+
+	std::vector<BrushRequest> m_brushQueue;
+	std::set<ChunkKey> m_pendingRemeshChunks;
 
 	bool m_fieldDirty = false;
-	bool m_hasBrush = false;
-	bool m_needsRemesh = false;
 	bool m_needsFetch = false;
 
 	uint32_t m_triTableSlot = UINT32_MAX;

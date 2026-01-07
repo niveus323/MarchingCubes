@@ -1,5 +1,6 @@
 #include "pch.h"
 #include "App/Editor/Interface/EditorApp.h"
+#include "Win32Application.h"
 #include <dxgidebug.h>
 
 

@@ -1,7 +1,9 @@
 #pragma once
 #include "App/Common/DXAppBase.h"
 #include "Core/Rendering/RenderSystem.h"
-#include "Contents/Scene/Scene_Terraform.h"
+#include "Contents/Scene/Terraform/Scene_Terraform.h"
+#include "App/Editor/Panel/SceneHierarchyPanel.h"
+#include "App/Editor/Panel/InspectorPanel.h"
 using DebugViewModeHandle = int;
 
 // Forward Declaration
@@ -20,6 +22,7 @@ protected:
 
 	virtual void InitUI(ID3D12GraphicsCommandList* cmd) override;
 	virtual void OnUpdateUI(float deltaTime) override;
+	virtual void OnSceneLoaded(Scene* scene) override;
 	virtual void CreateRootSignature() override;
 	virtual void CreateInputElements() override;
 	virtual std::unique_ptr<Scene> CreateDefaultScene() override { return std::make_unique<Scene_Terraform>(); }
@@ -32,8 +35,12 @@ protected:
 	DebugViewModeHandle GetCurrentDebugViewMode() { return m_currentDebugViewMode; }
 
 private:
-	void RenderFpsUI();
-	void RenderProfilingUI();
+	void RenderFpsUI(IUIBuilder* ui);
+	void RenderHierarchyUI(IUIBuilder* ui);
+	void RenderInspectorUI(IUIBuilder* ui);
+	void RenderProfilingUI(IUIBuilder* ui);
+	void OnPlayButtonClicked();
+	void OnCloseButtonClicked();
 
 protected:
 	// Debug
@@ -47,5 +54,14 @@ protected:
 private:
 	std::vector<std::pair<std::string, std::function<void(RenderSystem*)>>> m_debugViewModes;
 	int m_currentDebugViewMode = 0;
+
+	// TODO : 에디터에 여러 Panel을 관리할 수 있도록 컨테이너로 관리 + Add Panel 같은 함수 추가로 엔진 상단 옵션 탭에서 View 옵션에 선택으로 옵션 제공.
+	std::unique_ptr<SceneHierarchyPanel> m_hierarchyPanel;
+	UI::FrameCallbackToken m_uiToken_Hierarchy = 0;
+
+	std::unique_ptr<InspectorPanel> m_inspectorPanel;
+	UI::FrameCallbackToken m_uiToken_Inspector = 0;
+
+	GameObject* m_selectedObject = nullptr;
 };
 

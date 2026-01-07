@@ -33,6 +33,7 @@ public:
 
 class GameObject : public GameObjectBase<GameObject>
 {
+	REFLECT_GENERATED_BODY()
 public:
 	friend class GameObjectBase<GameObject>;
 
@@ -106,6 +107,8 @@ public:
 	GameObject* GetOwner() { return m_owner; }
 	Scene* GetScene() { return m_scene; }
 	void SetScene(Scene* scene) { m_scene = scene; }
+	const std::string& GetName() const { return m_name; }
+	void SetName(const std::string& name) { m_name = name; }
 	auto& GetComponents() const { return m_components; }
 	auto& GetChildren() const { return m_children; }
 
@@ -118,9 +121,9 @@ protected:
 protected:
 	Scene* m_scene = nullptr;
 	GameObject* m_owner = nullptr;
+	std::string m_name = "GameObject";
 	std::vector<std::unique_ptr<Component>> m_components;
 	std::vector<std::unique_ptr<GameObject>> m_children;
-
 
 };
 

@@ -1,5 +1,4 @@
 #pragma once
-#include "Core/Geometry/MarchingCubes/GPU/GPUMarchingCubesShared.h"
 
 struct alignas(16) BrushCBData {
 	float brushRadius;
@@ -22,10 +21,10 @@ struct alignas(16) BrushCBData {
 struct GPUBrushEncodingContext
 {
 	ID3D12GraphicsCommandList* cmd = nullptr;
-	const SDFVolumeView& vol;
-	XMUINT3 regionMin;
-	XMUINT3 regionMax;
+	XMUINT3 regionMin{};
+	XMUINT3 regionMax{};
 	D3D12_GPU_VIRTUAL_ADDRESS cbAddress = 0;
+	D3D12_GPU_DESCRIPTOR_HANDLE densityUav{};
 };
 
 class GPUBrushCS

@@ -73,4 +73,21 @@ uint32_t MaterialRegistry::LoadMaterial(const std::wstring& path)
 	return UINT32_MAX;
 }
 
+uint32_t MaterialRegistry::GetMaterialHandle(const std::string& path)
+{
+	std::string key = std::filesystem::path(path).string();
+	if (m_pathCache.contains(key))
+	{
+		return m_pathCache[key];
+	}
+
+	Material newMat;
+	// TODO : .mat 파일 로드 구현
+	// bool success = MaterialLoader::Load(path, newMat); ...
+
+	uint32_t newIndex = AddMaterial(newMat);
+	m_pathCache[key] = newIndex; // 캐시에 등록
+	return newIndex;
+}
+
 

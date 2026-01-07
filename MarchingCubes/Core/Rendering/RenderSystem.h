@@ -16,6 +16,8 @@ struct RenderSystemInitInfo
 {
 	ID3D12Device* device = nullptr;
 	ID3D12RootSignature* rootSignature = nullptr;
+	UploadContext* uploadContext = nullptr;
+	DescriptorAllocator* descriptorAllocator = nullptr;
 	std::vector<D3D12_INPUT_ELEMENT_DESC> inputElements;
 	std::vector<std::wstring> psoFiles;
 };
@@ -71,7 +73,12 @@ private:
 	void SubmitToBucket(std::string_view psoName, const RenderItem& item);
 
 private:
-	RenderSystemInitInfo m_info;
+	ID3D12Device* m_device;
+	ID3D12RootSignature* m_rootSignature;
+	UploadContext* m_uploadContext;
+	DescriptorAllocator* m_descriptorAllocator;
+	std::vector<D3D12_INPUT_ELEMENT_DESC> m_inputElements;
+	std::vector<std::wstring> m_psoFiles;
 
 	std::unique_ptr<PSOList> m_psoList;
 	std::unique_ptr<BundleRecorder> m_bundleRecorder;

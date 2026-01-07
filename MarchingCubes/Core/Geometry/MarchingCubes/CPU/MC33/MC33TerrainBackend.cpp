@@ -3,7 +3,7 @@
 #include <MC33_c/marching_cubes_33.h>
 #include <cmath>
 
-void MC33TerrainBackend::requestRemesh(uint32_t frameIndex, const RemeshRequest& r)
+void MC33TerrainBackend::RequestRemesh(const std::set<ChunkKey>& chunkset)
 {
     m_chunkData.clear();
 
@@ -13,7 +13,7 @@ void MC33TerrainBackend::requestRemesh(uint32_t frameIndex, const RemeshRequest&
     const int totalZ = m_grd->sz();
 
     _GRD* grd = new _GRD{};
-    for (auto& chunkKey : r.chunkset)
+    for (auto& chunkKey : chunkset)
     {
         const int baseX = chunkKey.x * chunkSize;
         const int baseY = chunkKey.y * chunkSize;
@@ -48,7 +48,7 @@ void MC33TerrainBackend::requestRemesh(uint32_t frameIndex, const RemeshRequest&
         grd->F = reinterpret_cast<GRD_data_type***>(static_cast<float***>(chunk));
 
         MC33* M = create_MC33(grd);
-        surface* S = calculate_isosurface(M, r.isoValue);
+        surface* S = calculate_isosurface(M, m_gridDesc.isoValue);
 
         m_chunkData[chunkKey].vertices.reserve(S->nV);
         for (unsigned i = 0; i < S->nV; ++i) 
