@@ -8,6 +8,7 @@ class EditorController : public Controller
 public:
 	EditorController(Scene* scene);
 	virtual ~EditorController() = default;
+	void Update(float deltaTime) override;
 	void RenderUI(IUIBuilder* ui) override;
 
 	void SetTool(std::shared_ptr<IEditorTool> newTool);

@@ -15,12 +15,18 @@ public:
 	virtual void TableNextColumn() override;
 	virtual bool BeginCollapsingHeader(const char* label, bool defaultOpen = true) override;
 
+	virtual bool BeginTabBar(const char* id) override;
+	virtual void EndTabBar() override;
+	virtual bool BeginTabItem(const char* id, bool* pOpen = nullptr) override;
+	virtual void EndTabItem() override;
+
 	// --- 기본 컨트롤 ---
 	virtual void Label(const char* text) override;
 	virtual bool Button(const char* label, const UI::Vector2& size) override;
 	virtual bool Checkbox(const char* label, bool* v) override;
 	virtual void Text(const char* text) override;
 	virtual void Text(const std::string& text) override;
+	virtual void Image(void* textureHandle, const UI::Vector2& size) override;
 
 	// --- 입력 컨트롤 ---
 	virtual bool InputInt(const char* label, int* v) override;
@@ -52,14 +58,18 @@ public:
 	// --- 상태 체크 ---
 	virtual bool IsItemClicked() override;
 	virtual bool IsItemHovered() override;
+	virtual bool IsItemActive() override;
 	virtual bool IsMouseHoveringRect(const UI::Vector2& pMin, const UI::Vector2& pMax, bool clip = true) override;
 	virtual bool IsAnyItemHovered() override;
 	virtual bool IsItemDeactivated() override;
 	virtual bool IsWindowFocused() override;
 	virtual bool IsKeyPressed_F12() override;
-
-	// --- 포커스 상태 ---
 	virtual void SetKeyboardFocus() override;
+	virtual bool IsMouseClicked(int button) override;
+	virtual bool IsMouseReleased(int button) override;
+	virtual bool IsMouseDragging(int button) override;
+	virtual UI::Vector2 GetMousePos() override;
+	virtual void SetCursorScreenPos(const UI::Vector2& pos) override;
 
 	// --- 검색 창 ---
 	virtual bool SearchBar(const char* hint, std::string& text) override;
@@ -90,6 +100,8 @@ public:
 	virtual void DrawCircleFilled(const UI::Vector2& center, float radius, const UI::Color& color) override;
 	virtual void DrawTextAt(const UI::Vector2& pos, const UI::Color& color, const char* text) override;
 	virtual UI::Vector2 CalcTextSize(const char* text) override;
+	virtual void InvisibleButton(const char* str_id, const UI::Vector2& size) override;
+
 private:
 	std::string DrawPropertyLabel(const char* label);
 	// UI::Color(r,g,b,a float) -> ImU32 변환

@@ -98,6 +98,10 @@ const MeshAsset* ResourceManager::GetMeshAsset(const std::filesystem::path& path
 {
 	return m_meshRegistry->GetAsset(path);
 }
+D3D12_GPU_DESCRIPTOR_HANDLE ResourceManager::GetTextureGpuHandle(uint32_t handle) const
+{
+	return m_textureRegistry->GetGpuHandle(handle);
+}
 
 void ResourceManager::ProcessMaterials(const std::filesystem::path& basePath, const std::vector<ImportedMaterialDesc>& srcMaterials, std::vector<uint32_t>& outMatIndices)
 {

@@ -100,22 +100,17 @@ void EditorApp::InitUI(ID3D12GraphicsCommandList* cmd)
 	UI::InitContext initContext = {};
 	initContext.device = m_device.Get();
 
-	D3D12_DESCRIPTOR_HEAP_DESC srvHeapDesc = {};
-	srvHeapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
-	srvHeapDesc.NumDescriptors = 1;
-	srvHeapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
-	srvHeapDesc.NodeMask = 0;
-
-	ComPtr<ID3D12DescriptorHeap> srvHeap;
-	ThrowIfFailed(m_device->CreateDescriptorHeap(&srvHeapDesc, IID_PPV_ARGS(&srvHeap)));
-	NAME_D3D12_OBJECT(srvHeap);
+	// UI용 힙과 폰트용 슬롯을 할당
+	DescriptorAllocator* descriptorAllocator = GetDescriptorAllocator();
+	ID3D12DescriptorHeap* mainHeap = descriptorAllocator->GetCbvSrvUavHeap();
+	uint32_t fontSlot = descriptorAllocator->AllocateStaticSlot();
 
 	ImGUIInitOptions initOptions = {};
 	initOptions.commandQueue = GetPresentQueue();
 	initOptions.nums_of_frame = kFrameCount;
-	initOptions.srvHeap = srvHeap.Get();
-	initOptions.cpuHandle = srvHeap->GetCPUDescriptorHandleForHeapStart();
-	initOptions.gpuHandle = srvHeap->GetGPUDescriptorHandleForHeapStart();
+	initOptions.srvHeap = mainHeap;
+	initOptions.cpuHandle = descriptorAllocator->GetStaticCpu(fontSlot);
+	initOptions.gpuHandle = descriptorAllocator->GetStaticGpu(fontSlot);
 	initOptions.configFlags |= ImGuiConfigFlags_DockingEnable;
 	initOptions.configFlags |= ImGuiConfigFlags_ViewportsEnable;
 	initContext.userData = std::move(std::any(initOptions));

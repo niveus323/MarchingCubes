@@ -236,6 +236,7 @@
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="Core\Engine\Refelction.h" />
+    <ClInclude Include="Core\Geometry\MarchingCubes\TerrainFieldGenerator.h" />
     <ClInclude Include="Core\Scene\Component\CameraComponent.h" />
     <ClInclude Include="Core\Scene\Scene.h" />
     <ClInclude Include="Core\Scene\Component\Component.h" />
@@ -291,6 +292,7 @@
     <ClInclude Include="Core\Scene\Object\SpectatorPawn.h" />
     <ClInclude Include="App\Editor\Interface\EditorPanel.h" />
     <ClInclude Include="App\Editor\Panel\SceneHierarchyPanel.h" />
+    <ClInclude Include="Core\Utils\FileUtils.h" />
     <ClInclude Include="Core\Utils\StringUtils.h" />
     <ClInclude Include="App\Editor\Panel\InspectorPanel.h" />
     <ClInclude Include="Core\UI\Builder\UIBuilder.h" />

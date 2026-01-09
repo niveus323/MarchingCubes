@@ -40,6 +40,29 @@ bool ImGUIBuilder::BeginCollapsingHeader(const char* label, bool defaultOpen)
 	return ImGui::CollapsingHeader(label, flags);
 }
 
+bool ImGUIBuilder::BeginTabBar(const char* id)
+{
+	ImGuiTabBarFlags flags = ImGuiTabBarFlags_FittingPolicyScroll	// 탭 크기 유지 + 좌우 스크롤
+		| ImGuiTabBarFlags_NoCloseWithMiddleMouseButton;			// 마우스 중앙 버튼 클릭으로 탭 닫기X
+	return ImGui::BeginTabBar(id, flags);
+}
+
+void ImGUIBuilder::EndTabBar()
+{
+	ImGui::EndTabBar();
+}
+
+bool ImGUIBuilder::BeginTabItem(const char* id, bool* pOpen)
+{
+	ImGuiTabItemFlags flags = ImGuiTabItemFlags_NoCloseWithMiddleMouseButton;
+	return ImGui::BeginTabItem(id, pOpen, flags);
+}
+
+void ImGUIBuilder::EndTabItem()
+{
+	ImGui::EndTabItem();
+}
+
 void ImGUIBuilder::Label(const char* text)
 {
 	ImGui::TextUnformatted(text);
@@ -63,6 +86,12 @@ void ImGUIBuilder::Text(const char* text)
 void ImGUIBuilder::Text(const std::string& text)
 {
 	ImGui::TextUnformatted(text.c_str());
+}
+
+// NOTE : SRV 힙 내의 위치를 기반으로 핸들 생성 필요
+void ImGUIBuilder::Image(void* textureHandle, const UI::Vector2& size)
+{
+	ImGui::Image((ImTextureID)textureHandle, ImVec2(size.x, size.y));
 }
 
 bool ImGUIBuilder::InputInt(const char* label, int* v)
@@ -215,6 +244,11 @@ bool ImGUIBuilder::IsItemHovered()
 	return ImGui::IsItemHovered();
 }
 
+bool ImGUIBuilder::IsItemActive()
+{
+	return ImGui::IsItemActive();
+}
+
 bool ImGUIBuilder::IsMouseHoveringRect(const UI::Vector2& pMin, const UI::Vector2& pMax, bool clip)
 {
 	return ImGui::IsMouseHoveringRect(ImVec2(pMin.x, pMin.y), ImVec2(pMax.x, pMax.y), clip);
@@ -243,6 +277,32 @@ bool ImGUIBuilder::IsKeyPressed_F12()
 void ImGUIBuilder::SetKeyboardFocus()
 {
 	ImGui::SetKeyboardFocusHere();
+}
+
+bool ImGUIBuilder::IsMouseClicked(int button)
+{
+	return ImGui::IsMouseClicked(button);
+}
+
+bool ImGUIBuilder::IsMouseReleased(int button)
+{
+	return ImGui::IsMouseReleased(button);
+}
+
+bool ImGUIBuilder::IsMouseDragging(int button)
+{
+	return ImGui::IsMouseDragging(button);
+}
+
+UI::Vector2 ImGUIBuilder::GetMousePos()
+{
+	auto pos = ImGui::GetMousePos();
+	return UI::Vector2(pos.x, pos.y);
+}
+
+void ImGUIBuilder::SetCursorScreenPos(const UI::Vector2& pos)
+{
+	ImGui::SetCursorScreenPos(ImVec2(pos.x, pos.y));
 }
 
 bool ImGUIBuilder::SearchBar(const char* hint, std::string& text)
@@ -376,6 +436,11 @@ UI::Vector2 ImGUIBuilder::CalcTextSize(const char* text)
 {
 	ImVec2 size = ImGui::CalcTextSize(text);
 	return { size.x, size.y };
+}
+
+void ImGUIBuilder::InvisibleButton(const char* str_id, const UI::Vector2& size)
+{
+	ImGui::InvisibleButton(str_id, ImVec2(size.x, size.y));
 }
 
 std::string ImGUIBuilder::DrawPropertyLabel(const char* label)

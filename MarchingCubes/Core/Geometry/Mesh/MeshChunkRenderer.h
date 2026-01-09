@@ -24,7 +24,7 @@ public:
 
 	void ApplyUpdates(UploadContext* uploadContext, const std::vector<ChunkUpdate>& ups);
 	void Submit(RenderSystem* renderSystem, const DirectX::XMFLOAT4X4& worldMatrix, const MaterialInstance& material);
-	void Clear();
+	void Clear(UploadContext* uploadContext);
 
 	std::vector<BoundingBox> GetBoundingBox() const;	
 	std::vector<ChunkSlot*> GetChunkSlots();

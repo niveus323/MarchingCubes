@@ -24,6 +24,7 @@ private:
 
     //Marching Cubes
     std::shared_ptr<SdfField<float>> MakeSphereGrid(unsigned int N, float cellSize, float radius, XMFLOAT3 center, GridDesc& OutGridDesc);
+    
 
 private:
     // Marching Cubes

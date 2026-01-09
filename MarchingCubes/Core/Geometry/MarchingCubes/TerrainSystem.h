@@ -14,12 +14,13 @@ public:
 	virtual void Initialize() override;
 	virtual void Update(float deltaTime) override;
 	virtual void ExecuteCompute(uint32_t frameIndex) override;
-
+	
 	void LoadTerrain(TerrainMode mode, const GridDesc& desc, std::shared_ptr<SdfField<float>> field, const float isoValue = 0.0f);
 
 	void SetMapData(const GridDesc& desc, std::shared_ptr<SdfField<float>> field);
 	void SetMode(TerrainMode mode);
 	void SetGridDesc(const GridDesc& d);
+	const GridDesc& GetGridDesc() const { return m_desc; }
 	void SetField(std::shared_ptr<SdfField<float>> field);
 	void RequestRemesh(const std::set<ChunkKey>& chunkSet);
 	void RequestRemesh(); // ÀüÃ¼ Remesh

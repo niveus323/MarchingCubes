@@ -470,6 +470,12 @@
     <ClInclude Include="Core\UI\Builder\ImGUIBuilder.h">
       <Filter>헤더 파일</Filter>
     </ClInclude>
+    <ClInclude Include="Core\Geometry\MarchingCubes\TerrainFieldGenerator.h">
+      <Filter>헤더 파일</Filter>
+    </ClInclude>
+    <ClInclude Include="Core\Utils\FileUtils.h">
+      <Filter>헤더 파일</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <None Include="..\Directory.Builds.targets" />

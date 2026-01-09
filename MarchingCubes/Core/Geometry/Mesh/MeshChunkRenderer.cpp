@@ -74,8 +74,15 @@ void MeshChunkRenderer::Submit(RenderSystem* renderSystem, const DirectX::XMFLOA
 	}
 }
 
-void MeshChunkRenderer::Clear()
+void MeshChunkRenderer::Clear(UploadContext* uploadContext)
 {
+	if (uploadContext)
+	{
+		for (auto& [key, slot] : m_chunks)
+		{
+			uploadContext->FreeGeometryBuffer(slot.buffer);
+		}
+	}
 	m_chunks.clear();
 }
 

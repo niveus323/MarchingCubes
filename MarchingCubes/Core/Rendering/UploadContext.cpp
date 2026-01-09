@@ -240,6 +240,29 @@ void UploadContext::UploadGeometry(GeometryBuffer* buffer, const GeometryData& c
 	}
 }
 
+void UploadContext::FreeGeometryBuffer(GeometryBuffer& buffer)
+{
+	BufferHandle vb = buffer.GetVBHandle();
+	if (vb.size > 0 && vb.res != nullptr)
+	{
+		FreeBufferHandle(vb);
+	}
+
+	BufferHandle ib = buffer.GetIBHandle();
+	if (ib.size > 0 && ib.res != nullptr)
+	{
+		FreeBufferHandle(ib);
+	}
+
+	BufferHandle cb = buffer.GetCBHandle();
+	if (cb.size > 0 && cb.res != nullptr)
+	{
+		FreeBufferHandle(cb);
+	}
+
+	buffer.ReleaseGPUResources();
+}
+
 void UploadContext::EnsureDefaultVB(GeometryBuffer* buf, uint64_t neededSize, std::string_view debugName)
 {
 	BufferHandle curVB = buf->GetVBHandle();

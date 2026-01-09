@@ -15,6 +15,12 @@ EditorController::EditorController(Scene* scene) : Controller(scene)
 {
 }
 
+void EditorController::Update(float deltaTime)
+{
+    Controller::Update(deltaTime);
+    if (m_activeTool) m_activeTool->Update(deltaTime);
+}
+
 void EditorController::RenderUI(IUIBuilder* ui)
 {
     if (m_activeTool) 

@@ -57,6 +57,7 @@ public:
 	const TextureResource& GetTexture(size_t texHandle) const { return m_textures[texHandle]; }
     uint32_t GetDescriptorBaseSlot() const { return m_descriptorBaseSlot; }
     uint32_t GetBindlessIndex(uint32_t handle) const;
+    D3D12_GPU_DESCRIPTOR_HANDLE GetGpuHandle(uint32_t handle) const;
 
 private:
     TextureMeta FinalizeMeta(const D3D12_RESOURCE_DESC& desc);

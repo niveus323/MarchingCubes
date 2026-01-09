@@ -39,7 +39,7 @@ public:
 	virtual void RequestRemesh(const std::set<ChunkKey>& chunkSet) override;
 	virtual bool tryFetch(std::vector<ChunkUpdate>& OutChunkUpdates) override;
 	virtual bool HasRequests() const override { return m_fieldDirty || !m_brushQueue.empty() || !m_pendingRemeshChunks.empty(); }
-
+	
 	void ExecuteCompute(uint32_t frameIndex, UploadContext* uploadContext, DescriptorAllocator* descriptorAllocator);
 
 private:

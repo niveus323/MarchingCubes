@@ -87,6 +87,7 @@ void TerrainSystem::SetGridDesc(const GridDesc& d)
 {
 	m_desc = d;
 	if(m_backend) m_backend->setGridDesc(d);
+	ResetRenderer();
 }
 
 void TerrainSystem::SetField(std::shared_ptr<SdfField<float>> field)
@@ -139,7 +140,7 @@ void TerrainSystem::tryFetch()
 
 void TerrainSystem::ResetRenderer() 
 {
-	m_chunkRenderer->Clear(); 
+	m_chunkRenderer->Clear(EngineCore::GetUploadContext());
 }
 
 #ifdef _DEBUG

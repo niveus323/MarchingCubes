@@ -130,6 +130,11 @@ void Scene::OnResize(float x, float y, float width, float height)
 
 void Scene::Update(float deltaTime)
 {
+    for (auto& [type, subsys] : m_sceneSubsystems)
+    {
+        subsys->Update(deltaTime);
+    }
+
     for (auto& obj : m_objects)
     {
         obj->Update(deltaTime);
