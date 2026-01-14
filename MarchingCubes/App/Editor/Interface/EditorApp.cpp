@@ -1,10 +1,13 @@
 ﻿#include "pch.h"
 #include "EditorApp.h"
+#include "Win32Application.h"
 #include "Core/Assets/ResourceManager.h"
 #include "Core/UI/ImGUIRenderer.h"
+#include "Core/UI/UIRenderer.h"
 #include "Core/Trace/Profiler.h"
 #include "Core/Input/InputState.h"
 #include <numeric>
+using namespace std::placeholders;
 
 void EditorApp::OnDestroy()
 {
@@ -97,22 +100,17 @@ void EditorApp::InitUI(ID3D12GraphicsCommandList* cmd)
 	UI::InitContext initContext = {};
 	initContext.device = m_device.Get();
 
-	D3D12_DESCRIPTOR_HEAP_DESC srvHeapDesc = {};
-	srvHeapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
-	srvHeapDesc.NumDescriptors = 1;
-	srvHeapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
-	srvHeapDesc.NodeMask = 0;
-
-	ComPtr<ID3D12DescriptorHeap> srvHeap;
-	ThrowIfFailed(m_device->CreateDescriptorHeap(&srvHeapDesc, IID_PPV_ARGS(&srvHeap)));
-	NAME_D3D12_OBJECT(srvHeap);
+	// UI용 힙과 폰트용 슬롯을 할당
+	DescriptorAllocator* descriptorAllocator = GetDescriptorAllocator();
+	ID3D12DescriptorHeap* mainHeap = descriptorAllocator->GetCbvSrvUavHeap();
+	uint32_t fontSlot = descriptorAllocator->AllocateStaticSlot();
 
 	ImGUIInitOptions initOptions = {};
 	initOptions.commandQueue = GetPresentQueue();
 	initOptions.nums_of_frame = kFrameCount;
-	initOptions.srvHeap = srvHeap.Get();
-	initOptions.cpuHandle = srvHeap->GetCPUDescriptorHandleForHeapStart();
-	initOptions.gpuHandle = srvHeap->GetGPUDescriptorHandleForHeapStart();
+	initOptions.srvHeap = mainHeap;
+	initOptions.cpuHandle = descriptorAllocator->GetStaticCpu(fontSlot);
+	initOptions.gpuHandle = descriptorAllocator->GetStaticGpu(fontSlot);
 	initOptions.configFlags |= ImGuiConfigFlags_DockingEnable;
 	initOptions.configFlags |= ImGuiConfigFlags_ViewportsEnable;
 	initContext.userData = std::move(std::any(initOptions));
@@ -126,16 +124,36 @@ void EditorApp::InitUI(ID3D12GraphicsCommandList* cmd)
 
 	m_uiRenderer = std::move(imguiRenderer);
 
-	m_uiToken_Fps = m_uiRenderer->AddFrameRenderCallbackToken(std::bind(&EditorApp::RenderFpsUI, this), UI::UICallbackOptions{
-		.priority = 0,
+	m_uiToken_Fps = m_uiRenderer->AddFrameRenderCallbackToken(std::bind(&EditorApp::RenderFpsUI, this, _1), UI::UICallbackOptions{
+		.layer = UI::EUILayer::Global_Debug,
 		.rateHz = 0,
 		.enabled = true,
 		.id = "Fps"
 		});
 
+	m_hierarchyPanel = std::make_unique<SceneHierarchyPanel>();
+	m_uiToken_Hierarchy = m_uiRenderer->AddFrameRenderCallbackToken(
+		std::bind(&EditorApp::RenderHierarchyUI, this, _1),
+		UI::UICallbackOptions{
+			.layer = UI::EUILayer::Editor_Panel,
+			.enabled = true,
+			.id = "SceneHierarchy"
+		}
+	);
+
+	m_inspectorPanel = std::make_unique<InspectorPanel>();
+	m_uiToken_Inspector = m_uiRenderer->AddFrameRenderCallbackToken(
+		std::bind(&EditorApp::RenderInspectorUI, this, _1),
+		UI::UICallbackOptions{
+			.layer = UI::EUILayer::Editor_Panel,
+			.enabled = true,
+			.id = "Inspector"
+		}
+	);
+
 	// TODO : Profiler 에디터로 옮기기
-	m_uiToken_Profiler = m_uiRenderer->AddFrameRenderCallbackToken(std::bind(&EditorApp::RenderProfilingUI, this), UI::UICallbackOptions{
-		.priority = 0,
+	m_uiToken_Profiler = m_uiRenderer->AddFrameRenderCallbackToken(std::bind(&EditorApp::RenderProfilingUI, this, _1), UI::UICallbackOptions{
+		.layer = UI::EUILayer::Global_Debug,
 		.rateHz = 0,
 		.enabled = true,
 		.id = "Profiler"
@@ -151,22 +169,24 @@ void EditorApp::InitUI(ID3D12GraphicsCommandList* cmd)
 void EditorApp::OnUpdateUI(float deltaTime)
 {
 	// TODO : Profiler 에디터로 옮기기
+#ifdef _DEBUG
 	GpuAllocator* gpuAllocator = GetGpuAllocator();
 	StaticBufferRegistry* staticBufferRegistry = GetStaticBufferRegistry();
 	if (auto p = m_profiler.lock())
 	{
-		std::vector<BufferPoolInfo> pools;
+		std::vector<BufferPoolInfo> poolInfos;
+		std::vector<DedicatedBufferInfo> promotedInfos;
 		// GpuAllocator
 		for (auto& dbg : gpuAllocator->GetDebugPools())
 		{
-			BufferPoolInfo pi;
-			pi.name = dbg.name;
-			pi.capacity = dbg.pool->GetCapacity();
+			BufferPoolInfo poolInfo;
+			poolInfo.name = dbg.name;
+			poolInfo.capacity = dbg.pool->GetCapacity();
 			std::vector<BufferBlock>& allocated = dbg.pool->GetAllocatedBlocks();
-			pi.used = std::accumulate(allocated.cbegin(), allocated.cend(), 0ULL, [](uint64_t sum, const BufferBlock& b) { return sum + b.size; });
-			pi.free = dbg.pool->GetFreeBlocks();
-			pi.allocated = dbg.pool->GetAllocatedBlocks();
-			pools.push_back(pi);
+			poolInfo.used = std::accumulate(allocated.cbegin(), allocated.cend(), 0ULL, [](uint64_t sum, const BufferBlock& b) { return sum + b.size; });
+			poolInfo.free = dbg.pool->GetFreeBlocks();
+			poolInfo.allocated = dbg.pool->GetAllocatedBlocks();
+			poolInfos.push_back(poolInfo);
 		}
 
 		// StaticBufferRegistry
@@ -177,7 +197,7 @@ void EditorApp::OnUpdateUI(float deltaTime)
 		pi_vb.used = std::accumulate(allocatedVB.cbegin(), allocatedVB.cend(), 0ULL, [](uint64_t sum, const BufferBlock& b) {return sum + b.size; });
 		pi_vb.free = staticBufferRegistry->GetVBFree();
 		pi_vb.allocated = allocatedVB;
-		pools.push_back(pi_vb);
+		poolInfos.push_back(pi_vb);
 
 		BufferPoolInfo pi_ib;
 		pi_ib.name = "StaticIB";
@@ -186,11 +206,22 @@ void EditorApp::OnUpdateUI(float deltaTime)
 		pi_ib.used = std::accumulate(allocatedIB.cbegin(), allocatedIB.cend(), 0ULL, [](uint64_t sum, const BufferBlock& b) {return sum + b.size; });
 		pi_ib.free = staticBufferRegistry->GetIBFree();
 		pi_ib.allocated = allocatedIB;
-		pools.push_back(pi_ib);
+		poolInfos.push_back(pi_ib);
 
-		p->SetBufferPools(pools);
-
+		p->SetBufferPools(poolInfos);
+		p->SetDedicatedBuffers(gpuAllocator->GetDebugDedicatedBuffers());
 		p->UpdateFrame(GetTimer().GetTimeMs());
+	}
+#endif
+}
+
+void EditorApp::OnSceneLoaded(Scene* scene)
+{
+	if (scene)
+	{
+		scene->BeginEditor();
+
+		if(m_hierarchyPanel) m_hierarchyPanel->SetCurrentScene(scene);
 	}
 }
 
@@ -311,118 +342,197 @@ void EditorApp::SetDebugViewMode(int index)
 }
 
 
-void EditorApp::RenderFpsUI()
+void EditorApp::RenderFpsUI(IUIBuilder* ui)
 {
-	ImGui::Begin("FPS");
-	ImGui::Text("FPS : %.3f", GetTimer().GetCpuFPS());
-	ImGui::Text("cpu : %.3f ms", GetTimer().GetCpuFrameMsAvg());
-	ImGui::Text("gpu : %.3f ms", GetTimer().GetGpuFrameMsAvg());
-	ImGui::End();
+	ui->BeginPanel("FPS");
+	ui->Text(std::format("FPS : {:.3f}", GetTimer().GetCpuFPS()));
+	ui->Text(std::format("cpu : {:.3f} ms", GetTimer().GetCpuFrameMsAvg()));
+	ui->Text(std::format("gpu : {:.3f} ms", GetTimer().GetGpuFrameMsAvg()));
+	ui->EndPanel();
 }
 
-void EditorApp::RenderProfilingUI()
+void EditorApp::RenderHierarchyUI(IUIBuilder* ui)
+{
+	if (m_hierarchyPanel && m_currentScene)
+	{
+		m_hierarchyPanel->OnRenderUI(ui);
+		m_selectedObject = m_hierarchyPanel->GetSelectedObject();
+		if (m_inspectorPanel) m_inspectorPanel->SetTarget(m_selectedObject);
+	}
+}
+
+void EditorApp::RenderInspectorUI(IUIBuilder* ui)
+{
+	if (m_inspectorPanel)
+	{
+		m_inspectorPanel->OnRenderUI(ui);
+	}
+}
+
+void EditorApp::RenderProfilingUI(IUIBuilder* ui)
 {
 	if (auto p = m_profiler.lock())
 	{
 		auto& snap = p->GetReadSnapshot();
 		if (!snap.metrics.empty())
 		{
-			ImGui::Begin("Profiler");
+			ui->BeginPanel("Profiler");
 			for (auto& [name, metric] : snap.metrics)
 			{
-				ImGui::Text("%s : ", name.c_str());
+				ui->Text(std::format("{} : ", name));
 				const MetricValue& val = metric.value;
 				if (std::holds_alternative<double>(val))
 				{
-					ImGui::SameLine();
-					double v = std::get<double>(val);
-					ImGui::Text("%.3f", v);
+					ui->SameLine();
+					ui->Text(std::format("{:.3f}", std::get<double>(val)));
 				}
 				else if (std::holds_alternative<int64_t>(val))
 				{
-					ImGui::SameLine();
-					int64_t v = std::get<int64_t>(val);
-					ImGui::Text(" %lld", v);
+					ui->SameLine();
+					ui->Text(std::format("{}", std::get<int64_t>(val)));
 				}
 				else if (std::holds_alternative<std::string>(val))
 				{
-					ImGui::SameLine();
-					std::string v = std::get<std::string>(val);
-					ImGui::Text("%s", v.c_str());
+					ui->SameLine();
+					ui->Text(std::format("{}", std::get<std::string>(val)));
 				}
 				else if (std::holds_alternative<std::vector<float>>(val))
 				{
 					const auto& arr = std::get<std::vector<float>>(val);
-					if (!arr.empty()) ImGui::PlotLines(name.c_str(), arr.data(), (int)arr.size());
+					if (!arr.empty()) ui->PlotLines(name.c_str(), arr.data(), (int)arr.size());
 				}
 				else if (std::holds_alternative<Histogram>(val))
 				{
 					const auto& h = std::get<Histogram>(val);
-					for (const auto& b : h) {
-						ImGui::Text(" %s: %.3f", b.first.c_str(), b.second);
+					for (const auto& b : h) 
+					{
+						ui->Text(std::format(" {}: {:.3f}", b.first, b.second));
 					}
 				}
 			}
-			ImGui::End();
+			ui->EndPanel();
 		}
 
-		ImGui::Begin("Buffer Pools");
-		ImGui::Text("Pools (Small / Large)");
-		ImGui::Separator();
-
-		static bool showPromoted = true;
-		ImGui::Checkbox("Show Promoted", &showPromoted);
-		ImGui::Separator();
-		for (const auto& p : snap.pools)
+		if (ui->BeginPanel("Buffer Pools"))
 		{
-			double frag = p.free.empty() ? 0.0 : (double)p.free.size();
-			ImGui::Text("%s : Capacity: %llu  Used: %llu  Allocated : %zu  FreeBlocks: %zu", p.name.c_str(), (unsigned long long)p.capacity, p.used, p.allocated.size(), p.free.size());
+			ui->Text("Pools (Small / Large)");
+			ui->Separator();
 
-			const float barW = ImGui::GetContentRegionAvail().x;
-			const float barH = 14.0f;
-			ImVec2 p0 = ImGui::GetCursorScreenPos();
-			ImVec2 p1 = ImVec2(p0.x + barW, p0.y + barH);
-			auto* dl = ImGui::GetWindowDrawList();
-			dl->AddRectFilled(p0, p1, IM_COL32(30, 30, 30, 255), 4.0f);
-			dl->AddRect(p0, p1, IM_COL32(200, 200, 200, 128), 4.0f);
-			auto toX = [&](uint64_t off)->float { return p0.x + float((double)off / (double)p.capacity * barW); };
-
-			for (auto& block : p.allocated)
+			static bool showPromoted = true;
+			ui->Checkbox("Show Promoted", &showPromoted);
+			ui->Separator();
+			for (const auto& p : snap.pools)
 			{
-				float x0 = toX(block.offset);
-				float x1 = toX(block.offset + block.size);
-				ImVec2 b0 = ImVec2(x0, p0.y);
-				ImVec2 b1 = ImVec2(x1, p1.y);
+				ui->Text(std::format("{} : Capacity: {}  Used: {}  Allocated : {}  FreeBlocks: {}", p.name.c_str(), (unsigned long long)p.capacity, p.used, p.allocated.size(), p.free.size()));
 
-				dl->AddRectFilled(b0, ImVec2(x1, p1.y), IM_COL32(0, 255, 0, 160), 2.0f);
-				dl->AddRect(b0, ImVec2(x1, p1.y), IM_COL32(0, 180, 0, 200), 2.0f);
-				if (ImGui::IsMouseHoveringRect(b0, ImVec2(x1, p1.y), false))
+				const float barW = ui->GetAvailableWidth();
+				const float barH = 14.0f;
+				UI::Vector<float, 2> p0 = ui->GetCursorScreenPos();
+				UI::Vector<float, 2> p1 = UI::Vector<float, 2>(p0.x + barW, p0.y + barH);
+				ui->DrawRectFilled(p0, p1, { 0.12f, 0.12f, 0.12f, 1.0f });
+				ui->DrawRect(p0, p1, { 0.8f, 0.8f, 0.8f, 0.5f });
+
+				auto toX = [&](uint64_t off)->float { return p0.x + float((double)off / (double)p.capacity * barW); };
+				for (auto& block : p.allocated)
 				{
-					dl->AddRect(b0, ImVec2(x1, p1.y), IM_COL32(255, 220, 0, 255), 3.0f);
-					ImGui::SetNextWindowBgAlpha(0.8f);
-					ImGui::BeginTooltip();
-					if (!block.owner.empty())
+					float x0 = toX(block.offset);
+					float x1 = toX(block.offset + block.size);
+					UI::Vector<float, 2> b0 = UI::Vector<float, 2>(x0, p0.y);
+					UI::Vector<float, 2> b1 = UI::Vector<float, 2>(x1, p1.y);
+
+					ui->DrawRectFilled(b0, b1, { 0.0f, 1.0f, 0.0f, 0.6f });
+					ui->DrawRect(b0, b1, { 0.0f, 0.7f, 0.0f, 0.8f });
+					if (ui->IsMouseHoveringRect(b0, b1))
 					{
-						ImGui::Text("Owner : %s", block.owner);
+						ui->DrawRect(b0, b1, { 1.0f, 0.86f, 0.0f, 1.0f });
+
+						ui->BeginTooltip();
+						if (!block.owner.empty())
+						{
+							ui->Text(std::format("Owner : {}", block.owner).c_str());
+						}
+						else
+						{
+							ui->Text("<owner unknown>");
+						}
+						ui->Text(std::format("Offset: {}", block.offset).c_str());
+						ui->Text(std::format("Size  : {} bytes", block.size).c_str());
+						ui->EndTooltip();
 					}
-					else
+				}
+				ui->Dummy({ barW, barH + 6.0f });
+			}
+
+			if (showPromoted)
+			{
+				ui->Separator();
+				ui->Text("Dedicated Allocations (Fallback / Promoted)");
+
+				if (ui->BeginTable("DedicatedAllocTable", 5))
+				{
+					ui->TableNextColumn();
+					ui->EndTable();
+				}
+
+				//if (ImGui::BeginTable("DedicatedAllocTable", 5, ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg | ImGuiTableFlags_Resizable))
+				if (ui->BeginTable("DedicatedAllocTable", 5))
+				{
+					ui->TableSetupColumn("Type");
+					ui->TableSetupColumn("Owner");
+					ui->TableSetupColumn("Size");
+					ui->TableSetupColumn("Usage");
+					ui->TableSetupColumn("Status");
+					ui->TableHeadersRow();
+
+					for (const auto& info : snap.dedicatedBuffers)
 					{
-						ImGui::Text("<owner unknown>");
+						ui->TableNextRow();
+
+						ui->TableNextColumn();
+						ui->Text(info.type.c_str());
+
+						ui->TableNextColumn();
+						// Owner가 비어있으면 Unknown 표시
+						ui->Text(info.owner.empty() ? "-" : info.owner.c_str());
+
+						ui->TableNextColumn();
+						if (info.size > 1024 * 1024)
+							ui->TextFormatted("%.2f MB", info.size / (1024.0f * 1024.0f));
+						else
+							ui->TextFormatted("%.2f KB", info.size / 1024.0f);
+
+						ui->TableNextColumn();
+						ui->Text(info.usage.c_str());
+
+						ui->TableNextColumn();
+						if (info.isLive)
+							ui->TextColored(UI::Color(0, 1, 0, 1), "Live");
+						else
+							ui->TextColored(UI::Color(1, 1, 0, 1), "Pending (Fence: %llu)", info.fenceValue);
 					}
-					ImGui::Text("Offset: %llu", (unsigned long long)block.offset);
-					ImGui::Text("Size  : %llu bytes", (unsigned long long)block.size);
-					ImGui::EndTooltip();
+					ui->EndTable();
 				}
 			}
-			ImGui::Dummy(ImVec2(barW, barH + 6.0f));
+
+			ui->EndPanel();
 		}
+	}
+}
 
-		if (showPromoted)
-		{
-			// TODO : Promoted 리스트 Profiling
+void EditorApp::OnPlayButtonClicked()
+{
+	if (m_currentScene)
+	{
+		m_currentScene->EndEditor();
+		m_currentScene->BeginPlay();
+	}
+}
 
-		}
-
-		ImGui::End();
+void EditorApp::OnCloseButtonClicked()
+{
+	if (m_currentScene)
+	{
+		m_currentScene->EndPlay();
+		m_currentScene->BeginEditor();
 	}
 }

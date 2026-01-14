@@ -11,14 +11,7 @@ GPUBrushCS::GPUBrushCS(ID3D12Device* device)
 void GPUBrushCS::encode(const GPUBrushEncodingContext& context)
 {
 	ID3D12GraphicsCommandList* cmd = context.cmd;
-	const SDFVolumeView& vol = context.vol;
-
-	// 브러시용 threadgroups
 	const XMUINT3 brushGroups = computeBrushDispatchGroups(context. regionMin, context.regionMax);
-
-	// Density3D SRV -> UAV 전환
-	auto Density3DtoUav = CD3DX12_RESOURCE_BARRIER::Transition(vol.tex, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
-	cmd->ResourceBarrier(1, &Density3DtoUav);
 
 #if PIX_DEBUGMODE
 	PIXScopedEvent(PIX_COLOR(0, 128, 255), "CPU Brush encode");
@@ -28,7 +21,7 @@ void GPUBrushCS::encode(const GPUBrushEncodingContext& context)
 	cmd->SetPipelineState(m_brushPso.Get());
 	cmd->SetComputeRootSignature(m_brushRootSignature.Get());
 	cmd->SetComputeRootConstantBufferView(0, context.cbAddress);
-	cmd->SetComputeRootDescriptorTable(1, vol.uav);
+	cmd->SetComputeRootDescriptorTable(1, context.densityUav);
 
 #if PIX_DEBUGMODE
 	PIXBeginEvent(cmd, PIX_COLOR(255, 0, 192), "BrushCS ExecuteIndirect");
@@ -41,9 +34,6 @@ void GPUBrushCS::encode(const GPUBrushEncodingContext& context)
 	PIXEndEvent(cmd);
 #endif
 
-	// Dispatch 후 상태 전환
-	auto backToSrv = CD3DX12_RESOURCE_BARRIER::Transition(vol.tex, D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
-	cmd->ResourceBarrier(1, &backToSrv);
 }
 
 void GPUBrushCS::ensureRootSignature(ID3D12Device* device)
@@ -100,7 +90,7 @@ DirectX::XMUINT3 GPUBrushCS::computeBrushDispatchGroups(const DirectX::XMUINT3& 
 		extent.z > 0 ? (extent.z - 1) : 0
 	};
 	
-	return {
+	return XMUINT3{
 		std::max(1u, (cubeExtent.x + 7) / 8),
 		std::max(1u, (cubeExtent.y + 7) / 8),
 		std::max(1u, (cubeExtent.z + 7) / 8)

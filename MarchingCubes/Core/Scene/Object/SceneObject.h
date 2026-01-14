@@ -32,7 +32,9 @@ public:
 	virtual void Render() override
 	{
 		for (auto& comp : GetComponents())
-			comp->Submit();
+		{
+			if(comp->IsActive()) comp->Submit();
+		}
 	}
 
 	TransformComponent* GetTransformComponent() { return m_transformComp; }
@@ -49,16 +51,22 @@ public:
 		DirectX::XMStoreFloat4x4(&worldMatrix, GetWorldMatrix());
 		return worldMatrix;
 	}
-	XMFLOAT3 GetPosition() const					{ return m_transformComp->GetPosition(); }
-	XMFLOAT3 GetWorldPosition() const				{ return m_transformComp->GetWorldPosition(); }
-	void SetPosition(const DirectX::XMFLOAT3& pos)	{ m_transformComp->SetPosition(pos); }
-	XMFLOAT3 GetRotation() const					{ return m_transformComp->GetRotation(); }
-	void SetRotation(const DirectX::XMFLOAT3& rot)	{ m_transformComp->SetRotation(rot); }
-	XMFLOAT3 GetScale() const						{ return m_transformComp->GetScale(); }
-	void SetScale(const DirectX::XMFLOAT3& scale)	{ m_transformComp->SetScale(scale); }
-	DirectX::XMVECTOR GetForwardVector() const		{ return m_transformComp->GetForwardVec(); }
-	DirectX::XMVECTOR GetRightVector() const		{ return m_transformComp->GetRightVec(); }
-	DirectX::XMVECTOR GetUpVector() const			{ return m_transformComp->GetUpVec(); }
+	XMFLOAT3 GetPosition() const						{ return m_transformComp->GetPosition(); }
+	XMFLOAT3 GetWorldPosition() const					{ return m_transformComp->GetWorldPosition(); }
+	void SetPosition(const DirectX::XMFLOAT3& pos)		{ m_transformComp->SetPosition(pos); }
+	void SetPosition(float x, float y, float z)			{ m_transformComp->SetPosition({ x,y,z }); }
+	void SetWorldPosition(const DirectX::XMFLOAT3& pos) { m_transformComp->SetWorldPosition(pos); }
+	void SetWorldPosition(float x, float y, float z)	{ m_transformComp->SetWorldPosition({ x,y,z }); }
+	XMFLOAT3 GetRotation() const						{ return m_transformComp->GetRotation(); }
+	void SetRotation(const DirectX::XMFLOAT3& rot)		{ m_transformComp->SetRotation(rot); }
+	void SetRotation(const DirectX::XMVECTOR& quat)		{ m_transformComp->SetRotation(quat); }
+	void SetWorldRotation(const DirectX::XMFLOAT3& rot) { m_transformComp->SetWorldRotation(rot); }
+	void SetWorldRotation(const DirectX::XMVECTOR& quat){ m_transformComp->SetWorldRotation(quat); }
+	XMFLOAT3 GetScale() const							{ return m_transformComp->GetScale(); }
+	void SetScale(const DirectX::XMFLOAT3& scale)		{ m_transformComp->SetScale(scale); }
+	DirectX::XMVECTOR GetForwardVector() const			{ return m_transformComp->GetForwardVec(); }
+	DirectX::XMVECTOR GetRightVector() const			{ return m_transformComp->GetRightVec(); }
+	DirectX::XMVECTOR GetUpVector() const				{ return m_transformComp->GetUpVec(); }
 	void SetTransform(const DirectX::XMFLOAT3& pos, const DirectX::XMFLOAT3& rot, const DirectX::XMFLOAT3& scale) { m_transformComp->SetTransform(pos, rot, scale); }
 
 private:

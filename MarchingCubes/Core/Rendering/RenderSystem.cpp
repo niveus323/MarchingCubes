@@ -3,17 +3,19 @@
 #include "Core/DataStructures/Data.h"
 #include <unordered_map>
 
-RenderSystem::RenderSystem(RenderSystemInitInfo init_info) :
-	m_info(std::move(init_info))
+RenderSystem::RenderSystem(RenderSystemInitInfo init_info) : 
+	m_device(init_info.device),
+	m_rootSignature(init_info.rootSignature),
+	m_uploadContext(init_info.uploadContext),
+	m_descriptorAllocator(init_info.descriptorAllocator),
+	m_inputElements(std::move(init_info.inputElements)),
+	m_psoFiles(std::move(init_info.psoFiles))
 {
-	assert(m_info.device && "RenderSystem : InValid Device!!!!");
-	assert(m_info.rootSignature && "RenderSystem : InValid RootSignature!!!!");
-
-	ID3D12Device* device = m_info.device;
-	ID3D12RootSignature* rootSignature = m_info.rootSignature;
-
+	assert(m_device && "RenderSystem : InValid Device!!!!");
+	assert(m_rootSignature && "RenderSystem : InValid RootSignature!!!!");
+	
 	std::vector<PSOSpec> mergedSpecs;
-	for (auto& psoFile : m_info.psoFiles)
+	for (auto& psoFile : m_psoFiles)
 	{
 		int schema = 0;
 		std::filesystem::path filePath = GetFullPath(AssetType::Default, L"PSO") / psoFile;
@@ -22,18 +24,18 @@ RenderSystem::RenderSystem(RenderSystemInitInfo init_info) :
 	}
 
 	PSOList::BuildContext ctx{
-		.device = device,
-		.root = rootSignature,
+		.device = m_device,
+		.root = m_rootSignature,
 		.inputLayout = D3D12_INPUT_LAYOUT_DESC{
-			.pInputElementDescs = m_info.inputElements.data(),
-			.NumElements = static_cast<UINT>(m_info.inputElements.size())
+			.pInputElementDescs = m_inputElements.data(),
+			.NumElements = static_cast<UINT>(m_inputElements.size())
 		}
 	};
 	
 	m_psoList = std::make_unique<PSOList>(ctx, mergedSpecs);
 	m_buckets.resize(m_psoList->Count());
 
-	m_bundleRecorder = std::make_unique<BundleRecorder>(device, rootSignature, m_psoList.get(), 2);
+	m_bundleRecorder = std::make_unique<BundleRecorder>(m_device, m_rootSignature, m_psoList.get(), 2);
 }
 
 RenderSystem::RenderSystem(ID3D12Device* device, ID3D12RootSignature* rootSignature, const std::vector<D3D12_INPUT_ELEMENT_DESC>& inputElements, const std::vector<std::wstring>& psoFiles) :
@@ -66,7 +68,7 @@ void RenderSystem::PrepareRender(_In_ UploadContext* uploadContext, _In_ Descrip
 	D3D12_CONSTANT_BUFFER_VIEW_DESC desc = {};
 	desc.BufferLocation = m_lightsBuf.gpuVA;
 	desc.SizeInBytes = AlignUp(blobSizeToCopy, D3D12_CONSTANT_BUFFER_DATA_PLACEMENT_ALIGNMENT);
-	m_info.device->CreateConstantBufferView(&desc, lightsCpu);
+	m_device->CreateConstantBufferView(&desc, lightsCpu);
 	m_lightsGpu = descriptorAllocator->GetDynamicGpu(frameIndex, lightsSlot);
 }
 

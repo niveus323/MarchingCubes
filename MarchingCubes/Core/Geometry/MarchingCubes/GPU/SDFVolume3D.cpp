@@ -1,14 +1,14 @@
 #include "pch.h"
 #include "SDFVolume3D.h"
+#include "Core/Engine/EngineCore.h"
 #include "Core/Rendering/UploadContext.h"
 
-SDFVolume3D::SDFVolume3D(ID3D12Device* device, UploadContext* uploadContext) :
-	m_device(device),
-	m_uploadContext(uploadContext)
+SDFVolume3D::SDFVolume3D(ID3D12Device* device) :
+	m_device(device)
 {
 }
 
-void SDFVolume3D::uploadFromGRD(ID3D12GraphicsCommandList* cmd, const SdfField<float>* grid)
+void SDFVolume3D::uploadFromGRD(ID3D12GraphicsCommandList* cmd, UploadContext* uploadContext, const SdfField* grid)
 {
 	const uint32_t dimX = static_cast<uint32_t>(grid->sx());
 	const uint32_t dimY = static_cast<uint32_t>(grid->sy());
@@ -21,7 +21,7 @@ void SDFVolume3D::uploadFromGRD(ID3D12GraphicsCommandList* cmd, const SdfField<f
 	s.RowPitch = sizeof(float) * dimX;
 	s.SlicePitch = s.RowPitch * dimY;
 	std::vector<D3D12_SUBRESOURCE_DATA> subs{ s };
-	m_uploadContext->UploadTexture(cmd, m_density3D.Get(), subs, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, "SDFVolume3D");
+	uploadContext->UploadTexture(cmd, m_density3D.Get(), subs, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, "SDFVolume3D");
 
 }
 

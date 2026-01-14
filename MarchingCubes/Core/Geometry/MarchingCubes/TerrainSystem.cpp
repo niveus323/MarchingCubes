@@ -3,104 +3,144 @@
 #include "Core/Geometry/MarchingCubes/GPU/GPUTerrainBackend.h"
 #include "Core/Geometry/MarchingCubes/CPU/MC33/MC33TerrainBackend.h"
 #include "Core/Geometry/Mesh/MeshChunkRenderer.h"
-#include "Core/Rendering/RenderSystem.h"
+#include "Core/Engine/EngineCore.h"
 
-TerrainSystem::TerrainSystem(const InitInfo& info) :
-	m_desc(info.desc),
-	m_descriptorAllocator(info.descriptorAllocator),
-	m_uploadContext(info.uploadContext)
+TerrainSystem::~TerrainSystem() = default;
+
+void TerrainSystem::Initialize()
 {
 	if (m_chunkRenderer)
 	{
 		m_chunkRenderer.reset();
 	}
 	m_chunkRenderer = std::make_unique<MeshChunkRenderer>();
-	setMode(info.device, info.mode);
-	setField(info.device, info.grid);
 }
 
-TerrainSystem::TerrainSystem(ID3D12Device* device, std::shared_ptr<SdfField<float>> grid, const GridDesc& desc, TerrainMode mode) :
-	TerrainSystem(InitInfo{ .device = device, .grid = grid, .desc = desc, .mode = mode})
+void TerrainSystem::Update(float deltaTime)
 {
+	if (m_backend->HasRequests())
+	{
+		ExecuteCompute(EngineCore::GetFrameIndex());
+	}
+
+	tryFetch();
 }
 
-TerrainSystem::~TerrainSystem() = default;
-
-void TerrainSystem::setMode(ID3D12Device* device, TerrainMode mode)
+void TerrainSystem::ExecuteCompute(uint32_t frameIndex)
 {
-	m_mode = mode;
+	if (!m_backend) return;
 
-	switch (m_mode)
+	switch(m_mode)
 	{
 		case TerrainMode::GPU_ORIGINAL:
 		{
-			GPUTerrainBackend::GPUTerrainInitInfo initInfo{
-				.descriptorAllocator = m_descriptorAllocator,
-				.uplaodContext = m_uploadContext
-			};
-			m_backend = std::make_unique<GPUTerrainBackend>(device, m_desc, initInfo);
+			auto* uploadContext = EngineCore::GetUploadContext();
+			auto* descriptorAllocator = EngineCore::GetDescriptorAllocator();
+			if (auto* gpuBackend = dynamic_cast<GPUTerrainBackend*>(m_backend.get()))
+			{
+				gpuBackend->ExecuteCompute(frameIndex, uploadContext, descriptorAllocator);
+			}
 		}
 		break;
-		case TerrainMode::CPU_MC33:
 		default:
-		{
-			m_backend = std::make_unique<MC33TerrainBackend>(device, m_desc);
-		}
 		break;
 	}
-
 }
 
-void TerrainSystem::setGridDesc(ID3D12Device* device, const GridDesc& d)
+void TerrainSystem::LoadTerrain(TerrainMode mode, const GridDesc& desc, std::shared_ptr<SdfField> field, const float isoValue)
+{
+	m_desc = desc;
+	m_lastGRD = field;
+	m_mode = mode; 
+	RebuildBackend();
+	RequestRemesh();
+}
+
+void TerrainSystem::SetMapData(const GridDesc& desc, std::shared_ptr<SdfField> field)
+{
+	m_desc = desc;
+	m_lastGRD = field;
+
+	if (m_backend)
+	{
+		m_backend->setGridDesc(m_desc);
+		m_backend->setFieldPtr(m_lastGRD);
+	}
+}
+
+void TerrainSystem::SetMode(TerrainMode mode)
+{
+	if (m_desc.cellsize <= 0.0f || m_desc.resolution.x == 0)
+	{
+		Log::Print("TerrainSystem", "Map data가 설정되어 있지 않아 로드할 수 없습니다.");
+		return;
+	}
+
+	if (m_mode != mode || !m_backend)
+	{
+		m_mode = mode;
+		RebuildBackend();
+	}
+}
+
+void TerrainSystem::SetGridDesc(const GridDesc& d)
 {
 	m_desc = d;
-	m_backend->setGridDesc(d);
+	if(m_backend) m_backend->setGridDesc(d);
+	ResetRenderer();
 }
 
-void TerrainSystem::setField(ID3D12Device* device, std::shared_ptr<SdfField<float>> grid)
+void TerrainSystem::SetField(std::shared_ptr<SdfField> field)
 {
-	m_lastGRD = std::move(grid);
+	m_lastGRD = std::move(field);
 	if (m_backend && m_lastGRD) m_backend->setFieldPtr(m_lastGRD);
 }
 
-void TerrainSystem::requestRemesh(uint32_t frameIndex, const RemeshRequest& r)
+void TerrainSystem::RequestRemesh(const std::set<ChunkKey>& chunkSet)
 {
-	m_backend->requestRemesh(frameIndex, r);
+	if (!m_backend) return;
+
+	m_backend->RequestRemesh(chunkSet);
 }
 
-void TerrainSystem::requestRemesh(uint32_t frameIndex, float isoValue)
+// 전체 Remesh
+void TerrainSystem::RequestRemesh()
 {
-	RemeshRequest req{ .isoValue = isoValue };
-	uint32_t chunkX = m_desc.cells.x / m_desc.chunkSize;
-	uint32_t chunkY = m_desc.cells.y / m_desc.chunkSize;
-	uint32_t chunkZ = m_desc.cells.z / m_desc.chunkSize;
+	if (!m_backend || !IsLoaded()) return;
+
+	std::set<ChunkKey> chunkSet;
+	uint32_t chunkX = m_desc.resolution.x / m_desc.chunkSize;
+	uint32_t chunkY = m_desc.resolution.y / m_desc.chunkSize;
+	uint32_t chunkZ = m_desc.resolution.z / m_desc.chunkSize;
 	for (uint32_t x = 0; x < chunkX; ++x)
 		for (uint32_t y = 0; y < chunkY; ++y)
 			for (uint32_t z = 0; z < chunkZ; ++z)
-				req.chunkset.insert(ChunkKey{ x,y,z });
-	requestRemesh(frameIndex, req);
+				chunkSet.insert(ChunkKey{ x,y,z });
+	RequestRemesh(chunkSet);
 }
 
-void TerrainSystem::requestBrush(uint32_t frameIndex, const BrushRequest& r)
+void TerrainSystem::RequestBrush(const BrushRequest& r)
 {
 	if (!m_backend) return;
-	m_backend->requestBrush(frameIndex, r);
+
+	m_backend->RequestBrush(r);
 }
 
 void TerrainSystem::tryFetch()
 {
-	if (!m_backend || !m_uploadContext) return;
+	if (!m_backend) return;
 
 	std::vector<ChunkUpdate> ups;
 	if (m_backend && m_backend->tryFetch(ups))
 	{
-		m_chunkRenderer->ApplyUpdates(m_uploadContext, ups);
+		auto* uploadContext = EngineCore::GetUploadContext();
+		m_chunkRenderer->ApplyUpdates(uploadContext, ups);
 	}
 }
 
 void TerrainSystem::ResetRenderer() 
 {
-	m_chunkRenderer->Clear(); 
+	m_chunkRenderer->Clear(EngineCore::GetUploadContext());
 }
 
 #ifdef _DEBUG
@@ -108,9 +148,9 @@ void TerrainSystem::MakeDebugCell(GeometryData& outMeshData, bool bDrawFullCell)
 {
 	outMeshData.topology = D3D_PRIMITIVE_TOPOLOGY_LINELIST;
 
-	const int Nx = static_cast<int>(m_desc.cells.x);
-	const int Ny = static_cast<int>(m_desc.cells.y);
-	const int Nz = static_cast<int>(m_desc.cells.z);
+	const int Nx = static_cast<int>(m_desc.resolution.x);
+	const int Ny = static_cast<int>(m_desc.resolution.y);
+	const int Nz = static_cast<int>(m_desc.resolution.z);
 
 	// XY-Plane
 	for (int x = 0; x < Nx; ++x)
@@ -136,7 +176,7 @@ void TerrainSystem::MakeDebugCell(GeometryData& outMeshData, bool bDrawFullCell)
 			};
 
 			Vertex B{
-				.pos = { A.pos.x, A.pos.y, A.pos.z + m_desc.cells.z * m_desc.cellsize },
+				.pos = { A.pos.x, A.pos.y, A.pos.z + m_desc.resolution.z * m_desc.cellsize },
 				.normal = { 0.0f, 0.0f, 1.0f },
 				.color = { 1.0f, 1.0f, 1.0f, 1.0f }
 			};
@@ -174,7 +214,7 @@ void TerrainSystem::MakeDebugCell(GeometryData& outMeshData, bool bDrawFullCell)
 			};
 
 			Vertex B{
-				.pos = { A.pos.x, A.pos.y + m_desc.cells.y * m_desc.cellsize , A.pos.z },
+				.pos = { A.pos.x, A.pos.y + m_desc.resolution.y * m_desc.cellsize , A.pos.z },
 				.normal = { 0.0f, 0.0f, 0.0f },
 				.color = { 1.0f, 1.0f, 1.0f, 1.0f }
 			};
@@ -211,7 +251,7 @@ void TerrainSystem::MakeDebugCell(GeometryData& outMeshData, bool bDrawFullCell)
 			};
 
 			Vertex B{
-				.pos = { A.pos.x + m_desc.cells.x * m_desc.cellsize , A.pos.y, A.pos.z },
+				.pos = { A.pos.x + m_desc.resolution.x * m_desc.cellsize , A.pos.y, A.pos.z },
 				.normal = { 0.0f, 0.0f, 0.0f },
 				.color = { 1.0f, 1.0f, 1.0f, 1.0f }
 			};
@@ -223,9 +263,31 @@ void TerrainSystem::MakeDebugCell(GeometryData& outMeshData, bool bDrawFullCell)
 		}
 	}
 }
-
-void TerrainSystem::EraseChunk(RenderSystem* renderSystem)
-{
-	m_chunkRenderer->Clear();
-}
 #endif
+
+void TerrainSystem::RebuildBackend()
+{
+	m_backend.reset();
+
+	auto* device = EngineCore::GetDevice();
+	switch (m_mode)
+	{
+		case TerrainMode::GPU_ORIGINAL:
+		{
+			auto* descriptorAllocator = EngineCore::GetDescriptorAllocator();
+			m_backend = std::make_unique<GPUTerrainBackend>(device, m_desc, descriptorAllocator);
+		}
+		break;
+		case TerrainMode::CPU_MC33:
+		default:
+		{
+			m_backend = std::make_unique<MC33TerrainBackend>(device, m_desc);
+		}
+		break;
+	}
+
+	if (m_lastGRD)
+	{
+		m_backend->setFieldPtr(m_lastGRD);
+	}
+}

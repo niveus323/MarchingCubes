@@ -17,11 +17,26 @@ class GameObject;
 class TransformComponent : public Component
 {
 public:
+	REFLECT_GENERATED_BODY()
 	TransformComponent(GameObject* owner) : Component(owner) {}
 	~TransformComponent() = default;
 	
+	// World Space
 	DirectX::XMMATRIX GetWorldMatrix() const;
 	DirectX::XMMATRIX GetWorldInvMatrix() const					{ return XMMatrixInverse(nullptr, GetWorldMatrix()); }
+	DirectX::XMFLOAT3 GetWorldPosition() const
+	{
+		XMFLOAT3 pos;
+		XMStoreFloat3(&pos, GetWorldMatrix().r[3]);
+		return pos;
+	}
+	void SetWorldPosition(const DirectX::XMFLOAT3& worldPos);
+	DirectX::XMVECTOR GetWorldRotationQuat() const;
+	void SetWorldRotation(const DirectX::XMFLOAT3& worldRot);
+	void SetWorldRotation(const DirectX::XMVECTOR& worldQuat);
+
+	// Local Space
+	DirectX::XMMATRIX GetLocalMatrix() const;
 	DirectX::XMVECTOR GetRightVec() const						{ return DirectX::XMVector3Normalize(GetWorldMatrix().r[0]); }
 	DirectX::XMVECTOR GetUpVec() const							{ return DirectX::XMVector3Normalize(GetWorldMatrix().r[1]); }
 	DirectX::XMVECTOR GetForwardVec() const						{ return DirectX::XMVector3Normalize(GetWorldMatrix().r[2]); }
@@ -45,12 +60,7 @@ public:
 		XMStoreFloat3(&pos, DirectX::XMVector3Normalize(GetWorldMatrix().r[1]));
 		return pos;
 	}
-	DirectX::XMFLOAT3 GetWorldPosition() const
-	{
-		XMFLOAT3 pos;
-		XMStoreFloat3(&pos, GetWorldMatrix().r[3]);
-		return pos;
-	}
+	
 	DirectX::XMFLOAT3 GetForward() const
 	{
 		XMFLOAT3 pos;

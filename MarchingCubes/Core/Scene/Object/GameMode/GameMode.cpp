@@ -1,7 +1,7 @@
 #include "pch.h"
 #include "GameMode.h"
 #include "Core/Scene/Scene.h"
-#include "Core/Scene/Object/PlayerController.h"
+#include "Core/Scene/Object/Controller/PlayerController.h"
 #include "Core/Scene/Object/Pawn.h"
 
 void GameMode::Init()

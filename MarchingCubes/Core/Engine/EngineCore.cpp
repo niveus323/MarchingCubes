@@ -7,3 +7,4 @@ InputState* EngineCore::s_inputState = nullptr;
 uint32_t EngineCore::s_frameIndex = 0; 
 UploadContext* EngineCore::s_uploadContext = nullptr;
 DescriptorAllocator* EngineCore::s_descriptorAllocator = nullptr;
+std::unordered_map<std::type_index, ISubSystem*> EngineCore::s_subsystems;

@@ -4,6 +4,7 @@
 
 class CameraComponent : public Component
 {
+	REFLECT_GENERATED_BODY()
 public:
 	CameraComponent(GameObject* owner, float viewportWidth, float viewportHeight, float fov = XM_PIDIV4, float zNear = 0.1f , float zFar = 1000.0f) :
 		Component(owner)
@@ -18,6 +19,10 @@ public:
 	XMMATRIX GetViewMatrix() const;
 	XMMATRIX GetProjMatrix() const { return DirectX::XMMatrixPerspectiveFovLH(m_fov, m_aspect, m_nearZ, m_farZ); }
 	XMMATRIX GetViewProjMatrix() const { return GetViewMatrix() * GetProjMatrix(); }
+
+	XMVECTOR GetForwardVector() const;
+	XMVECTOR GetRightVector() const;
+	XMVECTOR GetUpVector() const;
 
 	float GetViewportWidth() const { return m_viewportWidth; }
 	float GetViewportHeight() const { return m_viewportHeight; }

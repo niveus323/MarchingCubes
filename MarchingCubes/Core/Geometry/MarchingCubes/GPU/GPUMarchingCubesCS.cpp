@@ -15,9 +15,7 @@ void GPUMarchingCubesCS::encode(const GPUMCEncodingContext& context)
 {
 	ID3D12Device* device = context.device;
 	ID3D12GraphicsCommandList* cmd = context.cmd;
-	const SDFVolumeView& vol = context.vol;
-	const RemeshRequest& req = context.req;
-	XMUINT3 dispatchGroups = computeDispatchGroupsForRegion(vol.chunkCubes, vol.grid.cells, context.regionCellMin, context.regionCellMax);
+	XMUINT3 dispatchGroups = computeDispatchGroupsForRegion( context.chunkCubes, context.gridDimension, context.regionCellMin, context.regionCellMax);
 
 	uploadTableIfNeeded(cmd);
 
@@ -26,7 +24,7 @@ void GPUMarchingCubesCS::encode(const GPUMCEncodingContext& context)
 	cmd->SetComputeRootSignature(m_mcRootSig.Get());
 	cmd->SetComputeRootConstantBufferView(0, context.cbAddress); // b0: GridCB
 	cmd->SetComputeRootDescriptorTable(1, context.triTableSrv); // t0: triTable
-	cmd->SetComputeRootDescriptorTable(2, context.vol.srv); // t1: Density3D
+	cmd->SetComputeRootDescriptorTable(2, context.densitySrv); // t1: Density3D
 	cmd->SetComputeRootDescriptorTable(3, context.outBufferUav); // u0: OutTriangle UAV
 
 #if PIX_DEBUGMODE

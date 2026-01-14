@@ -1,8 +1,8 @@
 #pragma once
-#include "GameObject.h"
+#include "Core/Scene/Object/GameObject.h"
+#include "Core/Scene/Object/Controller/Controller.h"
 
 // Forward Declaration
-class PlayerController;
 class Pawn;
 class Scene;
 
@@ -17,12 +17,10 @@ public:
 	
 	virtual void Init() override;
 	
-	PlayerController* GetPlayerController() { return m_pc; }
-
-protected:
+	template<std::derived_from<Controller> T>
+	T* GetController() { return static_cast<T*>(m_pc); }
 
 private:
-	PlayerController* m_pc = nullptr;
-
+	Controller* m_pc = nullptr;
 };
 

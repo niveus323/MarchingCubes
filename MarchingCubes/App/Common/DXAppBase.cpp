@@ -1,5 +1,6 @@
 #include "pch.h"
 #include "DXAppBase.h"
+#include "Win32Application.h"
 #include "Core/Assets/ResourceManager.h"
 #include "Core/Rendering/Memory/GpuAllocator.h"
 #include "Core/Rendering/Memory/StaticBufferRegistry.h"
@@ -44,8 +45,8 @@ void DXAppBase::OnInit()
 	InitPipeline();
 	InitSubsystems();
 	OnAfterSwapchainCreated();                      
-	InitializeScene();
 	InitUI(m_commandList.Get());
+	InitializeScene();
 }
 
 void DXAppBase::OnDestroy()
@@ -57,7 +58,7 @@ void DXAppBase::OnDestroy()
 		ThrowIfFailed(m_swapChainFence->SetEventOnCompletion(finalFence, m_fenceEvent));
 		WaitForSingleObjectEx(m_fenceEvent, INFINITE, FALSE);
 	}
-
+	EngineCore::ShutdownSubsystems();
 	if (m_currentScene) m_currentScene->OnExit();
 	if (m_uiRenderer)	m_uiRenderer->ShutDown();
 	if (m_swapChain)  m_swapChain->SetFullscreenState(FALSE, nullptr);
@@ -129,14 +130,19 @@ void DXAppBase::StartTimer()
 void DXAppBase::TickAndUpdate()
 {
 	float deltaTime = m_timer.Tick();
+	if (m_uiRenderer)
+	{
+		bool mouseCaptured = m_uiRenderer->IsCapturingMouse();
+		bool kbdCaptured = m_uiRenderer->IsCapturingKeyboard();
+
+		m_inputState->SetInputCaptured(mouseCaptured, kbdCaptured);
+	}
 	m_inputState->Update();
 	OnUpdate(deltaTime);
 	OnUpdateUI(deltaTime);
+	m_currentScene->Update(deltaTime);
 
-	if (!m_uiRenderer->IsCapturingUI())
-	{
-		m_currentScene->Update(deltaTime);
-	}
+	EngineCore::UpdateSubsystems(deltaTime);
 }
 
 _Use_decl_annotations_
@@ -202,15 +208,9 @@ void DXAppBase::LoadScene(std::unique_ptr<Scene> newScene)
 	m_currentScene = std::move(newScene);
 	m_currentScene->OnResize(0.0f, 0.0f, static_cast<float>(m_width), static_cast<float>(m_height));
 	m_currentScene->Init();
-}
+	m_currentScene->InitUI(m_uiRenderer.get());
 
-
-void DXAppBase::InitUI(ID3D12GraphicsCommandList* cmd)
-{
-	if (m_currentScene)
-	{
-		m_currentScene->InitUI(m_uiRenderer.get());
-	}
+	OnSceneLoaded(m_currentScene.get());
 }
 
 void DXAppBase::RenderFrame(ID3D12GraphicsCommandList* cmd)
@@ -232,6 +232,10 @@ void DXAppBase::RenderFrame(ID3D12GraphicsCommandList* cmd)
 	{
 		cmd->RSSetViewports(1, &m_currentScene->GetViewport());
 		cmd->RSSetScissorRects(1, &m_currentScene->GetScissorRect());
+
+		CameraConstants sceneViewData = m_currentScene->GetCameraConstants();
+		LightBlobView lightBlob = m_currentScene->GetLightBlob();
+		m_renderSystem->PrepareRender(GetUploadContext(), GetDescriptorAllocator(), sceneViewData, lightBlob, m_frameIndex);
 	}
 	else
 	{
@@ -527,6 +531,7 @@ void DXAppBase::PrepareRender()
 	if (m_currentScene) m_currentScene->Render();
 	m_resourceManager->syncGpu(m_commandList.Get());
 	m_uploadContext->Execute(m_commandList.Get());
+	EngineCore::ComputeSubsystems();
 }
 
 void DXAppBase::MoveToNextFrame()

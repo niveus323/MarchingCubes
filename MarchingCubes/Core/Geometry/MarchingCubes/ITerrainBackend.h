@@ -11,10 +11,11 @@ enum class TerrainMode
 
 struct GridDesc
 {
-	DirectX::XMUINT3 cells;
-	float cellsize;
-	DirectX::XMFLOAT3 origin;
-	uint32_t chunkSize;
+	DirectX::XMUINT3 resolution = { 0u, 0u,0u };
+	float cellsize = 0.0f;
+	DirectX::XMFLOAT3 origin = {0.0f, 0.0f, 0.0f};
+	uint32_t chunkSize = 0;
+	float isoValue = 0.0f;
 };
 
 struct ChunkKey
@@ -47,28 +48,21 @@ struct ChunkUpdate
 	bool empty = true;
 };
 
-struct RemeshRequest
-{
-	float isoValue = 0.0f;
-	std::set<ChunkKey> chunkset;
-};
-
 struct BrushRequest
 {
-	DirectX::XMFLOAT3 hitpos{};
+	float deltaTime = 0.016f;
+	DirectX::XMFLOAT3 center{};
 	float radius = 1.0f;
 	float weight = 1.0f;
-	float deltaTime = 0.016f;
-	float isoValue = 0.0f;
-
 };
 
 struct ITerrainBackend
 {
 	virtual ~ITerrainBackend() = default;
-	virtual void setGridDesc(const GridDesc&) = 0;
-	virtual void setFieldPtr(std::shared_ptr<SdfField<float>> grid) = 0;			// GPU: density3D 갱신 / CPU: 내부 GRD 보관
-	virtual void requestBrush(uint32_t frameIndex, const BrushRequest& r) = 0;
-	virtual void requestRemesh(uint32_t frameIndex, const RemeshRequest& r) = 0;
+	virtual void setGridDesc(const GridDesc& desc) = 0;
+	virtual void setFieldPtr(std::shared_ptr<SdfField> grid) = 0;	// GPU: density3D 갱신 / CPU: 내부 GRD 보관
+	virtual void RequestBrush(const BrushRequest& r) = 0;
+	virtual void RequestRemesh(const std::set<ChunkKey>& chunkSet) = 0;
 	virtual bool tryFetch(std::vector<ChunkUpdate>& OutChunkUpdates) = 0;  // GPU : readback / CPU : GeometryData -> GeometryBuffer Commit
+	virtual bool HasRequests() const = 0;
 };

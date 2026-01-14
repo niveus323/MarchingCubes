@@ -27,7 +27,7 @@ public:
 	void ResetCounterUAV(ID3D12GraphicsCommandList* cmd, ID3D12Resource* counter, D3D12_RESOURCE_STATES before, D3D12_RESOURCE_STATES after, std::string_view debugName = "CounterReset");
 
 	void UploadGeometry(GeometryBuffer* buffer, const GeometryData& cpuData, std::string_view debugName);
-
+	void FreeGeometryBuffer(GeometryBuffer& buffer); 
 private:
 	void EnsureDefaultVB(GeometryBuffer* buf, uint64_t neededSize, std::string_view debugName = nullptr);
 	void EnsureDefaultIB(GeometryBuffer* buf, uint64_t neededSize, std::string_view debugName = nullptr);

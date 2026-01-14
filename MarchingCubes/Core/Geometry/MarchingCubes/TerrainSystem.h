@@ -1,37 +1,31 @@
 #pragma once
+#include "Core/Engine/Subsystem/SceneSubSystem.h"
 #include "ITerrainBackend.h"
-#include <any>
 
 // Forward Declaration
-class RenderSystem;
 class MeshChunkRenderer;
 class DescriptorAllocator;
 class UploadContext;
 
-class TerrainSystem
+class TerrainSystem : public ISceneSubsystem
 {
 public:
-	struct InitInfo
-	{
-		ID3D12Device* device = nullptr;
-		std::shared_ptr<SdfField<float>> grid;
-		const GridDesc& desc;
-		TerrainMode mode = TerrainMode::CPU_MC33;
-		
-		DescriptorAllocator* descriptorAllocator = nullptr;
-		UploadContext* uploadContext = nullptr;
-	};
-public:
-	explicit TerrainSystem(const InitInfo& info);
-	TerrainSystem(ID3D12Device* device, std::shared_ptr<SdfField<float>> grid, const GridDesc& desc, TerrainMode mode);
 	~TerrainSystem();
+	virtual void Initialize() override;
+	virtual void Update(float deltaTime) override;
+	virtual void ExecuteCompute(uint32_t frameIndex) override;
+	
+	void LoadTerrain(TerrainMode mode, const GridDesc& desc, std::shared_ptr<SdfField> field, const float isoValue = 0.0f);
+	bool IsLoaded() const { return m_desc.resolution.x > 0 && m_desc.cellsize > 0.0f; }
 
-	void setMode(ID3D12Device* device, TerrainMode mode);
-	void setGridDesc(ID3D12Device* deivce, const GridDesc& d);
-	void setField(ID3D12Device* device, std::shared_ptr<SdfField<float>> grid);
-	void requestRemesh(uint32_t frameIndex, const RemeshRequest& r);
-	void requestRemesh(uint32_t frameIndex, float isoValue = 0.0f); // 전체 Remesh
-	void requestBrush(uint32_t frameIndex, const BrushRequest& r);
+	void SetMapData(const GridDesc& desc, std::shared_ptr<SdfField> field);
+	void SetMode(TerrainMode mode);
+	void SetGridDesc(const GridDesc& d);
+	const GridDesc& GetGridDesc() const { return m_desc; }
+	void SetField(std::shared_ptr<SdfField> field);
+	void RequestRemesh(const std::set<ChunkKey>& chunkSet);
+	void RequestRemesh(); // 전체 Remesh
+	void RequestBrush(const BrushRequest& r);
 
 	void tryFetch();
 
@@ -42,16 +36,14 @@ public:
 	//Debug
 #ifdef _DEBUG
 	void MakeDebugCell(GeometryData& outMeshData, bool bDrawFullCell);
-	void EraseChunk(RenderSystem* renderSystem);
 #endif // _DEBUG
-	
 private:
-	TerrainMode				m_mode{ TerrainMode::GPU_ORIGINAL };
-	std::shared_ptr<SdfField<float>>	m_lastGRD;
-	GridDesc				m_desc{};
+	void RebuildBackend();
 
-	DescriptorAllocator* m_descriptorAllocator = nullptr;
-	UploadContext* m_uploadContext = nullptr;
+private:
+	TerrainMode				m_mode{ TerrainMode::CPU_MC33 };
+	std::shared_ptr<SdfField>	m_lastGRD;
+	GridDesc				m_desc{};
 
 	std::unique_ptr<ITerrainBackend> m_backend;
 	std::unique_ptr<MeshChunkRenderer> m_chunkRenderer;

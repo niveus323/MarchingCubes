@@ -2,29 +2,92 @@
 #include "TransformComponent.h"
 #include "Core/Scene/Object/SceneObject.h"
 
+BEGIN_REFLECTION(TransformComponent, Component)
+	REFLECT_PROPERTY(m_transform.position, EPropertyType::Vector3)
+	REFLECT_PROPERTY(m_transform.rotation, EPropertyType::Vector3)
+	REFLECT_PROPERTY(m_transform.scale, EPropertyType::Vector3)
+END_REFLECTION()
+
 DirectX::XMMATRIX TransformComponent::GetWorldMatrix() const
 {
-	const auto& position = m_transform.position;
-	const auto& rotation = m_transform.rotation;
-	const auto& scale = m_transform.scale;
+	XMMATRIX localMat = GetLocalMatrix();
 
-	XMMATRIX T = XMMatrixTranslation(position.x, position.y, position.z);
-	XMMATRIX R = XMMatrixRotationQuaternion(ToQuatFromEuler(rotation));
-	XMMATRIX S = XMMatrixScaling(scale.x, scale.y, scale.z);
-
-	XMMATRIX local = S * R * T;
-	
-	// °èÃþÇü Transform Àû¿ë
-	while (GameObject* currentAncestor = GetOwner()->GetOwner())
+	if (GameObject* parent = GetOwner()->GetOwner())
 	{
-		if (auto parentTransform = currentAncestor->GetComponent<TransformComponent>())
+		if (auto parentTransform = parent->GetComponent<TransformComponent>())
 		{
-			return local * parentTransform->GetWorldMatrix();
+			return localMat * parentTransform->GetWorldMatrix();
 		}
-
-		currentAncestor = currentAncestor->GetOwner();
 	}
-	return local;
+
+	return localMat;
+}
+
+DirectX::XMVECTOR TransformComponent::GetWorldRotationQuat() const
+{
+	XMVECTOR localRot = ToQuatFromEuler(m_transform.rotation);
+
+	if (GameObject* parent = GetOwner()->GetOwner())
+	{
+		if (auto parentTransform = parent->GetComponent<TransformComponent>())
+		{
+			XMVECTOR parentWorldRot = parentTransform->GetWorldRotationQuat();
+			return XMQuaternionMultiply(localRot, parentWorldRot);
+		}
+	}
+
+	return localRot;
+}
+
+void TransformComponent::SetWorldPosition(const DirectX::XMFLOAT3& worldPos)
+{
+	GameObject* parent = GetOwner()->GetOwner();
+	if (!parent)
+	{
+		SetPosition(worldPos);
+		return;
+	}
+
+	if (auto parentTransform = parent->GetComponent<TransformComponent>())
+	{
+		XMMATRIX parentWorld = parentTransform->GetWorldMatrix();
+		XMMATRIX parentInv = XMMatrixInverse(nullptr, parentWorld);
+
+		XMVECTOR vWorld = XMLoadFloat3(&worldPos);
+		XMVECTOR vLocal = XMVector3TransformCoord(vWorld, parentInv);
+
+		XMStoreFloat3(&m_transform.position, vLocal);
+	}
+}
+
+void TransformComponent::SetWorldRotation(const DirectX::XMFLOAT3& worldRotEuler)
+{
+    XMVECTOR worldQuat = ToQuatFromEuler(worldRotEuler);
+    SetWorldRotation(worldQuat);
+}
+
+void TransformComponent::SetWorldRotation(const DirectX::XMVECTOR& worldRotQuat)
+{
+	XMVECTOR localQuat = worldRotQuat;
+	if (GameObject* parent = GetOwner()->GetOwner())
+	{
+		if (auto parentTransform = parent->GetComponent<TransformComponent>())
+		{
+			XMVECTOR parentWorldRot = parentTransform->GetWorldRotationQuat();
+			XMVECTOR parentRotInv = XMQuaternionInverse(parentWorldRot);
+			localQuat = XMQuaternionMultiply(worldRotQuat, parentRotInv);
+		}
+	}
+	SetRotation(localQuat);
+}
+
+DirectX::XMMATRIX TransformComponent::GetLocalMatrix() const
+{
+	XMMATRIX T = XMMatrixTranslation(m_transform.position.x, m_transform.position.y, m_transform.position.z);
+	XMMATRIX R = XMMatrixRotationQuaternion(ToQuatFromEuler(m_transform.rotation));
+	XMMATRIX S = XMMatrixScaling(m_transform.scale.x, m_transform.scale.y, m_transform.scale.z);
+
+	return S * R * T;
 }
 
 void TransformComponent::Move(const DirectX::XMFLOAT3& delta)

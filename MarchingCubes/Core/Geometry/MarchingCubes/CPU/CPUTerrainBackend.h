@@ -9,13 +9,14 @@ public:
 
 	// ITerrainBackend을(를) 통해 상속됨
 	void setGridDesc(const GridDesc&) override;
-	void setFieldPtr(std::shared_ptr<SdfField<float>> grid) override;
-	void requestBrush(uint32_t frameIndex, const BrushRequest& r) override;
+	void setFieldPtr(std::shared_ptr<SdfField> grid) override;
+	void RequestBrush(const BrushRequest& r) override;
 	bool tryFetch(std::vector<ChunkUpdate>& OutChunkUpdate) override;
+	bool HasRequests() const override { return false; }
 
 protected:
 	GridDesc m_gridDesc{};
-	std::shared_ptr<SdfField<float>> m_grd;
+	std::shared_ptr<SdfField> m_grd;
 
 	std::unordered_map<ChunkKey, GeometryData, ChunkKeyHash> m_chunkData;
 	float m_brushDelta = 0.05f;

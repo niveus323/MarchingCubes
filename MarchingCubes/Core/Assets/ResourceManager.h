@@ -3,7 +3,6 @@
 #include "Core/Rendering/PSO/DescriptorAllocator.h"
 #include "Core/Rendering/UploadContext.h"
 #include "ThirdParty/FBXImporter.h"
-#include <DirectXTex.h>
 #include "MeshAsset.h"
 
 /* [ResourceManager]
@@ -39,6 +38,7 @@ public:
 	size_t AddMaterial(const Material& material);
 	std::shared_ptr<Mesh> LoadMeshAsset(const std::filesystem::path& path, const MeshImportOptions& options);
 	const MeshAsset* GetMeshAsset(const std::filesystem::path& path) const;
+	D3D12_GPU_DESCRIPTOR_HANDLE GetTextureGpuHandle(uint32_t handle) const;
 private:
 	void ProcessMaterials(const std::filesystem::path& basePath, const std::vector<ImportedMaterialDesc>& srcMaterials, std::vector<uint32_t>& outMatIndices);
 	static std::filesystem::path ResolveTexturePath(const std::filesystem::path& fbxPath, const std::filesystem::path& texRelativePath);

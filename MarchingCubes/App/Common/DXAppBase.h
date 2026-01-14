@@ -1,5 +1,4 @@
 #pragma once
-#include "Win32Application.h"
 #include "Core/Utils/Timer.h"
 #include "Core/UI/UIRenderer.h"
 #include "Core/Scene/Scene.h"
@@ -39,13 +38,14 @@ public:
     ID3D12Resource* CurrentBackbuffer() const { return m_renderTargets[m_frameIndex].Get(); }
 
 protected:
-    virtual void InitUI(ID3D12GraphicsCommandList* cmd);
-    virtual void OnUpload(ID3D12GraphicsCommandList* cmd) {};                           // 리소스 버퍼 할당
+    virtual void InitUI(ID3D12GraphicsCommandList* cmd) {}
+    virtual void OnUpload(ID3D12GraphicsCommandList* cmd) {}                            // 리소스 버퍼 할당
     virtual void RenderFrame(ID3D12GraphicsCommandList* cmd);
     virtual void OnAfterSwapchainCreated() {}                                           
     virtual void InitSubsystems();                                                      // 서브 시스템
     virtual void OnBuildInitialScene(ID3D12GraphicsCommandList* initCommand) {}         // 초기 씬 구성
     virtual void OnAfterChainSwaped();
+    virtual void OnSceneLoaded(Scene* scene) {}
 
     virtual void CreateRootSignature() = 0;
     virtual void CreateInputElements() = 0;
@@ -56,7 +56,6 @@ protected:
 	void GetHawrdwardAdapter(_In_ IDXGIFactory1* pFactory, _Outptr_result_maybenull_ IDXGIAdapter1** ppAdapter, bool requestHightPerformanceAdapter = false);
 	void SetCustomWindowText(LPCWSTR text) const;
 
-protected:
     Timer& GetTimer() { return m_timer; }
     const Timer& GetTimer() const { return m_timer; }
     ID3D12Device* GetDevice() { return m_device.Get(); }

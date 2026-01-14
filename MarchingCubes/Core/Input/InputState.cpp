@@ -2,16 +2,12 @@
 #include "InputState.h"
 
 InputState::InputState()
-	: m_mouseX(0),
-	m_mouseY(0),
-	m_prevMouseX(0),
-	m_prevMouseY(0),
-	m_mouseDeltaX(0.0f),
-	m_mouseDeltaY(0.0f),
-	m_mouseInitialized(false)
 {
 	m_keyMap[ActionKey::Escape] = VK_ESCAPE;
 	m_keyMap[ActionKey::Ctrl] = VK_CONTROL;
+	m_keyMap[ActionKey::LeftClick] = VK_LBUTTON;
+	m_keyMap[ActionKey::MiddleClick] = VK_MBUTTON;
+	m_keyMap[ActionKey::RightClick] = VK_RBUTTON;
 	m_keyMap[ActionKey::MoveForward] = 'W';
 	m_keyMap[ActionKey::MoveBackward] = 'S';
 	m_keyMap[ActionKey::MoveLeft] = 'A';
@@ -23,86 +19,65 @@ InputState::InputState()
 	m_keyMap[ActionKey::ToggleDebugNormal] = VK_F3;
 }
 
-void InputState::OnMouseDown(int x, int y, WPARAM btn)
+void InputState::Update()
 {
-	m_mouseX = x;
-	m_mouseY = y;
-	
-	switch (btn)
-	{
-	case VK_LBUTTON:
-	{
-		m_leftBtnState = ActionKeyState::JustPressed;
-	}
-		break;
-	case VK_RBUTTON:
-	{
-		m_rightBtnState = ActionKeyState::JustPressed;
-	}
-		break;
-	default:
-		break;
-	}
-}
+	if (!m_mouseInitialized) return;
 
-void InputState::OnMouseUp(int x, int y, WPARAM btn)
-{
-	m_mouseX = x;
-	m_mouseY = y;
+	MousePos delta = m_curPos - m_prevPos;
+	m_prevPos = m_curPos;
 
-	switch (btn)
+	if (m_isMouseCaptured) m_deltaPos = { 0, 0 };
+	else m_deltaPos = delta;
+
+	for (auto& state : m_keyState)
 	{
-	case VK_LBUTTON:
-	{
-		m_leftBtnState = ActionKeyState::JustReleased;
-	}
-	break;
-	case VK_RBUTTON:
-	{
-		m_rightBtnState = ActionKeyState::JustReleased;
-	}
-	break;
-	default:
-		break;
+		switch (state.second)
+		{
+			case ActionKeyState::JustPressed:
+				state.second = ActionKeyState::Pressed;
+				break;
+			case ActionKeyState::JustReleased:
+				state.second = ActionKeyState::NONE;
+				break;
+			default:
+				break;
+		}
 	}
 }
 
 void InputState::OnMouseMove(int x, int y)
 {
-	m_mouseX = x;
-	m_mouseY = y;
+	m_curPos = MousePos(x, y);
 
 	if (!m_mouseInitialized)
 	{
-		m_prevMouseX = x;
-		m_prevMouseY = y;
+		m_prevPos = MousePos(x, y);
 		m_mouseInitialized = true;
 	}
 }
 
-void InputState::OnKeyDown(WPARAM key)
-{
-	m_keyState[key] = ActionKeyState::JustPressed;
-}
-
-void InputState::OnKeyUp(WPARAM key)
-{
-	m_keyState[key] = ActionKeyState::JustReleased;
-}
-
 bool InputState::IsPressed(ActionKey action) const
 {
-	auto iter = m_keyMap.find(action);
-	if (iter != m_keyMap.end())
-	{
-		auto keyState = m_keyState.find(iter->second);
-		return keyState != m_keyState.end() && (keyState->second == ActionKeyState::JustPressed || keyState->second == ActionKeyState::Pressed);
-	}
-	return false;
+	ActionKeyState state = GetKeyState(action);
+	return state == ActionKeyState::JustPressed || state == ActionKeyState::Pressed;
+}
+
+float InputState::GetAxisValue(ActionKey action) const
+{
+	if (action == ActionKey::MouseX) return static_cast<float>(m_deltaPos.x);
+	if (action == ActionKey::MouseY) return static_cast<float>(m_deltaPos.y);
+
+	if (IsPressed(action)) return 1.0f;
+
+	return 0.0f;
 }
 
 ActionKeyState InputState::GetKeyState(ActionKey action) const
 {
+	bool isMouseKey = (action == ActionKey::LeftClick || action == ActionKey::RightClick || action == ActionKey::MiddleClick);
+	if (isMouseKey && m_isMouseCaptured) return ActionKeyState::NONE;
+	if (!isMouseKey && m_isKeyboardCaptured) return ActionKeyState::NONE;
+
 	auto iter = m_keyMap.find(action);
 	if (iter != m_keyMap.end())
 	{
@@ -191,53 +166,4 @@ void InputState::SaveKeyBindingsToIni(const std::wstring& filename)
 		WritePrivateProfileStringW(section, keyName, value, filename.c_str());
 	}
 
-}
-
-void InputState::Update()
-{
-	if (!m_mouseInitialized) return;
-
-	m_mouseDeltaX = static_cast<float>(m_mouseX - m_prevMouseX);
-	m_mouseDeltaY = static_cast<float>(m_prevMouseY - m_mouseY);
-	m_prevMouseX = m_mouseX;
-	m_prevMouseY = m_mouseY;
-
-	switch (m_leftBtnState)
-	{
-	case ActionKeyState::JustPressed:
-		m_leftBtnState = ActionKeyState::Pressed;
-		break;
-	case ActionKeyState::JustReleased:
-		m_leftBtnState = ActionKeyState::NONE;
-		break;
-	default:
-		break;
-	}
-
-	switch (m_rightBtnState)
-	{
-	case ActionKeyState::JustPressed:
-		m_rightBtnState = ActionKeyState::Pressed;
-		break;
-	case ActionKeyState::JustReleased:
-		m_rightBtnState = ActionKeyState::NONE;
-		break;
-	default:
-		break;
-	}
-
-	for (auto& state : m_keyState)
-	{
-		switch (state.second)
-		{
-			case ActionKeyState::JustPressed:
-				state.second = ActionKeyState::Pressed;
-				break;
-			case ActionKeyState::JustReleased:
-				state.second = ActionKeyState::NONE;
-				break;
-			default:
-				break;
-		}
-	}
 }

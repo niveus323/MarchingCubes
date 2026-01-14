@@ -1,15 +1,15 @@
 #pragma once
-#include "Core/Geometry/MarchingCubes/GPU/GPUMarchingCubesShared.h"
+struct RemeshRequest;
 
 struct alignas(16) GridCBData {
-	XMUINT3  gridCells;      // = m_grid.cells
+	XMUINT3  gridCells;      // = m_grid.resolution
 	uint32_t _padding0;
 
 	XMFLOAT3 gridOrigin;     // = m_grid.origin
 	float    isoValue;
 
-	XMUINT3  numChunkAxis;   // = volView.numChunkAxis
-	uint32_t chunkCubes;     // = volView.chunkCubes
+	XMUINT3  numChunkAxis;   
+	uint32_t chunkCubes;     
 
 	XMUINT3  regionCellMin;  // = 청크 정렬된 remesh 범위 (셀)
 	uint32_t _padding1;
@@ -21,12 +21,13 @@ struct GPUMCEncodingContext
 {
 	ID3D12Device* device = nullptr;
 	ID3D12GraphicsCommandList* cmd = nullptr;
-	const SDFVolumeView& vol;
-	const RemeshRequest& req;
+	uint32_t chunkCubes;
+	XMUINT3 gridDimension;
 	XMUINT3 regionCellMin;
 	XMUINT3 regionCellMax;
 	D3D12_GPU_VIRTUAL_ADDRESS cbAddress = 0; // b0: GridCB
 	D3D12_GPU_DESCRIPTOR_HANDLE triTableSrv{}; // t0: triTable
+	D3D12_GPU_DESCRIPTOR_HANDLE densitySrv{};	// t1 : densityTex SRV
 	D3D12_GPU_DESCRIPTOR_HANDLE outBufferUav{}; // u0: OutTriangle UAV
 };
 

@@ -144,7 +144,7 @@ void FluidSystem::ComputeForces()
 
 			const Particle& pj = m_particles[j];
 
-			// load neighbor pos/vel once
+			// load neighbor center/vel once
 			XMVECTOR pos_j = XMLoadFloat3(&pj.pos);
 
 			XMVECTOR rij = pos_i - pos_j;

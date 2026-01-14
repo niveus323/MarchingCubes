@@ -3,15 +3,15 @@
 #include "Core/Rendering/UploadContext.h"
 #include "Core/DataStructures/Data.h"
 
-Mesh::Mesh(UploadContext* uploadcontext, const GeometryData& data, const std::vector<MeshSubmesh>& submeshes, std::string_view name) :
-	m_cpu(data),
+Mesh::Mesh(UploadContext* uploadcontext, const GeometryData& data, const std::vector<MeshSubmesh>& submeshes, const std::string& name) :
+	m_topology(data.topology),
 	m_submeshes(submeshes),
 	m_debugName(name)
 {
 	if (m_submeshes.empty())
 	{
 		MeshSubmesh sm;
-		sm.indexCount = static_cast<uint32_t>(m_cpu.indices.size());
+		sm.indexCount = static_cast<uint32_t>(data.indices.size());
 		sm.indexOffset = 0;
 		sm.baseVertexLocation = 0;
 		sm.materialIndex = 0;
@@ -25,50 +25,41 @@ Mesh::Mesh(UploadContext* uploadcontext, const GeometryData& data, const std::ve
 			//임시 이름 세팅
 			SetDebugName("MeshInstance");
 		}
-		uploadcontext->UploadGeometry(&m_buffer, m_cpu, m_debugName);
+		uploadcontext->UploadGeometry(&m_buffer, data, m_debugName);
 	}
 
-	BuildTriBounds();
+	BuildTriBounds(data);
 }
 
 
-Mesh::Mesh(UploadContext* uploadcontext, const GeometryData& data, std::string_view name) : 
+Mesh::Mesh(UploadContext* uploadcontext, const GeometryData& data, const std::string& name) : 
 	Mesh(uploadcontext, data, {}, name)
 {
 }
 
 void Mesh::UpdateData(UploadContext* uploadcontext, const GeometryData& data)
 {
-	m_cpu = data;
-
+	m_topology = data.topology;
 	if (m_submeshes.size() == 1)
 	{
-		m_submeshes[0].indexCount = static_cast<uint32_t>(m_cpu.indices.size());
+		m_submeshes[0].indexCount = static_cast<uint32_t>(data.indices.size());
 	}
 
 	if (uploadcontext)
 	{
-		uploadcontext->UploadGeometry(&m_buffer, m_cpu, m_debugName);
+		uploadcontext->UploadGeometry(&m_buffer, data, m_debugName);
 	}
-	BuildTriBounds();
+	BuildTriBounds(data);
 }
 
-void Mesh::SetColor(const DirectX::XMFLOAT4& color)
-{
-	for (auto& v : m_cpu.vertices)
-	{
-		v.color = color;
-	}
-}
-
-void Mesh::BuildTriBounds()
+void Mesh::BuildTriBounds(const GeometryData& data)
 {
 	// AABB BroadPhase를 위한 Bound 세팅
 	m_triBounds.clear();
 	m_triBounds.reserve(m_submeshes.size());
 
-	const auto& vertices = m_cpu.vertices;
-	const auto& indices = m_cpu.indices;
+	const auto& vertices = data.vertices;
+	const auto& indices = data.indices;
 	for (const auto& submesh : m_submeshes)
 	{
 		// 유효하지 않은 서브메쉬 처리

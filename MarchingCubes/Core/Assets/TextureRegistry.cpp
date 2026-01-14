@@ -101,6 +101,15 @@ uint32_t TextureRegistry::GetBindlessIndex(uint32_t handle) const
 	return texRes.bindlessSlot - m_descriptorBaseSlot;
 }
 
+D3D12_GPU_DESCRIPTOR_HANDLE TextureRegistry::GetGpuHandle(uint32_t handle) const
+{
+	if (handle >= m_textures.size()) return { 0 }; // 유효하지 않은 핸들
+
+	// 할당받은 bindless 슬롯 번호를 이용해 DescriptorAllocator에서 실제 GPU 주소를 가져옴
+	uint32_t slot = m_textures[handle].bindlessSlot;
+	return m_descriptorAllocator->GetStaticGpu(slot);
+}
+
 TextureMeta TextureRegistry::FinalizeMeta(const D3D12_RESOURCE_DESC& desc)
 {
 	auto classifyResolution = [](UINT64 w, UINT h){

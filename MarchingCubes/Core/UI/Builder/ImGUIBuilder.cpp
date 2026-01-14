@@ -1,0 +1,490 @@
+#include "pch.h"
+#include "ImGUIBuilder.h"
+#include <imgui_stdlib.h>
+#include <cstdarg>
+#include <algorithm>
+
+namespace UI
+{
+	ImGuiDataType GetImGuiDataType(UI::UI_DataType type)
+	{
+		switch (type) {
+			case UI_DataType::Int:  
+			case UI_DataType::Int2:  
+			case UI_DataType::Int3:  
+				return ImGuiDataType_S32;
+
+			case UI_DataType::UInt:   
+			case UI_DataType::UInt2:   
+			case UI_DataType::UInt3:
+				return ImGuiDataType_U32;
+
+			case UI_DataType::Float: 
+			case UI_DataType::Float2: 
+			case UI_DataType::Float3: 
+			case UI_DataType::Float4:
+				return ImGuiDataType_Float;	
+		}
+		return ImGuiDataType_Float;
+	}
+}
+
+bool ImGUIBuilder::BeginPanel(const char* name, bool* pOpen)
+{
+	return ImGui::Begin(name, pOpen);
+}
+
+void ImGUIBuilder::EndPanel()
+{
+	ImGui::End();
+}
+
+bool ImGUIBuilder::BeginTable(const char* id, int columns)
+{
+	return ImGui::BeginTable(id, columns, ImGuiTableFlags_Resizable | ImGuiTableFlags_BordersInnerV);
+}
+
+void ImGUIBuilder::EndTable()
+{
+	ImGui::EndTable();
+}
+
+bool ImGUIBuilder::BeginCollapsingHeader(const char* label, bool defaultOpen)
+{
+	ImGuiTreeNodeFlags flags = ImGuiTreeNodeFlags_Framed | ImGuiTreeNodeFlags_FramePadding | ImGuiTreeNodeFlags_AllowItemOverlap;
+	if (defaultOpen) flags |= ImGuiTreeNodeFlags_DefaultOpen;
+
+	return ImGui::CollapsingHeader(label, flags);
+}
+
+bool ImGUIBuilder::BeginTabBar(const char* id)
+{
+	ImGuiTabBarFlags flags = ImGuiTabBarFlags_FittingPolicyScroll	// 탭 크기 유지 + 좌우 스크롤
+		| ImGuiTabBarFlags_NoCloseWithMiddleMouseButton;			// 마우스 중앙 버튼 클릭으로 탭 닫기X
+	return ImGui::BeginTabBar(id, flags);
+}
+
+void ImGUIBuilder::EndTabBar()
+{
+	ImGui::EndTabBar();
+}
+
+bool ImGUIBuilder::BeginTabItem(const char* id, bool* pOpen)
+{
+	ImGuiTabItemFlags flags = ImGuiTabItemFlags_NoCloseWithMiddleMouseButton;
+	return ImGui::BeginTabItem(id, pOpen, flags);
+}
+
+void ImGUIBuilder::EndTabItem()
+{
+	ImGui::EndTabItem();
+}
+
+void ImGUIBuilder::Label(const char* text)
+{
+	ImGui::TextUnformatted(text);
+}
+
+bool ImGUIBuilder::Button(const char* label, const UI::Vector<float, 2>& size)
+{
+	return ImGui::Button(label, ImVec2(size.x, size.y));
+}
+
+bool ImGUIBuilder::Checkbox(const char* label, bool* v)
+{
+	return ImGui::Checkbox(label, v);
+}
+
+void ImGUIBuilder::Text(const char* text)
+{
+	ImGui::TextUnformatted(text);
+}
+
+void ImGUIBuilder::Text(const std::string& text)
+{
+	ImGui::TextUnformatted(text.c_str());
+}
+
+void ImGUIBuilder::TextFormatted(const char* fmt, ...)
+{
+	va_list args;
+	va_start(args, fmt); // fmt 이후의 인자들을 args로 수집
+	ImGui::TextV(fmt, args); // ImGui의 va_list 지원 함수 호출
+	va_end(args); // 리소스 정리
+}
+
+void ImGUIBuilder::TextColored(const UI::Color& color, const char* fmt, ...)
+{
+	va_list args;
+	va_start(args, fmt);
+	ImGui::TextColoredV(ImVec4(color.r, color.g, color.b, color.a), fmt, args);
+	va_end(args);
+}
+
+// NOTE : SRV 힙 내의 위치를 기반으로 핸들 생성 필요
+void ImGUIBuilder::Image(void* textureHandle, const UI::Vector<float, 2>& size)
+{
+	ImGui::Image((ImTextureID)textureHandle, ImVec2(size.x, size.y));
+}
+
+bool ImGUIBuilder::InputText(const char* label, std::string& text)
+{
+	return ImGui::InputText(label, &text, ImGuiInputTextFlags_EnterReturnsTrue | ImGuiInputTextFlags_AutoSelectAll);
+}
+
+bool ImGUIBuilder::InputEnum(const char* label, int* currentValue, const std::vector<std::string>& names, const std::vector<int>& values)
+{
+	// 현재 값이 리스트 중 몇 번째인지 찾기 (Index)
+	int currentItemIndex = 0;
+	for (int i = 0; i < values.size(); ++i)
+	{
+		if (values[i] == *currentValue)
+		{
+			currentItemIndex = i;
+			break;
+		}
+	}
+
+	// ImGui 콤보 박스 그리기
+	bool changed = false;
+	const char* previewValue = names[currentItemIndex].c_str();
+
+	if (ImGui::BeginCombo(label, previewValue))
+	{
+		for (int i = 0; i < names.size(); ++i)
+		{
+			bool isSelected = (currentItemIndex == i);
+			if (ImGui::Selectable(names[i].c_str(), isSelected))
+			{
+				*currentValue = values[i]; // 선택된 Enum 값 적용
+				changed = true;
+			}
+			if (isSelected) ImGui::SetItemDefaultFocus();
+		}
+		ImGui::EndCombo();
+	}
+
+	return changed;
+}
+
+void ImGUIBuilder::TableHeadersRow()
+{
+	ImGui::TableHeadersRow();
+}
+
+void ImGUIBuilder::TableNextRow()
+{
+	ImGui::TableNextRow();
+}
+
+void ImGUIBuilder::TableNextColumn()
+{
+	ImGui::TableNextColumn();
+}
+
+void ImGUIBuilder::TableSetupColumn(const char* id)
+{
+	ImGui::TableSetupColumn(id);
+}
+
+void ImGUIBuilder::PropertyText(const char* label, const char* value)
+{
+	ImGui::TableNextRow();
+	ImGui::TableNextColumn();
+	ImGui::AlignTextToFramePadding();
+	ImGui::TextUnformatted(label);
+	ImGui::TableNextColumn();
+	ImGui::SetNextItemWidth(-FLT_MIN);
+	Text(value);
+}
+
+bool ImGUIBuilder::PropertyInputText(const char* label, std::string& text)
+{
+	ImGui::TableNextRow();
+	ImGui::TableNextColumn();
+	ImGui::SetNextItemWidth(-FLT_MIN);
+	return InputText(label, text);
+}
+
+bool ImGUIBuilder::PropertyEnum(const char* label, int* currentValue, const std::vector<std::string>& names, const std::vector<int>& values)
+{
+	std::string hiddenLabel = DrawPropertyLabel(label);
+	return InputEnum(hiddenLabel.c_str(), currentValue, names, values);
+}
+
+void ImGUIBuilder::Separator()
+{
+	ImGui::Separator();
+}
+
+void ImGUIBuilder::SameLine(float offset, float spacing)
+{
+	ImGui::SameLine(offset, spacing);
+}
+
+void ImGUIBuilder::PushID(const char* str_id)
+{
+	ImGui::PushID(str_id);
+}
+
+void ImGUIBuilder::PushID(const void* ptr_id)
+{
+	ImGui::PushID(ptr_id);
+}
+
+void ImGUIBuilder::PopID()
+{
+	ImGui::PopID();
+}
+
+bool ImGUIBuilder::IsItemClicked()
+{
+	return ImGui::IsItemClicked() && !ImGui::IsItemToggledOpen();
+}
+
+bool ImGUIBuilder::IsItemHovered()
+{
+	return ImGui::IsItemHovered();
+}
+
+bool ImGUIBuilder::IsItemActive()
+{
+	return ImGui::IsItemActive();
+}
+
+bool ImGUIBuilder::IsMouseHoveringRect(const UI::Vector<float, 2>& pMin, const UI::Vector<float, 2>& pMax, bool clip)
+{
+	return ImGui::IsMouseHoveringRect(ImVec2(pMin.x, pMin.y), ImVec2(pMax.x, pMax.y), clip);
+}
+
+bool ImGUIBuilder::IsAnyItemHovered()
+{
+	return ImGui::IsAnyItemHovered();
+}
+
+bool ImGUIBuilder::IsItemDeactivated()
+{
+	return ImGui::IsItemDeactivated();
+}
+
+bool ImGUIBuilder::IsWindowFocused()
+{
+	return ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows);
+}
+
+bool ImGUIBuilder::IsKeyPressed_F12()
+{
+	return ImGui::IsKeyPressed(ImGuiKey_F12);
+}
+
+void ImGUIBuilder::SetKeyboardFocus()
+{
+	ImGui::SetKeyboardFocusHere();
+}
+
+bool ImGUIBuilder::IsMouseClicked(int button)
+{
+	return ImGui::IsMouseClicked(button);
+}
+
+bool ImGUIBuilder::IsMouseReleased(int button)
+{
+	return ImGui::IsMouseReleased(button);
+}
+
+bool ImGUIBuilder::IsMouseDragging(int button)
+{
+	return ImGui::IsMouseDragging(button);
+}
+
+UI::Vector<float, 2> ImGUIBuilder::GetMousePos()
+{
+	auto pos = ImGui::GetMousePos();
+	return UI::Vector<float, 2>(pos.x, pos.y);
+}
+
+void ImGUIBuilder::SetCursorScreenPos(const UI::Vector<float, 2>& pos)
+{
+	ImGui::SetCursorScreenPos(ImVec2(pos.x, pos.y));
+}
+
+bool ImGUIBuilder::SearchBar(const char* hint, std::string& text)
+{
+	ImGui::SetNextItemWidth(-FLT_MIN);
+
+	// NOTE : 아이콘 추가 시 다음 라인을 주석 해제.
+	//ImGui::ImageWithBg();
+	//ImGui::SameLine();
+
+	return ImGui::InputTextWithHint("##Search", hint, &text);
+}
+
+bool ImGUIBuilder::BeginTreeNode(const char* label, bool isLeaf, bool isSelected)
+{
+	ImGui::TableNextRow();
+	ImGui::TableNextColumn();
+
+	ImGuiTreeNodeFlags flags = ImGuiTreeNodeFlags_OpenOnArrow | ImGuiTreeNodeFlags_OpenOnDoubleClick | ImGuiTreeNodeFlags_SpanFullWidth;
+	if (isSelected) flags |= ImGuiTreeNodeFlags_Selected;
+	if (isLeaf)     flags |= ImGuiTreeNodeFlags_Leaf | ImGuiTreeNodeFlags_Bullet;
+
+	return ImGui::TreeNodeEx(label, flags);
+}
+
+void ImGUIBuilder::EndTreeNode()
+{
+	ImGui::TreePop();
+}
+
+void ImGUIBuilder::PlotLines(const char* label, const float* values, int count)
+{
+	ImGui::PlotLines(label, values, count);
+}
+
+float ImGUIBuilder::GetAvailableWidth()
+{
+	return ImGui::GetContentRegionAvail().x;
+}
+
+UI::Vector<float, 2> ImGUIBuilder::GetCursorScreenPos()
+{
+	ImVec2 p0 = ImGui::GetCursorScreenPos();
+	return UI::Vector<float, 2>{ p0.x, p0.y };
+}
+
+void ImGUIBuilder::Dummy(const UI::Vector<float, 2>& size)
+{
+	ImGui::Dummy(ImVec2(size.x, size.y));
+}
+
+void ImGUIBuilder::DrawRect(const UI::Vector<float, 2>& p0, const UI::Vector<float, 2>& p1, const UI::Color& color)
+{
+	ImGui::GetWindowDrawList()->AddRect(ImVec2(p0.x, p0.y), ImVec2(p1.x, p1.y), color.ToUInt());
+}
+
+void ImGUIBuilder::DrawRectFilled(const UI::Vector<float, 2>& p0, const UI::Vector<float, 2>& p1, const UI::Color& color)
+{
+	ImGui::GetWindowDrawList()->AddRectFilled(ImVec2(p0.x, p0.y), ImVec2(p1.x, p1.y), color.ToUInt());
+}
+
+void ImGUIBuilder::BeginTooltip()
+{
+	ImGui::BeginTooltip();
+}
+
+void ImGUIBuilder::EndTooltip()
+{
+	ImGui::EndTooltip();
+}
+
+bool ImGUIBuilder::BeginOverlay(const char* name, const UI::Vector<float, 2>& pos, const UI::Vector<float, 2>& size)
+{
+	ImGui::SetNextWindowPos(ImVec2(pos.x, pos.y), ImGuiCond_Always);
+	ImGui::SetNextWindowSize(ImVec2(size.x, size.y));
+	ImGui::SetNextWindowBgAlpha(0.0f);
+
+	// Padding 제거 스타일 적용
+	ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0.0f, 0.0f));
+
+	return ImGui::Begin(name, nullptr,
+		ImGuiWindowFlags_NoDecoration |
+		ImGuiWindowFlags_NoInputs |
+		ImGuiWindowFlags_NoBackground |
+		ImGuiWindowFlags_NoSavedSettings |
+		ImGuiWindowFlags_NoFocusOnAppearing |
+		ImGuiWindowFlags_NoNav);
+}
+
+void ImGUIBuilder::EndOverlay()
+{
+	ImGui::End();
+	ImGui::PopStyleVar(1); // WindowPadding 복구
+}
+
+UI::Vector<float, 2> ImGUIBuilder::GetMainViewportPos()
+{
+	ImVec2 pos = ImGui::GetMainViewport()->Pos;
+	return { pos.x, pos.y };
+}
+
+void ImGUIBuilder::DrawLine(const UI::Vector<float, 2>& p1, const UI::Vector<float, 2>& p2, const UI::Color& color, float thickness)
+{
+	ImGui::GetWindowDrawList()->AddLine(
+		ImVec2(p1.x, p1.y),
+		ImVec2(p2.x, p2.y),
+		color.ToUInt(),
+		thickness
+	);
+}
+
+void ImGUIBuilder::DrawCircleFilled(const UI::Vector<float, 2>& center, float radius, const UI::Color& color)
+{
+	ImGui::GetWindowDrawList()->AddCircleFilled(
+		ImVec2(center.x, center.y),
+		radius,
+		color.ToUInt()
+	);
+}
+
+void ImGUIBuilder::DrawTextAt(const UI::Vector<float, 2>& pos, const UI::Color& color, const char* text)
+{
+	ImGui::GetWindowDrawList()->AddText(
+		ImVec2(pos.x, pos.y),
+		color.ToUInt(),
+		text
+	);
+}
+
+UI::Vector<float, 2> ImGUIBuilder::CalcTextSize(const char* text)
+{
+	ImVec2 size = ImGui::CalcTextSize(text);
+	return { size.x, size.y };
+}
+
+void ImGUIBuilder::InvisibleButton(const char* str_id, const UI::Vector<float, 2>& size)
+{
+	ImGui::InvisibleButton(str_id, ImVec2(size.x, size.y));
+}
+
+bool ImGUIBuilder::InputInternal(const char* label, UI::UI_DataType type, void* pValue)
+{
+	if (type == UI::UI_DataType::Unknown) return false;
+	if (type == UI::UI_DataType::Bool) return ImGui::Checkbox(label, static_cast<bool*>(pValue));
+	if (type == UI::UI_DataType::Color) return ImGui::ColorEdit4(label, static_cast<float*>(pValue), ImGuiColorEditFlags_NoDragDrop);
+
+	ImGuiDataType imguiType = GetImGuiDataType(type);
+	int components = GetComponentCount(type);
+	return ImGui::InputScalarN(label, imguiType, pValue, components);
+}
+
+bool ImGUIBuilder::DragInternal(const char* label, UI::UI_DataType type, void* pValue, float speed)
+{
+	if (type == UI::UI_DataType::Unknown) return false;
+	if (type == UI::UI_DataType::Bool) return ImGui::Checkbox(label, static_cast<bool*>(pValue));
+	if (type == UI::UI_DataType::Color) return ImGui::ColorEdit4(label, static_cast<float*>(pValue));
+
+	ImGuiDataType imguiType = GetImGuiDataType(type);
+	int components = GetComponentCount(type);
+	return ImGui::DragScalarN(label, imguiType, pValue, components, speed);
+}
+
+bool ImGUIBuilder::PropertyInternal(const char* label, UI::UI_DataType type, void* pValue, float speed)
+{
+	std::string hiddenLabel = DrawPropertyLabel(label);
+	return DragInternal(hiddenLabel.c_str(), type, pValue, speed);
+}
+
+std::string ImGUIBuilder::DrawPropertyLabel(const char* label)
+{
+	ImGui::TableNextRow();
+	ImGui::TableNextColumn();
+	ImGui::AlignTextToFramePadding();
+	ImGui::TextUnformatted(label);
+	ImGui::TableNextColumn();
+
+	ImGui::SetNextItemWidth(-FLT_MIN);
+	std::string hiddenLabel = "##";
+	hiddenLabel += label;
+	return hiddenLabel;
+}
+
