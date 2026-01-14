@@ -7,7 +7,7 @@ class SDFVolume3D
 {
 public:
 	SDFVolume3D(ID3D12Device* device);
-	void uploadFromGRD(ID3D12GraphicsCommandList* cmd, UploadContext* uploadContext, const SdfField<float>* grid);
+	void uploadFromGRD(ID3D12GraphicsCommandList* cmd, UploadContext* uploadContext, const SdfField* grid);
 
 	ID3D12Resource* density() const { return m_density3D.Get(); }
 

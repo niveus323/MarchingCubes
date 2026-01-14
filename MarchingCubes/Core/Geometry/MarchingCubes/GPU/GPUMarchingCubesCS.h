@@ -2,7 +2,7 @@
 struct RemeshRequest;
 
 struct alignas(16) GridCBData {
-	XMUINT3  gridCells;      // = m_grid.cells
+	XMUINT3  gridCells;      // = m_grid.resolution
 	uint32_t _padding0;
 
 	XMFLOAT3 gridOrigin;     // = m_grid.origin

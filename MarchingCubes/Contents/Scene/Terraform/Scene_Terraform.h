@@ -20,11 +20,6 @@ public:
 	void Render() override;
 
 private:
-    void RenderMarchingCubesUI();
-
-    //Marching Cubes
-    std::shared_ptr<SdfField<float>> MakeSphereGrid(unsigned int N, float cellSize, float radius, XMFLOAT3 center, GridDesc& OutGridDesc);
-    
 
 private:
     // Marching Cubes
@@ -34,16 +29,9 @@ private:
     // Light
     SceneObject* m_directionalLight = nullptr;
 
-    // Settings
-    DirectX::XMFLOAT3 m_gridOrigin = { 0,0,0 };
-    int m_gridTiles = 100;
-    int m_cellSize = 1;
-    float m_mcIso = 0.0f;
-
     // UI
     UI::FrameCallbackToken cameraUIToken = 0;
-    UI::FrameCallbackToken marchingCubesUIToken = 0;
-
+    
     // Tool
     std::shared_ptr<TerraformTool> m_terraformTool;
 };

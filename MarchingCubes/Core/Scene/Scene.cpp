@@ -145,7 +145,7 @@ void Scene::Render()
 {	
 	for (const auto rendererComp : m_rendererCache)
 	{
-		rendererComp->Submit();
+        if(rendererComp->IsActive()) rendererComp->Submit();
 	}
 }
 
@@ -196,17 +196,16 @@ void Scene::SetMainCamera(CameraComponent* cameraComp)
 void Scene::RenderSceneGizmoUI(IUIBuilder* ui)
 {
     // 씬 뷰포트 좌측 하단에 붙어있는 기즈모
-    UI::Vector2 mainViewportPos = ui->GetMainViewportPos();
+    UI::Vector<float, 2> mainViewportPos = ui->GetMainViewportPos();
     float windowScreenX = mainViewportPos.x;
     float windowScreenY = mainViewportPos.y;
-
     float gizmoSize = 100.0f;
     float gizmoX = (windowScreenX + GetViewportX());
     float gizmoY = (windowScreenY + GetViewportY()) + m_viewportHeight - gizmoSize;
     if (ui->BeginOverlay("Gizmo", { gizmoX, gizmoY }, { gizmoSize, gizmoSize }))
     {
         // 중심점 계산
-        UI::Vector2 center = ui->GetCursorScreenPos();
+        UI::Vector<float, 2> center = ui->GetCursorScreenPos();
         center.x += 50.0f;
         center.y += 50.0f;
         float radius = 40.0f;
@@ -218,7 +217,6 @@ void Scene::RenderSceneGizmoUI(IUIBuilder* ui)
             float zDepth;
         };
 
-        // UI::Color는 {r, g, b, a} (0.0~1.0)
         std::vector<Axis> axes = {
             { XMVectorSet(1, 0, 0, 0), {1.0f, 0.2f, 0.2f, 1.0f}, "X", 0.0f },
             { XMVectorSet(0, 1, 0, 0), {0.2f, 1.0f, 0.2f, 1.0f}, "Y", 0.0f },
@@ -240,34 +238,25 @@ void Scene::RenderSceneGizmoUI(IUIBuilder* ui)
         // Z-Sort (뒤에 있는 축부터 그리기 위해)
         std::sort(axes.begin(), axes.end(), [](const Axis& a, const Axis& b) {
             return a.zDepth < b.zDepth;
-            });
+        });
 
         for (const auto& axis : axes)
         {
             float x = XMVectorGetX(axis.direction);
             float y = XMVectorGetY(axis.direction);
-
-            UI::Vector2 endPos = { center.x + x * radius, center.y - y * radius };
-
-            // 라인 그리기
-            ui->DrawLine(center, endPos, axis.color, 3.0f);
-
-            // 끝점 원 그리기
-            ui->DrawCircleFilled(endPos, 7.0f, axis.color);
+            UI::Vector<float, 2> endPos = { center.x + x * radius, center.y - y * radius };
+            ui->DrawLine(center, endPos, axis.color, 3.0f); // 라인 그리기
+            ui->DrawCircleFilled(endPos, 7.0f, axis.color); // 끝점 원 그리기
 
             // 텍스트 라벨 그리기 (중앙 정렬)
-            UI::Vector2 textSize = ui->CalcTextSize(axis.label);
-            UI::Vector2 textPos = {
+            UI::Vector<float, 2> textSize = ui->CalcTextSize(axis.label);
+            UI::Vector<float, 2> textPos = {
                 endPos.x - textSize.x * 0.5f,
                 endPos.y - textSize.y * 0.5f
             };
             ui->DrawTextAt(textPos, { 1.0f, 1.0f, 1.0f, 1.0f }, axis.label);
         }
-
-        // Pivot
-        ui->DrawCircleFilled(center, 4.0f, { 1.0f, 1.0f, 1.0f, 1.0f });
+        ui->DrawCircleFilled(center, 4.0f, { 1.0f, 1.0f, 1.0f, 1.0f }); // Pivot
     }
-
-    // 오버레이 종료
-    ui->EndOverlay();
+    ui->EndOverlay(); // 오버레이 종료
 }

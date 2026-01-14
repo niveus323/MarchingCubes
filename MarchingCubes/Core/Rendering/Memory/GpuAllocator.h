@@ -147,6 +147,54 @@ public:
 			PoolInfo{m_ibPool.get(), "IBPool_Small"}, 
 			PoolInfo{m_ibPool_Large.get(), "IBPool_Large"}}; 
 	}
+	std::vector<DedicatedBufferInfo> GetDebugDedicatedBuffers() const
+	{
+		std::vector<DedicatedBufferInfo> infos;
+		infos.reserve(m_fallbackUploads.size() + m_promotedResources.size());
+
+		// 1. Fallback Resources
+		for (const auto& fb : m_fallbackUploads)
+		{
+			std::string usageStr = "UNKNOWN";
+			switch (fb.desc.usage) {
+				case AllocDesc::Usage::GENERIC: usageStr = "GENERIC"; break;
+				case AllocDesc::Usage::VERTEX:  usageStr = "VERTEX"; break;
+				case AllocDesc::Usage::INDEX:   usageStr = "INDEX"; break;
+			}
+
+			std::string kindStr = "Default";
+			switch (fb.desc.kind) {
+				case AllocDesc::Kind::STAGING: kindStr = "Staging"; break;
+				case AllocDesc::Kind::CB: kindStr = "CB"; break;
+				case AllocDesc::Kind::READBACK: kindStr = "Readback"; break;
+				case AllocDesc::Kind::STRUCTURED_UAV: kindStr = "UAV"; break;
+			}
+
+			infos.push_back(DedicatedBufferInfo{
+				.type = "Fallback (" + kindStr + ")",
+				.owner = std::string(fb.owner), // string_view -> string
+				.usage = usageStr,
+				.size = fb.desc.size, // 혹은 fb.res->GetDesc().Width
+				.fenceValue = fb.fenceValue,
+				.isLive = (fb.refCount > 0)
+				});
+		}
+
+		for (const auto& pr : m_promotedResources)
+		{
+			infos.push_back(DedicatedBufferInfo{
+				.type = "Promoted",
+				.owner = pr.owner,
+				.usage = "DEFAULT",
+				.size = pr.size,
+				.fenceValue = pr.fenceValue,
+				.isLive = (pr.refCount > 0)
+				});
+		}
+		// TODO : PromotedResource에 owner 추가
+
+		return infos;
+	}
 #endif // _DEBUG
 
 
@@ -171,6 +219,7 @@ private:
 		uint8_t* ptr = nullptr;
 		uint64_t fenceValue = 0;
 		uint32_t refCount = 0;
+		std::string owner = "Fallback";
 	};
 	std::vector<Fallback> m_fallbackUploads;
 
@@ -182,6 +231,7 @@ private:
 		uint64_t size = 0;
 		uint64_t fenceValue = 0;
 		uint64_t refCount = 0;
+		std::string owner = "Promoted Default";
 	};
 	std::vector<PromotedResource> m_promotedResources;
 	uint64_t m_lastCompletedFenceValue = 0;

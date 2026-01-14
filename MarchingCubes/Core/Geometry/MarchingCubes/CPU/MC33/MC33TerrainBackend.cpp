@@ -33,7 +33,7 @@ void MC33TerrainBackend::RequestRemesh(const std::set<ChunkKey>& chunkset)
         localGrd.nonortho = 0;
         localGrd.periodic = 0;
 
-        SdfField<float> chunk(chunkSize + 1, chunkSize + 1, chunkSize + 1);
+        SdfField chunk(chunkSize + 1, chunkSize + 1, chunkSize + 1);
         for (int z = 0; z <= chunkSize; ++z) 
         {
             for (int y = 0; y <= chunkSize; ++y) 

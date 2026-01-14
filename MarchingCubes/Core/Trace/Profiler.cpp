@@ -52,6 +52,12 @@ void Profiler::SetBufferPools(const std::vector<BufferPoolInfo>& pools)
 	m_currentPools = pools;
 }
 
+void Profiler::SetDedicatedBuffers(const std::vector<DedicatedBufferInfo>& buffers)
+{
+	std::lock_guard<std::mutex> lock(m_writeMutex);
+	m_dedicatedBuffers = buffers;
+}
+
 void Profiler::UpdateFrame(uint64_t frameTimestamp)
 {
 	int w = GetWritableindex();
@@ -62,6 +68,7 @@ void Profiler::UpdateFrame(uint64_t frameTimestamp)
 		snap.metrics = m_metrics;
 		
 		snap.pools = m_currentPools;
+		snap.dedicatedBuffers = m_dedicatedBuffers;
 	}
 
 	m_readIndex.store(w, std::memory_order_release);

@@ -11,7 +11,8 @@ enum class EPropertyType
 	Bool,
 	Vector3,
     String,
-    Enum
+    Enum,
+    Color
 };
 
 struct Property

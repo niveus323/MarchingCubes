@@ -28,9 +28,12 @@ public:
 
 	std::vector<BoundingBox> GetBoundingBox() const;	
 	std::vector<ChunkSlot*> GetChunkSlots();
+	const std::unordered_map<ChunkKey, ChunkSlot, ChunkKeyHash>& GetChunkMap() const { return m_chunks; }
+	uint64_t GetRevision() const { return m_revision; }
 
 private:
 	// Mesh
 	std::unordered_map<ChunkKey, ChunkSlot, ChunkKeyHash> m_chunks;
+	uint64_t m_revision = 0;
 };
 

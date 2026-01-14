@@ -47,7 +47,7 @@ void TerrainSystem::ExecuteCompute(uint32_t frameIndex)
 	}
 }
 
-void TerrainSystem::LoadTerrain(TerrainMode mode, const GridDesc& desc, std::shared_ptr<SdfField<float>> field, const float isoValue)
+void TerrainSystem::LoadTerrain(TerrainMode mode, const GridDesc& desc, std::shared_ptr<SdfField> field, const float isoValue)
 {
 	m_desc = desc;
 	m_lastGRD = field;
@@ -56,7 +56,7 @@ void TerrainSystem::LoadTerrain(TerrainMode mode, const GridDesc& desc, std::sha
 	RequestRemesh();
 }
 
-void TerrainSystem::SetMapData(const GridDesc& desc, std::shared_ptr<SdfField<float>> field)
+void TerrainSystem::SetMapData(const GridDesc& desc, std::shared_ptr<SdfField> field)
 {
 	m_desc = desc;
 	m_lastGRD = field;
@@ -70,7 +70,7 @@ void TerrainSystem::SetMapData(const GridDesc& desc, std::shared_ptr<SdfField<fl
 
 void TerrainSystem::SetMode(TerrainMode mode)
 {
-	if (m_desc.cellsize <= 0.0f || m_desc.cells.x == 0)
+	if (m_desc.cellsize <= 0.0f || m_desc.resolution.x == 0)
 	{
 		Log::Print("TerrainSystem", "Map data가 설정되어 있지 않아 로드할 수 없습니다.");
 		return;
@@ -90,7 +90,7 @@ void TerrainSystem::SetGridDesc(const GridDesc& d)
 	ResetRenderer();
 }
 
-void TerrainSystem::SetField(std::shared_ptr<SdfField<float>> field)
+void TerrainSystem::SetField(std::shared_ptr<SdfField> field)
 {
 	m_lastGRD = std::move(field);
 	if (m_backend && m_lastGRD) m_backend->setFieldPtr(m_lastGRD);
@@ -106,12 +106,12 @@ void TerrainSystem::RequestRemesh(const std::set<ChunkKey>& chunkSet)
 // 전체 Remesh
 void TerrainSystem::RequestRemesh()
 {
-	if (!m_backend) return;
+	if (!m_backend || !IsLoaded()) return;
 
 	std::set<ChunkKey> chunkSet;
-	uint32_t chunkX = m_desc.cells.x / m_desc.chunkSize;
-	uint32_t chunkY = m_desc.cells.y / m_desc.chunkSize;
-	uint32_t chunkZ = m_desc.cells.z / m_desc.chunkSize;
+	uint32_t chunkX = m_desc.resolution.x / m_desc.chunkSize;
+	uint32_t chunkY = m_desc.resolution.y / m_desc.chunkSize;
+	uint32_t chunkZ = m_desc.resolution.z / m_desc.chunkSize;
 	for (uint32_t x = 0; x < chunkX; ++x)
 		for (uint32_t y = 0; y < chunkY; ++y)
 			for (uint32_t z = 0; z < chunkZ; ++z)
@@ -148,9 +148,9 @@ void TerrainSystem::MakeDebugCell(GeometryData& outMeshData, bool bDrawFullCell)
 {
 	outMeshData.topology = D3D_PRIMITIVE_TOPOLOGY_LINELIST;
 
-	const int Nx = static_cast<int>(m_desc.cells.x);
-	const int Ny = static_cast<int>(m_desc.cells.y);
-	const int Nz = static_cast<int>(m_desc.cells.z);
+	const int Nx = static_cast<int>(m_desc.resolution.x);
+	const int Ny = static_cast<int>(m_desc.resolution.y);
+	const int Nz = static_cast<int>(m_desc.resolution.z);
 
 	// XY-Plane
 	for (int x = 0; x < Nx; ++x)
@@ -176,7 +176,7 @@ void TerrainSystem::MakeDebugCell(GeometryData& outMeshData, bool bDrawFullCell)
 			};
 
 			Vertex B{
-				.pos = { A.pos.x, A.pos.y, A.pos.z + m_desc.cells.z * m_desc.cellsize },
+				.pos = { A.pos.x, A.pos.y, A.pos.z + m_desc.resolution.z * m_desc.cellsize },
 				.normal = { 0.0f, 0.0f, 1.0f },
 				.color = { 1.0f, 1.0f, 1.0f, 1.0f }
 			};
@@ -214,7 +214,7 @@ void TerrainSystem::MakeDebugCell(GeometryData& outMeshData, bool bDrawFullCell)
 			};
 
 			Vertex B{
-				.pos = { A.pos.x, A.pos.y + m_desc.cells.y * m_desc.cellsize , A.pos.z },
+				.pos = { A.pos.x, A.pos.y + m_desc.resolution.y * m_desc.cellsize , A.pos.z },
 				.normal = { 0.0f, 0.0f, 0.0f },
 				.color = { 1.0f, 1.0f, 1.0f, 1.0f }
 			};
@@ -251,7 +251,7 @@ void TerrainSystem::MakeDebugCell(GeometryData& outMeshData, bool bDrawFullCell)
 			};
 
 			Vertex B{
-				.pos = { A.pos.x + m_desc.cells.x * m_desc.cellsize , A.pos.y, A.pos.z },
+				.pos = { A.pos.x + m_desc.resolution.x * m_desc.cellsize , A.pos.y, A.pos.z },
 				.normal = { 0.0f, 0.0f, 0.0f },
 				.color = { 1.0f, 1.0f, 1.0f, 1.0f }
 			};

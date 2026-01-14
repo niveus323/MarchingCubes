@@ -35,11 +35,8 @@ make_aligned_array(std::size_t n, std::size_t align = 32) {
 }
 
 // 연속 1D 그리드 컨테이너 (X-최내부, 32B 정렬)
-template <typename T = float>
 class SdfField {
 public:
-    using value_type = T;
-
     // 생성/소멸/이동
     SdfField() = default;
     SdfField(int sx, int sy, int sz) { allocate(sx, sy, sz); }
@@ -73,7 +70,7 @@ public:
         Sx_ = sx; Sy_ = sy; Sz_ = sz;
 
         const std::size_t n = static_cast<std::size_t>(sx) * sy * sz;
-        data_ = make_aligned_array<T>(n, 32);  // 32-Bytes 정렬
+        data_ = make_aligned_array<float>(n, 32);  // 32-Bytes 정렬
         buildPointerTables();
     }
 
@@ -85,17 +82,17 @@ public:
     }
 
     // 전체 채우기: field = 0.0f; (원소 단위로 채움)
-    SdfField& operator=(const T& v) noexcept {
+    SdfField& operator=(float v) noexcept {
         if (!data_) return *this;
-        T* p = data_.get();
+        float* p = data_.get();
         const std::size_t n = size();
         for (std::size_t i = 0; i < n; ++i) p[i] = v;
         return *this;
     }
 
     // 데이터/포인터 ----------------------------------------------------------
-    inline       T* data()       noexcept { return data_.get(); }
-    inline const T* data() const noexcept { return data_.get(); }
+    inline       float* data()       noexcept { return data_.get(); }
+    inline const float* data() const noexcept { return data_.get(); }
 
     // 선형 인덱스 (X-연속)
     static inline std::size_t idx_linear(int x, int y, int z, int Sx, int Sy) noexcept {
@@ -115,22 +112,22 @@ public:
     }
 
     // 명시적 접근
-    inline       T& at(int x, int y, int z)       noexcept { return data_.get()[idx(x, y, z)]; }
-    inline const T& at(int x, int y, int z) const noexcept { return data_.get()[idx(x, y, z)]; }
+    inline       float& at(int x, int y, int z)       noexcept { return data_.get()[idx(x, y, z)]; }
+    inline const float& at(int x, int y, int z) const noexcept { return data_.get()[idx(x, y, z)]; }
 
     // 클램프 접근
-    inline       T& at_clamped(int x, int y, int z)       noexcept { return data_.get()[idx_clamed(x, y, z)]; }
-    inline const T& at_clamped(int x, int y, int z) const noexcept { return data_.get()[idx_clamed(x, y, z)]; }
+    inline       float& at_clamped(int x, int y, int z)       noexcept { return data_.get()[idx_clamed(x, y, z)]; }
+    inline const float& at_clamped(int x, int y, int z) const noexcept { return data_.get()[idx_clamed(x, y, z)]; }
 
     // 행 포인터(X-연속 → SIMD 친화)
-    inline       T* rowPtr(int y, int z)       noexcept { return data_.get() + idx(0, y, z); }
-    inline const T* rowPtr(int y, int z) const noexcept { return data_.get() + idx(0, y, z); }
+    inline       float* rowPtr(int y, int z)       noexcept { return data_.get() + idx(0, y, z); }
+    inline const float* rowPtr(int y, int z) const noexcept { return data_.get() + idx(0, y, z); }
 
     // 3중 대괄호 접근: field[z][y][x]
     struct YProxy {
         SdfField* f; int y; int z;
-        inline       T& operator[](int x)       noexcept { return f->at(x, y, z); }
-        inline const T& operator[](int x) const noexcept { return f->at(x, y, z); }
+        inline       float& operator[](int x)       noexcept { return f->at(x, y, z); }
+        inline const float& operator[](int x) const noexcept { return f->at(x, y, z); }
     };
     struct ZProxy {
         SdfField* f; int z;
@@ -140,13 +137,13 @@ public:
     inline ZProxy operator[](int z) noexcept { return ZProxy{ this, z }; }
     inline const ZProxy operator[](int z) const noexcept { return ZProxy{ const_cast<SdfField*>(this), z }; }
 
-    explicit operator T*** () noexcept {
+    explicit operator float*** () noexcept {
         return zPtrs_.empty() ? nullptr : zPtrs_.data();
     }
-    explicit operator const T* const* const* () const noexcept {
+    explicit operator const float* const* const* () const noexcept {
         return zPtrs_.empty()
             ? nullptr
-            : reinterpret_cast<const T* const* const*>(zPtrs_.data());
+            : reinterpret_cast<const float* const* const*>(zPtrs_.data());
     }
 
     // 재할당 없이 포인터 테이블만 재구성하고 싶을 때
@@ -154,11 +151,11 @@ public:
 
 private:
     int Sx_{ 0 }, Sy_{ 0 }, Sz_{ 0 };
-    std::unique_ptr<T, AlignedDeleter> data_{ nullptr, AlignedDeleter{} };
+    std::unique_ptr<float, AlignedDeleter> data_{ nullptr, AlignedDeleter{} };
 
     // 포인터 테이블 (데이터 복사 없음: 행/슬라이스 포인터만 저장)
-    std::vector<T*>  rowPtrs_;  // [Sz*Sy] : 각 (z,y)의 행 시작 포인터 &data_[z,y,0]
-    std::vector<T**> zPtrs_;    // [Sz]    : 각 z의 행 배열 시작 주소 &rowPtrs_[z*Sy]
+    std::vector<float*>  rowPtrs_;  // [Sz*Sy] : 각 (z,y)의 행 시작 포인터 &data_[z,y,0]
+    std::vector<float**> zPtrs_;    // [Sz]    : 각 z의 행 배열 시작 주소 &rowPtrs_[z*Sy]
 
     void moveFrom(SdfField&& r) noexcept {
         Sx_ = r.Sx_; Sy_ = r.Sy_; Sz_ = r.Sz_;
@@ -173,7 +170,7 @@ private:
         rowPtrs_.resize(static_cast<std::size_t>(Sy_) * static_cast<std::size_t>(Sz_));
         zPtrs_.resize(static_cast<std::size_t>(Sz_));
         for (int z = 0; z < Sz_; ++z) {
-            T** rows = &rowPtrs_[static_cast<std::size_t>(z) * static_cast<std::size_t>(Sy_)];
+            float** rows = &rowPtrs_[static_cast<std::size_t>(z) * static_cast<std::size_t>(Sy_)];
             zPtrs_[static_cast<std::size_t>(z)] = rows;
             for (int y = 0; y < Sy_; ++y) rows[static_cast<std::size_t>(y)] = rowPtr(y, z);
         }

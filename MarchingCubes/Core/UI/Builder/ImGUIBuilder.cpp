@@ -1,6 +1,33 @@
 #include "pch.h"
 #include "ImGUIBuilder.h"
 #include <imgui_stdlib.h>
+#include <cstdarg>
+#include <algorithm>
+
+namespace UI
+{
+	ImGuiDataType GetImGuiDataType(UI::UI_DataType type)
+	{
+		switch (type) {
+			case UI_DataType::Int:  
+			case UI_DataType::Int2:  
+			case UI_DataType::Int3:  
+				return ImGuiDataType_S32;
+
+			case UI_DataType::UInt:   
+			case UI_DataType::UInt2:   
+			case UI_DataType::UInt3:
+				return ImGuiDataType_U32;
+
+			case UI_DataType::Float: 
+			case UI_DataType::Float2: 
+			case UI_DataType::Float3: 
+			case UI_DataType::Float4:
+				return ImGuiDataType_Float;	
+		}
+		return ImGuiDataType_Float;
+	}
+}
 
 bool ImGUIBuilder::BeginPanel(const char* name, bool* pOpen)
 {
@@ -20,16 +47,6 @@ bool ImGUIBuilder::BeginTable(const char* id, int columns)
 void ImGUIBuilder::EndTable()
 {
 	ImGui::EndTable();
-}
-
-void ImGUIBuilder::TableNextRow()
-{
-	ImGui::TableNextRow();
-}
-
-void ImGUIBuilder::TableNextColumn()
-{
-	ImGui::TableNextColumn();
 }
 
 bool ImGUIBuilder::BeginCollapsingHeader(const char* label, bool defaultOpen)
@@ -68,7 +85,7 @@ void ImGUIBuilder::Label(const char* text)
 	ImGui::TextUnformatted(text);
 }
 
-bool ImGUIBuilder::Button(const char* label, const UI::Vector2& size)
+bool ImGUIBuilder::Button(const char* label, const UI::Vector<float, 2>& size)
 {
 	return ImGui::Button(label, ImVec2(size.x, size.y));
 }
@@ -88,30 +105,26 @@ void ImGUIBuilder::Text(const std::string& text)
 	ImGui::TextUnformatted(text.c_str());
 }
 
+void ImGUIBuilder::TextFormatted(const char* fmt, ...)
+{
+	va_list args;
+	va_start(args, fmt); // fmt 이후의 인자들을 args로 수집
+	ImGui::TextV(fmt, args); // ImGui의 va_list 지원 함수 호출
+	va_end(args); // 리소스 정리
+}
+
+void ImGUIBuilder::TextColored(const UI::Color& color, const char* fmt, ...)
+{
+	va_list args;
+	va_start(args, fmt);
+	ImGui::TextColoredV(ImVec4(color.r, color.g, color.b, color.a), fmt, args);
+	va_end(args);
+}
+
 // NOTE : SRV 힙 내의 위치를 기반으로 핸들 생성 필요
-void ImGUIBuilder::Image(void* textureHandle, const UI::Vector2& size)
+void ImGUIBuilder::Image(void* textureHandle, const UI::Vector<float, 2>& size)
 {
 	ImGui::Image((ImTextureID)textureHandle, ImVec2(size.x, size.y));
-}
-
-bool ImGUIBuilder::InputInt(const char* label, int* v)
-{
-	return ImGui::InputInt(label, v);
-}
-
-bool ImGUIBuilder::DragFloat(const char* label, float* v, float speed)
-{
-	return ImGui::DragFloat(label, v, speed);
-}
-
-bool ImGUIBuilder::DragFloat3(const char* label, float* v, float speed)
-{
-	return ImGui::DragFloat3(label, v, speed);
-}
-
-bool ImGUIBuilder::EditColor3(const char* label, float* v)
-{
-	return ImGui::ColorEdit3(label, v);
 }
 
 bool ImGUIBuilder::InputText(const char* label, std::string& text)
@@ -154,34 +167,24 @@ bool ImGUIBuilder::InputEnum(const char* label, int* currentValue, const std::ve
 	return changed;
 }
 
-bool ImGUIBuilder::PropertyBool(const char* label, bool* v)
+void ImGUIBuilder::TableHeadersRow()
 {
-	std::string hiddenLabel = DrawPropertyLabel(label);
-	return Checkbox(hiddenLabel.c_str(), v);
+	ImGui::TableHeadersRow();
 }
 
-bool ImGUIBuilder::PropertyInt(const char* label, int* v) 
+void ImGUIBuilder::TableNextRow()
 {
-	std::string hiddenLabel = DrawPropertyLabel(label);
-	return InputInt(hiddenLabel.c_str(), v);
+	ImGui::TableNextRow();
 }
 
-bool ImGUIBuilder::PropertyFloat(const char* label, float* v, float speed)
+void ImGUIBuilder::TableNextColumn()
 {
-	std::string hiddenLabel = DrawPropertyLabel(label);
-	return DragFloat(hiddenLabel.c_str(), v, speed);
+	ImGui::TableNextColumn();
 }
 
-bool ImGUIBuilder::PropertyFloat3(const char* label, float* v, float speed)
+void ImGUIBuilder::TableSetupColumn(const char* id)
 {
-	std::string hiddenLabel = DrawPropertyLabel(label);
-	return DragFloat3(hiddenLabel.c_str(), v, speed);
-}
-
-bool ImGUIBuilder::PropertyColor(const char* label, float* v)
-{
-	std::string hiddenLabel = DrawPropertyLabel(label);
-	return EditColor3(hiddenLabel.c_str(), v);
+	ImGui::TableSetupColumn(id);
 }
 
 void ImGUIBuilder::PropertyText(const char* label, const char* value)
@@ -249,7 +252,7 @@ bool ImGUIBuilder::IsItemActive()
 	return ImGui::IsItemActive();
 }
 
-bool ImGUIBuilder::IsMouseHoveringRect(const UI::Vector2& pMin, const UI::Vector2& pMax, bool clip)
+bool ImGUIBuilder::IsMouseHoveringRect(const UI::Vector<float, 2>& pMin, const UI::Vector<float, 2>& pMax, bool clip)
 {
 	return ImGui::IsMouseHoveringRect(ImVec2(pMin.x, pMin.y), ImVec2(pMax.x, pMax.y), clip);
 }
@@ -294,13 +297,13 @@ bool ImGUIBuilder::IsMouseDragging(int button)
 	return ImGui::IsMouseDragging(button);
 }
 
-UI::Vector2 ImGUIBuilder::GetMousePos()
+UI::Vector<float, 2> ImGUIBuilder::GetMousePos()
 {
 	auto pos = ImGui::GetMousePos();
-	return UI::Vector2(pos.x, pos.y);
+	return UI::Vector<float, 2>(pos.x, pos.y);
 }
 
-void ImGUIBuilder::SetCursorScreenPos(const UI::Vector2& pos)
+void ImGUIBuilder::SetCursorScreenPos(const UI::Vector<float, 2>& pos)
 {
 	ImGui::SetCursorScreenPos(ImVec2(pos.x, pos.y));
 }
@@ -343,25 +346,25 @@ float ImGUIBuilder::GetAvailableWidth()
 	return ImGui::GetContentRegionAvail().x;
 }
 
-UI::Vector2 ImGUIBuilder::GetCursorScreenPos()
+UI::Vector<float, 2> ImGUIBuilder::GetCursorScreenPos()
 {
 	ImVec2 p0 = ImGui::GetCursorScreenPos();
-	return UI::Vector2{ p0.x, p0.y };
+	return UI::Vector<float, 2>{ p0.x, p0.y };
 }
 
-void ImGUIBuilder::Dummy(const UI::Vector2& size)
+void ImGUIBuilder::Dummy(const UI::Vector<float, 2>& size)
 {
 	ImGui::Dummy(ImVec2(size.x, size.y));
 }
 
-void ImGUIBuilder::DrawRect(const UI::Vector2& p0, const UI::Vector2& p1, const UI::Color& color)
+void ImGUIBuilder::DrawRect(const UI::Vector<float, 2>& p0, const UI::Vector<float, 2>& p1, const UI::Color& color)
 {
-	ImGui::GetWindowDrawList()->AddRect(ImVec2(p0.x, p0.y), ImVec2(p1.x, p1.y), ColorToImU32(color));
+	ImGui::GetWindowDrawList()->AddRect(ImVec2(p0.x, p0.y), ImVec2(p1.x, p1.y), color.ToUInt());
 }
 
-void ImGUIBuilder::DrawRectFilled(const UI::Vector2& p0, const UI::Vector2& p1, const UI::Color& color)
+void ImGUIBuilder::DrawRectFilled(const UI::Vector<float, 2>& p0, const UI::Vector<float, 2>& p1, const UI::Color& color)
 {
-	ImGui::GetWindowDrawList()->AddRectFilled(ImVec2(p0.x, p0.y), ImVec2(p1.x, p1.y), ColorToImU32(color));
+	ImGui::GetWindowDrawList()->AddRectFilled(ImVec2(p0.x, p0.y), ImVec2(p1.x, p1.y), color.ToUInt());
 }
 
 void ImGUIBuilder::BeginTooltip()
@@ -374,7 +377,7 @@ void ImGUIBuilder::EndTooltip()
 	ImGui::EndTooltip();
 }
 
-bool ImGUIBuilder::BeginOverlay(const char* name, const UI::Vector2& pos, const UI::Vector2& size)
+bool ImGUIBuilder::BeginOverlay(const char* name, const UI::Vector<float, 2>& pos, const UI::Vector<float, 2>& size)
 {
 	ImGui::SetNextWindowPos(ImVec2(pos.x, pos.y), ImGuiCond_Always);
 	ImGui::SetNextWindowSize(ImVec2(size.x, size.y));
@@ -398,49 +401,77 @@ void ImGUIBuilder::EndOverlay()
 	ImGui::PopStyleVar(1); // WindowPadding 복구
 }
 
-UI::Vector2 ImGUIBuilder::GetMainViewportPos()
+UI::Vector<float, 2> ImGUIBuilder::GetMainViewportPos()
 {
 	ImVec2 pos = ImGui::GetMainViewport()->Pos;
 	return { pos.x, pos.y };
 }
 
-void ImGUIBuilder::DrawLine(const UI::Vector2& p1, const UI::Vector2& p2, const UI::Color& color, float thickness)
+void ImGUIBuilder::DrawLine(const UI::Vector<float, 2>& p1, const UI::Vector<float, 2>& p2, const UI::Color& color, float thickness)
 {
 	ImGui::GetWindowDrawList()->AddLine(
 		ImVec2(p1.x, p1.y),
 		ImVec2(p2.x, p2.y),
-		ColorToImU32(color),
+		color.ToUInt(),
 		thickness
 	);
 }
 
-void ImGUIBuilder::DrawCircleFilled(const UI::Vector2& center, float radius, const UI::Color& color)
+void ImGUIBuilder::DrawCircleFilled(const UI::Vector<float, 2>& center, float radius, const UI::Color& color)
 {
 	ImGui::GetWindowDrawList()->AddCircleFilled(
 		ImVec2(center.x, center.y),
 		radius,
-		ColorToImU32(color)
+		color.ToUInt()
 	);
 }
 
-void ImGUIBuilder::DrawTextAt(const UI::Vector2& pos, const UI::Color& color, const char* text)
+void ImGUIBuilder::DrawTextAt(const UI::Vector<float, 2>& pos, const UI::Color& color, const char* text)
 {
 	ImGui::GetWindowDrawList()->AddText(
 		ImVec2(pos.x, pos.y),
-		ColorToImU32(color),
+		color.ToUInt(),
 		text
 	);
 }
 
-UI::Vector2 ImGUIBuilder::CalcTextSize(const char* text)
+UI::Vector<float, 2> ImGUIBuilder::CalcTextSize(const char* text)
 {
 	ImVec2 size = ImGui::CalcTextSize(text);
 	return { size.x, size.y };
 }
 
-void ImGUIBuilder::InvisibleButton(const char* str_id, const UI::Vector2& size)
+void ImGUIBuilder::InvisibleButton(const char* str_id, const UI::Vector<float, 2>& size)
 {
 	ImGui::InvisibleButton(str_id, ImVec2(size.x, size.y));
+}
+
+bool ImGUIBuilder::InputInternal(const char* label, UI::UI_DataType type, void* pValue)
+{
+	if (type == UI::UI_DataType::Unknown) return false;
+	if (type == UI::UI_DataType::Bool) return ImGui::Checkbox(label, static_cast<bool*>(pValue));
+	if (type == UI::UI_DataType::Color) return ImGui::ColorEdit4(label, static_cast<float*>(pValue), ImGuiColorEditFlags_NoDragDrop);
+
+	ImGuiDataType imguiType = GetImGuiDataType(type);
+	int components = GetComponentCount(type);
+	return ImGui::InputScalarN(label, imguiType, pValue, components);
+}
+
+bool ImGUIBuilder::DragInternal(const char* label, UI::UI_DataType type, void* pValue, float speed)
+{
+	if (type == UI::UI_DataType::Unknown) return false;
+	if (type == UI::UI_DataType::Bool) return ImGui::Checkbox(label, static_cast<bool*>(pValue));
+	if (type == UI::UI_DataType::Color) return ImGui::ColorEdit4(label, static_cast<float*>(pValue));
+
+	ImGuiDataType imguiType = GetImGuiDataType(type);
+	int components = GetComponentCount(type);
+	return ImGui::DragScalarN(label, imguiType, pValue, components, speed);
+}
+
+bool ImGUIBuilder::PropertyInternal(const char* label, UI::UI_DataType type, void* pValue, float speed)
+{
+	std::string hiddenLabel = DrawPropertyLabel(label);
+	return DragInternal(hiddenLabel.c_str(), type, pValue, speed);
 }
 
 std::string ImGUIBuilder::DrawPropertyLabel(const char* label)
@@ -457,12 +488,3 @@ std::string ImGUIBuilder::DrawPropertyLabel(const char* label)
 	return hiddenLabel;
 }
 
-ImU32 ImGUIBuilder::ColorToImU32(const UI::Color& color)
-{
-	return IM_COL32(
-		(int)(color.r * 255.0f),
-		(int)(color.g * 255.0f),
-		(int)(color.b * 255.0f),
-		(int)(color.a * 255.0f)
-	);
-}

@@ -33,20 +33,13 @@ struct Metric
 
 };
 
-struct BufferPoolInfo {
-	std::string name;
-	uint64_t capacity = 0;
-	uint64_t used = 0;
-	std::vector<BufferBlock> free;
-	std::vector<BufferBlock> allocated;
-};
-
 struct ProfilerSnapshot
 {
 	uint64_t timestamp = 0;
 	std::unordered_map<std::string, Metric> metrics;
 	// Debugging Fields
 	std::vector<BufferPoolInfo> pools;
+	std::vector<DedicatedBufferInfo> dedicatedBuffers;
 };
 
 
@@ -55,16 +48,18 @@ class Profiler
 public:
 	Profiler();
 	~Profiler();
-	// Metric registration (optional but helps UI auto-discover)
+	
+	// Metric registration 
 	bool RegisterMetric(const std::string& name, Metric meta);
 	bool UnregisterMetric(const std::string& name);
 
-	// Producers update metrics (cheap-ish)
+	// Producers update metrics
 	void SetMetric(const std::string& name, const MetricValue& v);   // set latest value
 	void PushHistogram(const std::string& name, double sample);        // append for histogram/series
 
 	// For larger/structured data (buffer pools), set via this API:
 	void SetBufferPools(const std::vector<BufferPoolInfo>& pools);
+	void SetDedicatedBuffers(const std::vector<DedicatedBufferInfo>& buffers);
 
 	// Called once per frame on update thread: captures current state into a write snapshot and swaps
 	void UpdateFrame(uint64_t frameTimestamp);
@@ -81,6 +76,7 @@ private:
 	std::unordered_map<std::string, Metric> m_metrics;
 
 	std::vector<BufferPoolInfo> m_currentPools;
+	std::vector<DedicatedBufferInfo> m_dedicatedBuffers;
 
 	// double-buffered snapshots (swap via atomic index)
 	ProfilerSnapshot m_snapshots[2];

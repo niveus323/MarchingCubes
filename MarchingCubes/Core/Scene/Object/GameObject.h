@@ -103,6 +103,19 @@ public:
 		}
 	}
 
+	void SetActive(bool bActive)
+	{
+		for (auto& comp : m_components)
+		{
+			comp->SetActive(bActive);
+		}
+
+		for (auto& child : m_children)
+		{
+			child->SetActive(bActive);
+		}
+	}
+
 
 	GameObject* GetOwner() { return m_owner; }
 	Scene* GetScene() { return m_scene; }

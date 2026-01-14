@@ -7,9 +7,9 @@
 #include "Core/Rendering/PSO/DescriptorAllocator.h"
 #include "Core/Rendering/UploadContext.h"
 
-static inline ChunkKey DecodeChunkKey(uint32_t idx, const XMUINT3& cells)
+static inline ChunkKey DecodeChunkKey(uint32_t idx, const XMUINT3& resolution)
 {
-	const uint32_t nx = cells.x, ny = cells.y, nxy = nx * ny;
+	const uint32_t nx = resolution.x, ny = resolution.y, nxy = nx * ny;
 	ChunkKey k;
 	k.z = idx / nxy;
 	idx -= k.z * nxy;
@@ -82,7 +82,7 @@ void GPUTerrainBackend::setGridDesc(const GridDesc& desc)
 	}
 }
 
-void GPUTerrainBackend::setFieldPtr(std::shared_ptr<SdfField<float>> grid)
+void GPUTerrainBackend::setFieldPtr(std::shared_ptr<SdfField> grid)
 {
 	m_gridData = std::move(grid);
 	//SDFVolume3D의 Upload는 m_fieldDirty를 체크하여 encode에서 처리.
@@ -125,7 +125,7 @@ void GPUTerrainBackend::ExecuteCompute(uint32_t frameIndex, UploadContext* uploa
 	if (m_fieldDirty) encodeFieldUpload(uploadContext);
 
 	XMUINT3 regionMin = { 0,0,0 };
-	XMUINT3 regionMax = m_grid.cells;
+	XMUINT3 regionMax = m_grid.resolution;
 	if (!m_brushQueue.empty())
 	{
 		// Density3D SRV -> UAV 전환
@@ -259,7 +259,7 @@ void GPUTerrainBackend::ensureTriangleBuffer()
 
 void GPUTerrainBackend::computeNumChunks()
 {
-	const XMUINT3 totalCubes(m_grid.cells.x - 1, m_grid.cells.y - 1, m_grid.cells.z - 1);
+	const XMUINT3 totalCubes(m_grid.resolution.x - 1, m_grid.resolution.y - 1, m_grid.resolution.z - 1);
 
 	m_numChunkAxis = XMUINT3(
 		(totalCubes.x + (s_chunkcubes - 1)) / s_chunkcubes,
@@ -363,7 +363,7 @@ void GPUTerrainBackend::encodeBrushPass(uint32_t frameIndex, UploadContext* uplo
 		.brushRadius = req.radius,
 		.brushWeight = req.weight,
 		.deltaTime = req.deltaTime,
-		.gridCells = m_grid.cells,
+		.gridCells = m_grid.resolution,
 		.brushCenter = brushCenter,
 		.regionCellMin = regionMin,
 		.regionCellMax = regionMax
@@ -399,10 +399,10 @@ void GPUTerrainBackend::encodeRemeshPass(uint32_t frameIndex, UploadContext* upl
 	uploadContext->ResetCounterUAV(m_commandList.Get(), m_outCounter.Get(), D3D12_RESOURCE_STATE_COMMON, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
 
 	XMUINT3 expandedMin, expandedMax;
-	computeChunkAlignedRegion(m_grid.cells, regionMin, regionMax, expandedMin, expandedMax);
+	computeChunkAlignedRegion(m_grid.resolution, regionMin, regionMax, expandedMin, expandedMax);
 
 	GridCBData data{
-		.gridCells = m_grid.cells,
+		.gridCells = m_grid.resolution,
 		.gridOrigin = m_grid.origin,
 		.isoValue = m_grid.isoValue,
 		.numChunkAxis = m_numChunkAxis,
@@ -420,7 +420,7 @@ void GPUTerrainBackend::encodeRemeshPass(uint32_t frameIndex, UploadContext* upl
 		.device = m_device,
 		.cmd = m_commandList.Get(),
 		.chunkCubes = s_chunkcubes,
-		.gridDimension = m_grid.cells,
+		.gridDimension = m_grid.resolution,
 		.regionCellMin = expandedMin,
 		.regionCellMax = expandedMax,
 		.cbAddress = gridCB.gpuVA,
@@ -464,7 +464,7 @@ XMUINT3 GPUTerrainBackend::computeBrushCenter(const XMFLOAT3& hitpos, const XMFL
 void GPUTerrainBackend::computeBrushRegionCells(const GridDesc& grid, const DirectX::XMUINT3& brushCenter, const float brushRadius, DirectX::XMUINT3& outRegionMin, DirectX::XMUINT3& outRegionMax)
 {
 	const uint32_t halo = 1;
-	const XMUINT3 gridDim = grid.cells;
+	const XMUINT3 gridDim = grid.resolution;
 
 	const float radiusCell = brushRadius / grid.cellsize;
 	const uint32_t r = static_cast<uint32_t>(std::ceil(radiusCell));
@@ -478,7 +478,7 @@ void GPUTerrainBackend::computeBrushRegionCells(const GridDesc& grid, const Dire
 	outRegionMax.z = std::min<uint32_t>(gridDim.z, brushCenter.z + r + halo);
 }
 
-void GPUTerrainBackend::computeChunkAlignedRegion(const XMUINT3& cells, const XMUINT3& brushRegionMin, const XMUINT3& brushRegionMax, XMUINT3& outRegionMin, XMUINT3& outRegionMax)
+void GPUTerrainBackend::computeChunkAlignedRegion(const XMUINT3& resolution, const XMUINT3& brushRegionMin, const XMUINT3& brushRegionMax, XMUINT3& outRegionMin, XMUINT3& outRegionMax)
 {
 	XMUINT3 cmin{
 		brushRegionMin.x / s_chunkcubes,
@@ -492,11 +492,11 @@ void GPUTerrainBackend::computeChunkAlignedRegion(const XMUINT3& cells, const XM
 		(brushRegionMax.z + s_chunkcubes - 1) / s_chunkcubes
 	};
 
-	outRegionMin.x = std::min(cmin.x * s_chunkcubes, cells.x);
-	outRegionMin.y = std::min(cmin.y * s_chunkcubes, cells.y);
-	outRegionMin.z = std::min(cmin.z * s_chunkcubes, cells.z);
+	outRegionMin.x = std::min(cmin.x * s_chunkcubes, resolution.x);
+	outRegionMin.y = std::min(cmin.y * s_chunkcubes, resolution.y);
+	outRegionMin.z = std::min(cmin.z * s_chunkcubes, resolution.z);
 
-	outRegionMax.x = std::min(cmax.x * s_chunkcubes, cells.x);
-	outRegionMax.y = std::min(cmax.y * s_chunkcubes, cells.y);
-	outRegionMax.z = std::min(cmax.z * s_chunkcubes, cells.z);
+	outRegionMax.x = std::min(cmax.x * s_chunkcubes, resolution.x);
+	outRegionMax.y = std::min(cmax.y * s_chunkcubes, resolution.y);
+	outRegionMax.z = std::min(cmax.z * s_chunkcubes, resolution.z);
 }

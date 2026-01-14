@@ -34,7 +34,7 @@ public:
 
 	// ITerrainBackend을(를) 통해 상속됨
 	virtual void setGridDesc(const GridDesc& desc) override;
-	virtual void setFieldPtr(std::shared_ptr<SdfField<float>> grid) override;
+	virtual void setFieldPtr(std::shared_ptr<SdfField> grid) override;
 	virtual void RequestBrush(const BrushRequest& r) override;
 	virtual void RequestRemesh(const std::set<ChunkKey>& chunkSet) override;
 	virtual bool tryFetch(std::vector<ChunkUpdate>& OutChunkUpdates) override;
@@ -55,7 +55,7 @@ private:
 
 	static XMUINT3 computeBrushCenter(const DirectX::XMFLOAT3& hitpos, const DirectX::XMFLOAT3& gridorigin, const float cellsize);
 	static void computeBrushRegionCells(const GridDesc& grid, const DirectX::XMUINT3& brushCenter, const float brushRadius, DirectX::XMUINT3& outRegionMin, DirectX::XMUINT3& outRegionMax);
-	static void computeChunkAlignedRegion(const XMUINT3& cells, const XMUINT3& brushRegionMin, const XMUINT3& brushRegionMax, XMUINT3& outRegionMin, XMUINT3& outRegionMax);
+	static void computeChunkAlignedRegion(const XMUINT3& resolution, const XMUINT3& brushRegionMin, const XMUINT3& brushRegionMax, XMUINT3& outRegionMin, XMUINT3& outRegionMax);
 
 private:
 	static constexpr uint32_t m_ring = 3;
@@ -93,7 +93,7 @@ private:
 	DirectX::XMUINT3 m_numChunkAxis{};
 	uint32_t m_numChunks = 0;
 
-	std::shared_ptr<SdfField<float>>     m_gridData;
+	std::shared_ptr<SdfField>     m_gridData;
 
 	std::vector<BrushRequest> m_brushQueue;
 	std::set<ChunkKey> m_pendingRemeshChunks;

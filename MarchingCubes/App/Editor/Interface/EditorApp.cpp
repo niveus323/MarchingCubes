@@ -169,22 +169,24 @@ void EditorApp::InitUI(ID3D12GraphicsCommandList* cmd)
 void EditorApp::OnUpdateUI(float deltaTime)
 {
 	// TODO : Profiler 에디터로 옮기기
+#ifdef _DEBUG
 	GpuAllocator* gpuAllocator = GetGpuAllocator();
 	StaticBufferRegistry* staticBufferRegistry = GetStaticBufferRegistry();
 	if (auto p = m_profiler.lock())
 	{
-		std::vector<BufferPoolInfo> pools;
+		std::vector<BufferPoolInfo> poolInfos;
+		std::vector<DedicatedBufferInfo> promotedInfos;
 		// GpuAllocator
 		for (auto& dbg : gpuAllocator->GetDebugPools())
 		{
-			BufferPoolInfo pi;
-			pi.name = dbg.name;
-			pi.capacity = dbg.pool->GetCapacity();
+			BufferPoolInfo poolInfo;
+			poolInfo.name = dbg.name;
+			poolInfo.capacity = dbg.pool->GetCapacity();
 			std::vector<BufferBlock>& allocated = dbg.pool->GetAllocatedBlocks();
-			pi.used = std::accumulate(allocated.cbegin(), allocated.cend(), 0ULL, [](uint64_t sum, const BufferBlock& b) { return sum + b.size; });
-			pi.free = dbg.pool->GetFreeBlocks();
-			pi.allocated = dbg.pool->GetAllocatedBlocks();
-			pools.push_back(pi);
+			poolInfo.used = std::accumulate(allocated.cbegin(), allocated.cend(), 0ULL, [](uint64_t sum, const BufferBlock& b) { return sum + b.size; });
+			poolInfo.free = dbg.pool->GetFreeBlocks();
+			poolInfo.allocated = dbg.pool->GetAllocatedBlocks();
+			poolInfos.push_back(poolInfo);
 		}
 
 		// StaticBufferRegistry
@@ -195,7 +197,7 @@ void EditorApp::OnUpdateUI(float deltaTime)
 		pi_vb.used = std::accumulate(allocatedVB.cbegin(), allocatedVB.cend(), 0ULL, [](uint64_t sum, const BufferBlock& b) {return sum + b.size; });
 		pi_vb.free = staticBufferRegistry->GetVBFree();
 		pi_vb.allocated = allocatedVB;
-		pools.push_back(pi_vb);
+		poolInfos.push_back(pi_vb);
 
 		BufferPoolInfo pi_ib;
 		pi_ib.name = "StaticIB";
@@ -204,12 +206,13 @@ void EditorApp::OnUpdateUI(float deltaTime)
 		pi_ib.used = std::accumulate(allocatedIB.cbegin(), allocatedIB.cend(), 0ULL, [](uint64_t sum, const BufferBlock& b) {return sum + b.size; });
 		pi_ib.free = staticBufferRegistry->GetIBFree();
 		pi_ib.allocated = allocatedIB;
-		pools.push_back(pi_ib);
+		poolInfos.push_back(pi_ib);
 
-		p->SetBufferPools(pools);
-
+		p->SetBufferPools(poolInfos);
+		p->SetDedicatedBuffers(gpuAllocator->GetDebugDedicatedBuffers());
 		p->UpdateFrame(GetTimer().GetTimeMs());
 	}
+#endif
 }
 
 void EditorApp::OnSceneLoaded(Scene* scene)
@@ -410,62 +413,109 @@ void EditorApp::RenderProfilingUI(IUIBuilder* ui)
 			ui->EndPanel();
 		}
 
-		ui->BeginPanel("Buffer Pools");
-		ui->Text("Pools (Small / Large)");
-		ui->Separator();
-
-		static bool showPromoted = true;
-		ui->Checkbox("Show Promoted", &showPromoted);
-		ui->Separator();
-		for (const auto& p : snap.pools)
+		if (ui->BeginPanel("Buffer Pools"))
 		{
-			ui->Text(std::format("{} : Capacity: {}  Used: {}  Allocated : {}  FreeBlocks: {}", p.name.c_str(), (unsigned long long)p.capacity, p.used, p.allocated.size(), p.free.size()));
+			ui->Text("Pools (Small / Large)");
+			ui->Separator();
 
-			const float barW = ui->GetAvailableWidth();
-			const float barH = 14.0f;
-			UI::Vector2 p0 = ui->GetCursorScreenPos();
-			UI::Vector2 p1 = UI::Vector2(p0.x + barW, p0.y + barH);
-			ui->DrawRectFilled(p0, p1, { 0.12f, 0.12f, 0.12f, 1.0f });
-			ui->DrawRect(p0, p1, { 0.8f, 0.8f, 0.8f, 0.5f });
-			
-			auto toX = [&](uint64_t off)->float { return p0.x + float((double)off / (double)p.capacity * barW); };
-			for (auto& block : p.allocated)
+			static bool showPromoted = true;
+			ui->Checkbox("Show Promoted", &showPromoted);
+			ui->Separator();
+			for (const auto& p : snap.pools)
 			{
-				float x0 = toX(block.offset);
-				float x1 = toX(block.offset + block.size);
-				UI::Vector2 b0 = UI::Vector2(x0, p0.y);
-				UI::Vector2 b1 = UI::Vector2(x1, p1.y);
+				ui->Text(std::format("{} : Capacity: {}  Used: {}  Allocated : {}  FreeBlocks: {}", p.name.c_str(), (unsigned long long)p.capacity, p.used, p.allocated.size(), p.free.size()));
 
-				ui->DrawRectFilled(b0, b1, { 0.0f, 1.0f, 0.0f, 0.6f });
-				ui->DrawRect(b0, b1, { 0.0f, 0.7f, 0.0f, 0.8f });
-				if (ui->IsMouseHoveringRect(b0, b1))
+				const float barW = ui->GetAvailableWidth();
+				const float barH = 14.0f;
+				UI::Vector<float, 2> p0 = ui->GetCursorScreenPos();
+				UI::Vector<float, 2> p1 = UI::Vector<float, 2>(p0.x + barW, p0.y + barH);
+				ui->DrawRectFilled(p0, p1, { 0.12f, 0.12f, 0.12f, 1.0f });
+				ui->DrawRect(p0, p1, { 0.8f, 0.8f, 0.8f, 0.5f });
+
+				auto toX = [&](uint64_t off)->float { return p0.x + float((double)off / (double)p.capacity * barW); };
+				for (auto& block : p.allocated)
 				{
-					ui->DrawRect(b0, b1, { 1.0f, 0.86f, 0.0f, 1.0f });
+					float x0 = toX(block.offset);
+					float x1 = toX(block.offset + block.size);
+					UI::Vector<float, 2> b0 = UI::Vector<float, 2>(x0, p0.y);
+					UI::Vector<float, 2> b1 = UI::Vector<float, 2>(x1, p1.y);
 
-					ui->BeginTooltip();
-					if (!block.owner.empty())
+					ui->DrawRectFilled(b0, b1, { 0.0f, 1.0f, 0.0f, 0.6f });
+					ui->DrawRect(b0, b1, { 0.0f, 0.7f, 0.0f, 0.8f });
+					if (ui->IsMouseHoveringRect(b0, b1))
 					{
-						ui->Text(std::format("Owner : {}", block.owner).c_str());
+						ui->DrawRect(b0, b1, { 1.0f, 0.86f, 0.0f, 1.0f });
+
+						ui->BeginTooltip();
+						if (!block.owner.empty())
+						{
+							ui->Text(std::format("Owner : {}", block.owner).c_str());
+						}
+						else
+						{
+							ui->Text("<owner unknown>");
+						}
+						ui->Text(std::format("Offset: {}", block.offset).c_str());
+						ui->Text(std::format("Size  : {} bytes", block.size).c_str());
+						ui->EndTooltip();
 					}
-					else
+				}
+				ui->Dummy({ barW, barH + 6.0f });
+			}
+
+			if (showPromoted)
+			{
+				ui->Separator();
+				ui->Text("Dedicated Allocations (Fallback / Promoted)");
+
+				if (ui->BeginTable("DedicatedAllocTable", 5))
+				{
+					ui->TableNextColumn();
+					ui->EndTable();
+				}
+
+				//if (ImGui::BeginTable("DedicatedAllocTable", 5, ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg | ImGuiTableFlags_Resizable))
+				if (ui->BeginTable("DedicatedAllocTable", 5))
+				{
+					ui->TableSetupColumn("Type");
+					ui->TableSetupColumn("Owner");
+					ui->TableSetupColumn("Size");
+					ui->TableSetupColumn("Usage");
+					ui->TableSetupColumn("Status");
+					ui->TableHeadersRow();
+
+					for (const auto& info : snap.dedicatedBuffers)
 					{
-						ui->Text("<owner unknown>");
+						ui->TableNextRow();
+
+						ui->TableNextColumn();
+						ui->Text(info.type.c_str());
+
+						ui->TableNextColumn();
+						// Owner가 비어있으면 Unknown 표시
+						ui->Text(info.owner.empty() ? "-" : info.owner.c_str());
+
+						ui->TableNextColumn();
+						if (info.size > 1024 * 1024)
+							ui->TextFormatted("%.2f MB", info.size / (1024.0f * 1024.0f));
+						else
+							ui->TextFormatted("%.2f KB", info.size / 1024.0f);
+
+						ui->TableNextColumn();
+						ui->Text(info.usage.c_str());
+
+						ui->TableNextColumn();
+						if (info.isLive)
+							ui->TextColored(UI::Color(0, 1, 0, 1), "Live");
+						else
+							ui->TextColored(UI::Color(1, 1, 0, 1), "Pending (Fence: %llu)", info.fenceValue);
 					}
-					ui->Text(std::format("Offset: {}", block.offset).c_str());
-					ui->Text(std::format("Size  : {} bytes", block.size).c_str());
-					ui->EndTooltip();
+					ui->EndTable();
 				}
 			}
-			ui->Dummy({ barW, barH + 6.0f });
+
+			ui->EndPanel();
 		}
-
-		if (showPromoted)
-		{
-			// TODO : Promoted 리스트 Profiling
-
-		}
-
-		ui->EndPanel();
 	}
 }
 

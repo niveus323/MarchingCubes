@@ -54,6 +54,7 @@ void GpuAllocator::Alloc(ID3D12Device* device, const AllocDesc& desc, BufferHand
 		{
 			if (promoted.refCount != 0 || promoted.fenceValue > lastCompletedFenceValue || promoted.size < desc.size) continue;
 			promoted.refCount = 1;
+			promoted.owner = std::string(desc.owner);
 
 			outHandle.res = promoted.res.Get();
 			outHandle.offset = 0;
@@ -83,6 +84,7 @@ void GpuAllocator::Alloc(ID3D12Device* device, const AllocDesc& desc, BufferHand
 		ThrowIfFailed(device->CreateCommittedResource(&hp, D3D12_HEAP_FLAG_NONE, &resDesc, D3D12_RESOURCE_STATE_COMMON, nullptr, IID_PPV_ARGS(&slot.res)));
 		slot.size = grown;
 		slot.refCount = 1;
+		slot.owner = std::string(desc.owner);
 		promotedResources.push_back(slot);
 
 		outHandle.res = slot.res.Get();
@@ -302,6 +304,7 @@ void GpuAllocator::AllocFromFallback(ID3D12Device* device, const AllocDesc& desc
 
 	// วาด็
 	auto& fallbackSlot = m_fallbackUploads[slot];
+	fallbackSlot.owner = std::string(desc.owner);
 	outHandle.res = fallbackSlot.res.Get();
 	outHandle.offset = 0;
 	outHandle.size = desc.size;

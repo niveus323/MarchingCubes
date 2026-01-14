@@ -24,30 +24,35 @@ void MeshChunkRenderer::ApplyUpdates(UploadContext* uploadContext, const std::ve
 
 	if (!uploadContext) return;
 
+	bool bChanged = false;
+
 	for (const auto& u : ups)
 	{
-		// 1. 빈 청크거나 인덱스가 없으면 삭제
+		// 빈 청크거나 인덱스가 없으면 삭제
 		if (u.empty || u.md.indices.empty())
 		{
-			m_chunks.erase(u.key);
+			if (m_chunks.erase(u.key) > 0) bChanged = true;
 			continue;
 		}
 
-		// 2. 슬롯 확보
+		// 슬롯 확보
 		ChunkSlot& slot = m_chunks[u.key];
 		slot.meshData = u.md;
 		slot.indexCount = static_cast<uint32_t>(u.md.indices.size());
 
-		// 3. 바운딩 박스 계산
+		// 바운딩 박스 계산
 		if (!u.md.vertices.empty())
 		{
 			DirectX::BoundingBox::CreateFromPoints(slot.bounds, u.md.vertices.size(), &u.md.vertices[0].pos, sizeof(Vertex));
 		}
 
-		// 4. 버퍼 업로드 요청 (UploadContext가 중복 체크 및 재할당 담당)
+		// 버퍼 업로드 요청 (UploadContext가 중복 체크 및 재할당 담당)
 		std::string debugName = std::format("Chunk_{}_{}_{}", u.key.x, u.key.y, u.key.z);
 		uploadContext->UploadGeometry(&slot.buffer, u.md, debugName);
+		bChanged = true;
 	}
+
+	if (bChanged) m_revision++;
 }
 
 void MeshChunkRenderer::Submit(RenderSystem* renderSystem, const DirectX::XMFLOAT4X4& worldMatrix, const MaterialInstance& material)
@@ -84,6 +89,7 @@ void MeshChunkRenderer::Clear(UploadContext* uploadContext)
 		}
 	}
 	m_chunks.clear();
+	m_revision++;
 }
 
 std::vector<BoundingBox> MeshChunkRenderer::GetBoundingBox() const

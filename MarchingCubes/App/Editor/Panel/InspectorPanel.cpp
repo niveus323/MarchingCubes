@@ -5,6 +5,32 @@
 #include "Core/UI/Builder/UIBuilder.h"
 #include <format>
 
+namespace
+{
+    // Property UI 템플릿 함수 (링커 충돌을 방지하기 위해 anonymous namespace로 선언)
+    template <typename T, typename DrawFunc>
+    void HandleProperty(void* componentPtr, const Property& prop, DrawFunc drawFunc)
+    {
+        T tempVal = {}; // Accessor용 임시 변수
+        T* dataPtr = nullptr;
+
+        if (prop.IsAccessor())
+        {
+            prop.getter(componentPtr, &tempVal);
+            dataPtr = &tempVal;
+        }
+        else
+        {
+            dataPtr = static_cast<T*>(prop.GetValuePtr(componentPtr));
+        }
+
+        if (drawFunc(dataPtr) && prop.IsAccessor())
+        {
+            prop.setter(componentPtr, dataPtr);
+        }
+    }
+}
+
 void InspectorPanel::OnRenderUI(IUIBuilder* ui)
 {
     if (ui->BeginPanel("Inspector"))
@@ -83,115 +109,57 @@ void InspectorPanel::DrawTypeProperties(IUIBuilder* ui, void* componentPtr, Type
     {
         for (const Property& prop : typeDesc->GetProperties())
         {
-            // 가시성 체크, false이면 UI를 그리지 않음
             if (prop.isVisible && !prop.isVisible(componentPtr)) continue;
 
-            bool valueChanged = false;
-            //임시 데이터
-            bool tempBool = false;
-            int tempInt = 0;
-            float tempFloat = 0.0f;
-            float tempVec3[3] = { 0.f, 0.f, 0.f };
-            std::string tempStr = "";
-            // UI 함수에 넘길 최종 데이터 포인터
-            void* dataPtr = nullptr;
-
-            if (prop.IsAccessor()) //Getter 사용
-            {
-                switch (prop.type)
-                {
-                    case EPropertyType::Bool:
-                    {
-                        prop.getter(componentPtr, &tempBool);
-                        dataPtr = &tempBool;
-                    }
-                    break;
-                    case EPropertyType::Int:
-                    case EPropertyType::Enum:
-                    {
-                        prop.getter(componentPtr, &tempInt);
-                        dataPtr = &tempInt;
-                    }
-                    break;
-                    case EPropertyType::Float:
-                    {
-                        prop.getter(componentPtr, &tempFloat);
-                        dataPtr = &tempFloat;
-                    }
-                    break;
-                    case EPropertyType::Vector3:
-                    {
-                        prop.getter(componentPtr, tempVec3);
-                        dataPtr = tempVec3;
-                    }
-                    break;
-                    case EPropertyType::String:
-                    {
-                        prop.getter(componentPtr, &tempStr);
-                        dataPtr = &tempStr;
-                    }
-                    break;
-                }
-            }
-            else // Getter, Setter 없을 경우 직접 포인터 적용
-            {
-                dataPtr = prop.GetValuePtr(componentPtr);
-            }
-
-            // UI 작업
+            const char* name = prop.name.c_str();
             switch (prop.type)
             {
                 case EPropertyType::Bool:
-                {
-                    if (ui->PropertyBool(prop.name.c_str(), static_cast<bool*>(dataPtr))) valueChanged = true;
-                }
-                break;
+                    HandleProperty<bool>(componentPtr, prop, [&](bool* ptr) {
+                        return ui->Property(name, ptr);
+                    });
+                    break;
                 case EPropertyType::Int:
-                {
-                    if (ui->PropertyInt(prop.name.c_str(), static_cast<int*>(dataPtr))) valueChanged = true;
-                }
-                break;
+                    HandleProperty<int>(componentPtr, prop, [&](int* ptr) {
+                        return ui->Property(name, ptr);
+                    });
+                    break;
                 case EPropertyType::Float:
-                {
-                    if (ui->PropertyFloat(prop.name.c_str(), static_cast<float*>(dataPtr), 0.1f)) valueChanged = true;
-                }
-                break;
+                    HandleProperty<float>(componentPtr, prop, [&](float* ptr) {
+                        return ui->Property(name, ptr);
+                    });
+                    break;
                 case EPropertyType::Vector3:
-                {
-                    if (ui->PropertyFloat3(prop.name.c_str(), static_cast<float*>(dataPtr), 0.1f)) valueChanged = true;
-                }
-                break;
+                    HandleProperty<UI::Vector<float, 3>>(componentPtr, prop, [&](auto* ptr) {
+                        return ui->Property(name, ptr);
+                    });
+                    break;
+                case EPropertyType::Color:
+                    HandleProperty<UI::Color>(componentPtr, prop, [&](auto* ptr) {
+                        return ui->Property(name, ptr);
+                    });
+                    break;
                 case EPropertyType::String:
-                {
-                    if (ui->PropertyInputText(prop.name.c_str(), *static_cast<std::string*>(dataPtr))) valueChanged = true;
-                }
-                break;
+                    HandleProperty<std::string>(componentPtr, prop, [&](std::string* ptr) {
+                        return ui->PropertyInputText(name, *ptr);
+                    });
+                    break;
                 case EPropertyType::Enum:
-                {
-                    EnumDescriptor* enumDesc = ReflectionRegistry::Get().GetEnum(prop.enumName);
-                    if (enumDesc)
-                    {
+                    // Enum은 HandleProperty를 활용하되 내부에서 메타데이터 검색
+                    HandleProperty<int>(componentPtr, prop, [&](int* ptr) {
+                        EnumDescriptor* enumDesc = ReflectionRegistry::Get().GetEnum(prop.enumName);
+                        if (!enumDesc) return false;
+                        // NOTE : 최적화 필요 시 캐싱 혹은 static 변수로 선언할것.
                         std::vector<std::string> names;
                         std::vector<int> values;
-                        for (const auto& entry : enumDesc->GetEntries())
+                        for (const auto& entry : enumDesc->GetEntries()) 
                         {
                             names.push_back(entry.name);
                             values.push_back(entry.value);
                         }
-
-                        if (ui->PropertyEnum(prop.name.c_str(), static_cast<int*>(dataPtr), names, values)) valueChanged = true;
-                    }
-                    else
-                    {
-                        ui->PropertyText(prop.name.c_str(), "Unknown Enum");
-                    }
-                }
-                break;
-            }
-
-            if (prop.IsAccessor() && valueChanged)
-            {
-                prop.setter(componentPtr, dataPtr);
+                        return ui->PropertyEnum(name, ptr, names, values);
+                    });
+                    break;
             }
         }
     }

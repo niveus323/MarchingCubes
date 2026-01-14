@@ -8,7 +8,7 @@ SDFVolume3D::SDFVolume3D(ID3D12Device* device) :
 {
 }
 
-void SDFVolume3D::uploadFromGRD(ID3D12GraphicsCommandList* cmd, UploadContext* uploadContext, const SdfField<float>* grid)
+void SDFVolume3D::uploadFromGRD(ID3D12GraphicsCommandList* cmd, UploadContext* uploadContext, const SdfField* grid)
 {
 	const uint32_t dimX = static_cast<uint32_t>(grid->sx());
 	const uint32_t dimY = static_cast<uint32_t>(grid->sy());

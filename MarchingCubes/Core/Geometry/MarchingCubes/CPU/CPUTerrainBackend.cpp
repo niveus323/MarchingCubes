@@ -13,7 +13,7 @@ void CPUTerrainBackend::setGridDesc(const GridDesc& desc)
 	m_gridDesc = desc;
 }
 
-void CPUTerrainBackend::setFieldPtr(std::shared_ptr<SdfField<float>> grid)
+void CPUTerrainBackend::setFieldPtr(std::shared_ptr<SdfField> grid)
 {
 	m_grd = std::move(grid);
 }
@@ -22,7 +22,7 @@ void CPUTerrainBackend::RequestBrush(const BrushRequest& r)
 {
     std::set<ChunkKey> chunkset;
     
-    const XMUINT3 cells = m_gridDesc.cells;
+    const XMUINT3 resolution = m_gridDesc.resolution;
     const XMFLOAT3 origin = m_gridDesc.origin;
     const float cellsize = m_gridDesc.cellsize;
 
@@ -31,9 +31,9 @@ void CPUTerrainBackend::RequestBrush(const BrushRequest& r)
     const float weight = r.weight;
     const float radius = r.radius;
 
-    const int SX = int(m_gridDesc.cells.x);
-    const int SY = int(m_gridDesc.cells.y);
-    const int SZ = int(m_gridDesc.cells.z);
+    const int SX = int(m_gridDesc.resolution.x);
+    const int SY = int(m_gridDesc.resolution.y);
+    const int SZ = int(m_gridDesc.resolution.z);
 
     const float kBase = std::clamp(m_brushDelta * deltaTime * std::abs(weight), 0.0f, 1.0f);
 
