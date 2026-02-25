@@ -175,7 +175,6 @@
     <ClCompile Include="App\Common\DXAppBase.cpp" />
     <ClCompile Include="Core\Input\InputState.cpp" />
     <ClCompile Include="Core\UI\ImGUIRenderer.cpp" />
-    <ClCompile Include="Core\Geometry\MarchingCubes\GPU\GPUBrushCS.cpp" />
     <ClCompile Include="Core\Geometry\MarchingCubes\GPU\GPUMarchingCubesCS.cpp" />
     <ClCompile Include="Core\Geometry\MarchingCubes\GPU\GPUTerrainBackend.cpp" />
     <ClCompile Include="Core\Geometry\FluidSystem.cpp" />
@@ -204,38 +203,45 @@
     <ClCompile Include="App\Editor\Panel\SceneHierarchyPanel.cpp" />
     <ClCompile Include="App\Editor\Panel\InspectorPanel.cpp" />
     <ClCompile Include="Core\UI\Builder\ImGUIBuilder.cpp" />
+    <ClCompile Include="Core\Engine\Serializer\Serializer.cpp" />
+    <ClCompile Include="Core\Scene\Class\Entity.cpp" />
+    <ClCompile Include="Core\Engine\Serializer\JsonSerializer.cpp" />
+    <ClCompile Include="Core\Utils\FileUtils.cpp" />
+    <ClCompile Include="Core\Assets\DataAsset.cpp" />
+    <ClCompile Include="Core\Geometry\MarchingCubes\Class\TerrainObject.cpp" />
+    <ClCompile Include="Core\Geometry\Mesh\Component\CustomMeshComponent.cpp" />
+    <ClCompile Include="Core\Geometry\Mesh\Component\StaticMeshComponent.cpp" />
+    <ClCompile Include="Core\Geometry\MarchingCubes\Class\SdfDataComponent.cpp" />
+    <ClCompile Include="Core\Geometry\Mesh\Class\DynamicMesh.cpp" />
+    <ClCompile Include="Core\Geometry\Mesh\Class\StaticMesh.cpp" />
+    <ClCompile Include="Core\Assets\Material\MaterialAsset.cpp" />
     <ClCompile Include="ThirdParty\FBXImporter.cpp" />
     <ClCompile Include="main.cpp" />
-    <ClCompile Include="Core\Geometry\Mesh\Mesh.cpp" />
+    <ClCompile Include="Core\Geometry\Mesh\Class\Mesh.cpp" />
     <ClCompile Include="Core\Utils\Timer.cpp" />
     <ClCompile Include="Core\Rendering\UploadContext.cpp" />
     <ClCompile Include="Core\Geometry\MarchingCubes\MarchingCubesTables.cpp" />
-    <ClCompile Include="Core\Assets\Material.cpp" />
-    <ClCompile Include="Core\Geometry\MarchingCubes\TerrainSystem.cpp" />
-    <ClCompile Include="Core\Geometry\MarchingCubes\GPU\SDFVolume3D.cpp" />
-    <ClCompile Include="Core\Geometry\Mesh\MeshChunkRenderer.cpp" />
-    <ClCompile Include="Core\Geometry\MarchingCubes\CPU\MC33\MC33TerrainBackend.cpp" />
+    <ClCompile Include="Core\Assets\Material\Material.cpp" />
+    <ClCompile Include="Core\Engine\Subsystem\SceneSubsystem\TerrainSystem.cpp" />
     <ClCompile Include="Core\Rendering\PSO\PSOSpec.cpp" />
     <ClCompile Include="Core\Rendering\PSO\PSOList.cpp" />
     <ClCompile Include="Core\Rendering\RenderSystem.cpp" />
-    <ClCompile Include="Core\Rendering\Memory\StaticBufferRegistry.cpp" />
     <ClCompile Include="Core\Trace\Profiler.cpp" />
     <ClCompile Include="Core\Assets\ResourceManager.cpp" />
     <ClCompile Include="Core\Assets\TextureRegistry.cpp" />
-    <ClCompile Include="Core\Assets\MaterialRegistry.cpp" />
+    <ClCompile Include="Core\Assets\Material\MaterialRegistry.cpp" />
     <ClCompile Include="Core\Assets\TextureAsset.cpp" />
     <ClCompile Include="Core\Assets\MeshAsset.cpp" />
     <ClCompile Include="Core\Assets\MeshRegistry.cpp" />
     <ClCompile Include="Core\Scene\Object\SceneObject.cpp" />
     <ClCompile Include="Core\Scene\Component\MeshComponent.cpp" />
-    <ClCompile Include="Core\Geometry\MarchingCubes\TerrainRendererComponent.cpp" />
     <ClCompile Include="ThirdParty\mc33_impl.cpp" />
     <ClCompile Include="Core\Rendering\Memory\UploadRing.cpp" />
     <ClCompile Include="Core\Scene\Component\TransformComponent.cpp" />
     <ClCompile Include="Win32Application.cpp" />
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="Core\Engine\Refelction.h" />
+    <ClInclude Include="Core\Engine\Reflection.h" />
     <ClInclude Include="Core\Geometry\MarchingCubes\TerrainFieldGenerator.h" />
     <ClInclude Include="Core\Scene\Component\CameraComponent.h" />
     <ClInclude Include="Core\Scene\Scene.h" />
@@ -253,15 +259,13 @@
     <ClInclude Include="Core\Geometry\MarchingCubes\CPU\CPUTerrainBackend.h" />
     <ClInclude Include="App\Common\DXAppBase.h" />
     <ClInclude Include="Core\Utils\DXHelper.h" />
-    <ClInclude Include="Core\Geometry\Mesh\Mesh.h" />
+    <ClInclude Include="Core\Geometry\Mesh\Class\Mesh.h" />
     <ClInclude Include="Core\Input\InputState.h" />
     <ClInclude Include="Core\UI\ImGUIRenderer.h" />
     <ClInclude Include="Core\Geometry\MarchingCubes\MarchingCubesTables.h" />
-    <ClInclude Include="Core\Assets\Material.h" />
-    <ClInclude Include="Core\Geometry\MarchingCubes\GPU\GPUBrushCS.h" />
+    <ClInclude Include="Core\Assets\Material\Material.h" />
     <ClInclude Include="Core\Geometry\MarchingCubes\GPU\GPUMarchingCubesCS.h" />
     <ClInclude Include="Core\Geometry\MarchingCubes\GPU\GPUTerrainBackend.h" />
-    <ClInclude Include="Core\Geometry\MarchingCubes\CPU\MC33\MC33TerrainBackend.h" />
     <ClInclude Include="Core\Trace\Log.h" />
     <ClInclude Include="Core\Geometry\FluidSystem.h" />
     <ClInclude Include="App\Editor\Interface\EditorApp.h" />
@@ -270,7 +274,7 @@
     <ClInclude Include="Core\Rendering\Memory\GpuAllocator.h" />
     <ClInclude Include="Core\Rendering\PSO\DescriptorRing.h" />
     <ClInclude Include="Core\Rendering\PSO\DescriptorAllocator.h" />
-    <ClInclude Include="Core\Assets\MaterialRegistry.h" />
+    <ClInclude Include="Core\Assets\Material\MaterialRegistry.h" />
     <ClInclude Include="Core\Assets\MeshAsset.h" />
     <ClInclude Include="Core\Assets\MeshRegistry.h" />
     <ClInclude Include="Core\Scene\Component\MeshComponent.h" />
@@ -297,31 +301,51 @@
     <ClInclude Include="App\Editor\Panel\InspectorPanel.h" />
     <ClInclude Include="Core\UI\Builder\UIBuilder.h" />
     <ClInclude Include="Core\UI\Builder\ImGUIBuilder.h" />
+    <ClInclude Include="Core\Engine\Serializer\Serializer.h" />
+    <ClInclude Include="Core\Scene\Class\Entity.h" />
+    <ClInclude Include="Core\Engine\Serializer\JsonSerializer.h" />
+    <ClInclude Include="Core\Assets\DataAsset.h" />
+    <ClInclude Include="Core\Geometry\MarchingCubes\Class\TerrainObject.h" />
+    <ClInclude Include="Core\Geometry\Mesh\Component\CustomMeshComponent.h" />
+    <ClInclude Include="Core\Geometry\Mesh\Component\StaticMeshComponent.h" />
+    <ClInclude Include="Core\Geometry\MarchingCubes\Class\SdfDataComponent.h" />
+    <ClInclude Include="Core\Geometry\Mesh\Class\DynamicMesh.h" />
+    <ClInclude Include="Core\Geometry\Mesh\Class\StaticMesh.h" />
+    <ClInclude Include="Core\Assets\Material\MaterialAsset.h" />
+    <ClInclude Include="Core\Utils\EnumBitmask.h" />
     <ClInclude Include="ThirdParty\FBXImporter.h" />
     <ClInclude Include="pch.h" />
     <ClInclude Include="Core\Utils\Timer.h" />
     <ClInclude Include="Core\Rendering\UploadContext.h" />
     <ClInclude Include="Core\UI\UIRenderer.h" />
-    <ClInclude Include="Core\Geometry\MarchingCubes\TerrainSystem.h" />
-    <ClInclude Include="Core\Geometry\MarchingCubes\GPU\SDFVolume3D.h" />
-    <ClInclude Include="Core\Geometry\Mesh\MeshChunkRenderer.h" />
+    <ClInclude Include="Core\Engine\Subsystem\SceneSubsystem\TerrainSystem.h" />
     <ClInclude Include="Core\Rendering\Memory\UploadRing.h" />
     <ClInclude Include="Core\Rendering\PSO\PSOSpec.h" />
     <ClInclude Include="Core\Rendering\PSO\PSOList.h" />
     <ClInclude Include="Core\Rendering\RenderSystem.h" />
-    <ClInclude Include="Core\Rendering\Memory\StaticBufferRegistry.h" />
     <ClInclude Include="Core\Trace\Profiler.h" />
     <ClInclude Include="Core\Assets\ResourceManager.h" />
     <ClInclude Include="Core\Assets\TextureRegistry.h" />
     <ClInclude Include="Core\Assets\TextureAsset.h" />
     <ClInclude Include="Core\Scene\Object\SceneObject.h" />
     <ClInclude Include="Core\Scene\Component\TransformComponent.h" />
-    <ClInclude Include="Core\Geometry\MarchingCubes\TerrainRendererComponent.h" />
     <ClInclude Include="Win32Application.h" />
   </ItemGroup>
   <ItemGroup>
+    <FxCompile Include="Assets\Shaders\TerrainChunkBorderGS.hlsl">
+      <ShaderType Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">Geometry</ShaderType>
+      <ShaderModel Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">6.6</ShaderModel>
+      <ShaderType Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">Geometry</ShaderType>
+      <ShaderModel Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">4.0</ShaderModel>
+      <ShaderType Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">Geometry</ShaderType>
+      <ShaderModel Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">4.0</ShaderModel>
+      <ShaderType Condition="'$(Configuration)|$(Platform)'=='Release|x64'">Geometry</ShaderType>
+      <ShaderModel Condition="'$(Configuration)|$(Platform)'=='Release|x64'">4.0</ShaderModel>
+      <EntryPointName Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">GSMain</EntryPointName>
+    </FxCompile>
     <None Include="..\Directory.Builds.targets" />
     <None Include="App\Editor\EditorAppPSO.json" />
+    <None Include="Assets\Material\DefaultFilled.json" />
     <None Include="Assets\Shaders\Common.hlsli">
       <FileType>Document</FileType>
       <EntryPointName Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
@@ -342,7 +366,7 @@
       <EntryPointName Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">BrushCS</EntryPointName>
       <EntryPointName Condition="'$(Configuration)|$(Platform)'=='Release|x64'">BrushCS</EntryPointName>
     </FxCompile>
-    <FxCompile Include="Assets\Shaders\LinePS.hlsl">
+    <CustomBuild Include="Assets\Shaders\LinePS.hlsl">
       <ShaderType Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">Pixel</ShaderType>
       <ShaderType Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">Pixel</ShaderType>
       <ShaderType Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">Pixel</ShaderType>
@@ -355,7 +379,17 @@
       <EntryPointName Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">PSMain</EntryPointName>
       <EntryPointName Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">PSMain</EntryPointName>
       <EntryPointName Condition="'$(Configuration)|$(Platform)'=='Release|x64'">PSMain</EntryPointName>
-    </FxCompile>
+      <FileType>Document</FileType>
+      <Command Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">rem -- 첫 번째 엔트리 포인트 컴파일 (Visualizer) --
+
+dxc.exe -T ps_6_6 /E PSMain_Visualizer /Fo "$(OutDir)LinePS_Visualizer.cso" "%(Identity)"
+
+
+rem -- 두 번째 엔트리 포인트 컴파일 (Material) --
+
+dxc.exe -T ps_6_6 /E PSMain_Material /Fo "$(OutDir)LinePS_Material.cso" "%(Identity)"</Command>
+      <Outputs Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">$(OutDir)LinePS_Visualizer.cso;$(OutDir)LinePS_Material.cso;%(Outputs)</Outputs>
+    </CustomBuild>
     <None Include="Assets\Shaders\Material.hlsli" />
     <None Include="Assets\Shaders\PBR.hlsli">
       <FileType>Document</FileType>
@@ -364,6 +398,7 @@
       <ShaderModel Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">5.0</ShaderModel>
     </None>
     <None Include="Assets\Shaders\Texture.hlsli" />
+    <None Include="cpp.hint" />
     <None Include="packages.config" />
   </ItemGroup>
   <ItemGroup>

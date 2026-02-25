@@ -1,0 +1,24 @@
+{
+  "PSO" :  "Filled",
+  "MaterialConstants": {
+    "Albedo": [ 1.0, 1.0, 1.0 ],
+    "Metallic": 0.0,
+    "Roughness": 1.0,
+    "SpecularStrength": 0.04,
+    "AO": 1.0,
+    "IOR": 1.0,
+    "Opacity": 1.0,
+    "ShadingModel": 0,
+    "TextureParams": {
+      "TextureMappingType": 1,
+      "TriplanarParams": {
+        "Scale": 0.01
+      }
+    }
+  },
+  "Diffuse": "gravelly_sand/gravelly_sand_diffuse",
+  "Normal": "gravelly_sand/gravelly_sand_normal",
+  "ARM": "gravelly_sand/gravelly_sand_arm",
+  "Displacement": "gravelly_sand/gravelly_sand_displace",
+  "Rough" :  "gravelly_sand/gravelly_sand_rough"
+}

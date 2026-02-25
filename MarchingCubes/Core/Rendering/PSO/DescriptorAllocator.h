@@ -3,19 +3,10 @@
 #include <queue>
 #include <mutex>
 
-struct DescriptorInitInfo
-{
-	uint32_t ringCount = 2;
-	uint32_t samplerCount = 1;
-	uint32_t staticCount = 128;
-	uint32_t descriptorsPerFrame = 128;
-};
-
 class DescriptorAllocator
 {
 public:
-	explicit DescriptorAllocator(ID3D12Device* device, DescriptorInitInfo info);
-	DescriptorAllocator(ID3D12Device* device, uint32_t ringCount = 2u, uint32_t samplerCount = 1, uint32_t staticCount = 128u, uint32_t descriptorsPerFrame = 128u);
+	DescriptorAllocator(uint32_t ringCount = 2u, uint32_t samplerCount = 1, uint32_t staticCount = 128u, uint32_t descriptorsPerFrame = 128u);
 	~DescriptorAllocator() = default;
 
 	DescriptorAllocator(const DescriptorAllocator&) = delete;

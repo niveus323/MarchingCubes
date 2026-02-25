@@ -3,12 +3,13 @@
 #include "Win32Application.h"
 #include "Core/Assets/ResourceManager.h"
 #include "Core/Rendering/Memory/GpuAllocator.h"
-#include "Core/Rendering/Memory/StaticBufferRegistry.h"
 #include "Core/Rendering/UploadContext.h"
 #include "Core/Rendering/PSO/DescriptorAllocator.h"
 #include "Core/Engine/EngineCore.h"
 #include "Core/Input/InputState.h"
 #include "Core/Rendering/RenderSystem.h"
+#include "Core/Engine/Serializer/JsonSerializer.h"
+
 using namespace Microsoft::WRL;
 
 static inline bool IsTearingSupported(IDXGIFactory6* factory) {
@@ -59,14 +60,14 @@ void DXAppBase::OnDestroy()
 		WaitForSingleObjectEx(m_fenceEvent, INFINITE, FALSE);
 	}
 	EngineCore::ShutdownSubsystems();
-	if (m_currentScene) m_currentScene->OnExit();
+	if (m_currentScene) m_currentScene->OnExit(m_uiRenderer.get());
 	if (m_uiRenderer)	m_uiRenderer->ShutDown();
 	if (m_swapChain)  m_swapChain->SetFullscreenState(FALSE, nullptr);
 
 	DestroyGpuTimeStampResources();
 	DestroyFenceAndEvent();
 	DestroyBackbuffersAndDefaultDSV();
-
+	CoUninitialize();
 	m_width = m_height = 0;
 }
 
@@ -129,6 +130,17 @@ void DXAppBase::StartTimer()
 
 void DXAppBase::TickAndUpdate()
 {
+	if (m_bLoadRequested)
+	{
+		JsonSerializer ar(false);
+		ar.LoadFromFile(m_pendingLoadPath);
+		auto newScene = std::make_shared<Scene>();
+		newScene->Serialize(ar);
+		LoadScene(std::move(newScene));
+		m_bLoadRequested = false;
+		m_pendingLoadPath.clear();
+	}
+
 	float deltaTime = m_timer.Tick();
 	if (m_uiRenderer)
 	{
@@ -137,8 +149,8 @@ void DXAppBase::TickAndUpdate()
 
 		m_inputState->SetInputCaptured(mouseCaptured, kbdCaptured);
 	}
-	m_inputState->Update();
 	OnUpdate(deltaTime);
+	m_inputState->Update();
 	OnUpdateUI(deltaTime);
 	m_currentScene->Update(deltaTime);
 
@@ -195,12 +207,12 @@ void DXAppBase::OnPlatformEvent(uint32_t msg, WPARAM wParam, LPARAM lParam)
 	}
 }
 
-void DXAppBase::LoadScene(std::unique_ptr<Scene> newScene)
+void DXAppBase::LoadScene(std::shared_ptr<Scene> newScene)
 {
 	// 기존 씬 해제
 	if (m_currentScene)
 	{
-		m_currentScene->OnExit();
+		m_currentScene->OnExit(m_uiRenderer.get());
 		m_currentScene.reset();
 	}
 
@@ -235,7 +247,7 @@ void DXAppBase::RenderFrame(ID3D12GraphicsCommandList* cmd)
 
 		CameraConstants sceneViewData = m_currentScene->GetCameraConstants();
 		LightBlobView lightBlob = m_currentScene->GetLightBlob();
-		m_renderSystem->PrepareRender(GetUploadContext(), GetDescriptorAllocator(), sceneViewData, lightBlob, m_frameIndex);
+		m_renderSystem->PrepareRender(sceneViewData, lightBlob, m_frameIndex);
 	}
 	else
 	{
@@ -243,30 +255,30 @@ void DXAppBase::RenderFrame(ID3D12GraphicsCommandList* cmd)
 		cmd->RSSetScissorRects(1, &m_scissorRect);
 	}
 
-	DescriptorAllocator* descriptorAllocator = GetDescriptorAllocator();
-	cmd->SetGraphicsRootSignature(m_rootSignature.Get());
-	ID3D12DescriptorHeap* ppHeaps[] = { descriptorAllocator->GetCbvSrvUavHeap(), descriptorAllocator->GetSamplerHeap(0) };
-	cmd->SetDescriptorHeaps(_countof(ppHeaps), ppHeaps);
-	if (ResourceManager* resourceManager = GetResourceManager()) resourceManager->BindDescriptorTable(cmd);
-
-	m_renderSystem->RenderFrame(cmd, GetUploadContext());
+	m_renderSystem->RenderFrame(cmd);
 }
 
 void DXAppBase::InitSubsystems()
 {
-	m_gpuAllocator = std::make_unique<GpuAllocator>(m_device.Get());
-	m_staticBufferRegistry = std::make_unique<StaticBufferRegistry>(m_device.Get());
-	m_descriptorAllocator = std::make_unique<DescriptorAllocator>(m_device.Get());
-	m_uploadContext = std::make_unique<UploadContext>(m_device.Get(), m_gpuAllocator.get(), m_staticBufferRegistry.get(), m_descriptorAllocator.get());
-	m_resourceManager = std::make_unique<ResourceManager>(m_device.Get(), m_uploadContext.get(), m_descriptorAllocator.get());
-	m_renderSystem = std::make_unique<RenderSystem>(m_device.Get(), m_rootSignature.Get(), m_inputElements, GetPSOFiles());
-	m_inputState = std::make_unique<InputState>();
-
+	HRESULT hr = CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED | COINIT_DISABLE_OLE1DDE);
 	EngineCore::SetDevice(m_device.Get());
-	EngineCore::SetRenderSystem(m_renderSystem.get());
+
+	m_gpuAllocator = std::make_unique<GpuAllocator>();
+	EngineCore::SetGpuAllocator(m_gpuAllocator.get());
+
+	m_descriptorAllocator = std::make_unique<DescriptorAllocator>();
 	EngineCore::SetDescriptorAllocator(m_descriptorAllocator.get());
+
+	m_uploadContext = std::make_unique<UploadContext>();
 	EngineCore::SetUploadContext(m_uploadContext.get());
+
+	m_resourceManager = std::make_unique<ResourceManager>();
 	EngineCore::SetResourceManager(m_resourceManager.get());
+
+	m_renderSystem = std::make_unique<RenderSystem>(m_inputElements, GetPSOFiles());
+	EngineCore::SetRenderSystem(m_renderSystem.get());
+
+	m_inputState = std::make_unique<InputState>();
 	EngineCore::SetInputState(m_inputState.get());
 }
 
@@ -422,7 +434,6 @@ void DXAppBase::CreateCommandObjects()
 
 void DXAppBase::InitPipeline()
 {
-	CreateRootSignature();
 	CreateInputElements();
 }
 
@@ -479,14 +490,14 @@ void DXAppBase::CreateBackbuffersAndDefaultDSV(uint32_t width, uint32_t height)
 
 void DXAppBase::InitializeScene()
 {
+	// TODO : Scene 초기화에 Resource 초기화가 섞여 있음 -> 좋은 분리 방법 고민 중.
 	ThrowIfFailed(m_commandAllocators[0]->Reset());
 	ThrowIfFailed(m_commandList->Reset(m_commandAllocators[0].Get(), nullptr));
 	OnBuildInitialScene(m_commandList.Get());
 	LoadScene(std::move(CreateDefaultScene()));
-	if (m_resourceManager) m_resourceManager->BuildTables(m_commandList.Get());
+	
 	// Close CommandList
 	ThrowIfFailed(m_commandList->Close());
-
 	ID3D12CommandList* ppCommandLists[] = { m_commandList.Get() };
 	m_commandQueue->ExecuteCommandLists(_countof(ppCommandLists), ppCommandLists);
 
@@ -524,12 +535,12 @@ void DXAppBase::DestroyFenceAndEvent()
 void DXAppBase::PrepareRender()
 {
 	// 이번 프레임에 할당 가능한 공간 체크
-	m_uploadContext->Reclaim(m_swapChainFence->GetCompletedValue());
 	m_gpuAllocator->Reclaim(m_swapChainFence->GetCompletedValue());
+	m_uploadContext->Reclaim(m_swapChainFence->GetCompletedValue());
 	GpuTimestampBegin(m_commandList.Get(), m_frameIndex);
+	m_renderSystem->SyncGpu(m_commandList.Get());
 	OnUpload(m_commandList.Get());
 	if (m_currentScene) m_currentScene->Render();
-	m_resourceManager->syncGpu(m_commandList.Get());
 	m_uploadContext->Execute(m_commandList.Get());
 	EngineCore::ComputeSubsystems();
 }
@@ -541,6 +552,7 @@ void DXAppBase::MoveToNextFrame()
 
 	if (fenceToSignal > 0) ThrowIfFailed(GetPresentQueue()->Signal(m_swapChainFence.Get(), fenceToSignal));
 
+	m_gpuAllocator->TagFence(fenceToSignal);
 	m_uploadContext->TrackPendingAllocations(fenceToSignal);
 	m_fenceValues[prevIndex] = fenceToSignal;
 	// 체인 스왑
@@ -592,7 +604,7 @@ void DXAppBase::InitGpuTimeStampResources()
 	qh.NodeMask = 0;
 	ThrowIfFailed(m_device->CreateQueryHeap(&qh, IID_PPV_ARGS(&m_tsQueryHeap)));
 
-	// Readback buffer
+	// Readback owner
 	const uint64_t bufSize = sizeof(uint64_t) * (static_cast<uint64_t>(kFrameCount * 2));
 	D3D12_HEAP_PROPERTIES hp{};
 	hp.Type = D3D12_HEAP_TYPE_READBACK;

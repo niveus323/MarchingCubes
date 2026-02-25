@@ -1,9 +1,23 @@
 #pragma once
 #include "Component.h"
-#include "Core/DataStructures/Data.h"
+#include <directxmath.h>
 
 // Forward Delcaration
 class GameObject;
+
+struct Transform
+{
+	DirectX::XMFLOAT3 position{ 0.0f, 0.0f, 0.0f };
+	DirectX::XMFLOAT3 rotation{ 0.0f, 0.0f, 0.0f };
+	DirectX::XMFLOAT3 scale{ 1.0f, 1.0f, 1.0f };
+
+	void Serialize(Serializer& ar)
+	{
+		ar.Serialize("Position", position);
+		ar.Serialize("Rotation", rotation);
+		ar.Serialize("Scale", scale);
+	}
+};
 
 /* [TransformComponent]
 * - Definition : Transform 정보를 담는 컴포넌트
@@ -16,24 +30,25 @@ class GameObject;
 */
 class TransformComponent : public Component
 {
-public:
-	REFLECT_GENERATED_BODY()
-	TransformComponent(GameObject* owner) : Component(owner) {}
-	~TransformComponent() = default;
-	
+	REFLECT_GENERATED_BODY(TransformComponent)
+public:	
+	virtual void Serialize(Serializer& ar) override;
+
 	// World Space
 	DirectX::XMMATRIX GetWorldMatrix() const;
 	DirectX::XMMATRIX GetWorldInvMatrix() const					{ return XMMatrixInverse(nullptr, GetWorldMatrix()); }
 	DirectX::XMFLOAT3 GetWorldPosition() const
 	{
-		XMFLOAT3 pos;
-		XMStoreFloat3(&pos, GetWorldMatrix().r[3]);
+		DirectX::XMFLOAT3 pos;
+		DirectX::XMStoreFloat3(&pos, GetWorldMatrix().r[3]);
 		return pos;
 	}
 	void SetWorldPosition(const DirectX::XMFLOAT3& worldPos);
 	DirectX::XMVECTOR GetWorldRotationQuat() const;
+	DirectX::XMFLOAT3 GetWorldRotation() const;
 	void SetWorldRotation(const DirectX::XMFLOAT3& worldRot);
 	void SetWorldRotation(const DirectX::XMVECTOR& worldQuat);
+	DirectX::XMFLOAT3 GetWorldScale() const;
 
 	// Local Space
 	DirectX::XMMATRIX GetLocalMatrix() const;
@@ -44,27 +59,27 @@ public:
 	void SetPosition(const DirectX::XMFLOAT3& pos)				{ m_transform.position = pos; }
 	DirectX::XMFLOAT3 GetRotation() const						{ return m_transform.rotation; }
 	void SetRotation(const DirectX::XMFLOAT3& rotation)			{ m_transform.rotation = rotation; }
-	void SetRotation(const DirectX::XMVECTOR& quat)				{ m_transform.rotation = ToEulerFromQuat(quat); }
+	void SetRotation(const DirectX::XMVECTOR& quat);
 	DirectX::XMFLOAT3 GetScale() const							{ return m_transform.scale; }
 	void SetScale(const DirectX::XMFLOAT3& scale)				{ m_transform.scale = scale; }
 
 	DirectX::XMFLOAT3 GetRight() const
 	{
-		XMFLOAT3 pos;
-		XMStoreFloat3(&pos, DirectX::XMVector3Normalize(GetWorldMatrix().r[0]));
+		DirectX::XMFLOAT3 pos;
+		DirectX::XMStoreFloat3(&pos, DirectX::XMVector3Normalize(GetWorldMatrix().r[0]));
 		return pos;
 	}
 	DirectX::XMFLOAT3 GetUp() const
 	{
-		XMFLOAT3 pos;
-		XMStoreFloat3(&pos, DirectX::XMVector3Normalize(GetWorldMatrix().r[1]));
+		DirectX::XMFLOAT3 pos;
+		DirectX::XMStoreFloat3(&pos, DirectX::XMVector3Normalize(GetWorldMatrix().r[1]));
 		return pos;
 	}
 	
 	DirectX::XMFLOAT3 GetForward() const
 	{
-		XMFLOAT3 pos;
-		XMStoreFloat3(&pos, DirectX::XMVector3Normalize(GetWorldMatrix().r[2]));
+		DirectX::XMFLOAT3 pos;
+		DirectX::XMStoreFloat3(&pos, DirectX::XMVector3Normalize(GetWorldMatrix().r[2]));
 		return pos;
 	}
 

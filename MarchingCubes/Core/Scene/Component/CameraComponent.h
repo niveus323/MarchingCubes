@@ -4,14 +4,8 @@
 
 class CameraComponent : public Component
 {
-	REFLECT_GENERATED_BODY()
+	REFLECT_GENERATED_BODY(CameraComponent)
 public:
-	CameraComponent(GameObject* owner, float viewportWidth, float viewportHeight, float fov = XM_PIDIV4, float zNear = 0.1f , float zFar = 1000.0f) :
-		Component(owner)
-	{
-		SetViewport(viewportWidth, viewportHeight);
-		SetLens(fov, viewportWidth / viewportHeight, zNear, zFar);
-	}
 	virtual ~CameraComponent() = default;
 	
 	CameraConstants GetCameraConstants() const;

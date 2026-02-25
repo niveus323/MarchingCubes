@@ -8,15 +8,13 @@ class Scene;
 
 class GameMode : public GameObject
 {
-public:
-	GameMode(Scene* scene) : GameObject(scene) {}
-	virtual ~GameMode()
-	{
-		m_pc = nullptr;
-	}
-	
+	REFLECT_GENERATED_BODY(GameMode)
+public:	
 	virtual void Init() override;
-	
+	virtual void Destroy() override;
+	virtual void BeginPlay() override;
+	virtual void EndPlay() override;
+
 	template<std::derived_from<Controller> T>
 	T* GetController() { return static_cast<T*>(m_pc); }
 

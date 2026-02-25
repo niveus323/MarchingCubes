@@ -1,42 +1,29 @@
 #pragma once
 #include "PSO/PSOList.h"
 #include "BundleRecorder.h"
-#include "Core/Geometry/Mesh/Mesh.h"
-#include "Core/Rendering/UploadContext.h"
-#include "Memory/GpuAllocator.h"
-#include "Memory/StaticBufferRegistry.h"
 
-struct PSOBucket
-{
-	std::vector<RenderItem> renderItems;
-	//std::unordered_map<BundleKey, BundleGroup> bundles;
-};
-
-struct RenderSystemInitInfo
-{
-	ID3D12Device* device = nullptr;
-	ID3D12RootSignature* rootSignature = nullptr;
-	UploadContext* uploadContext = nullptr;
-	DescriptorAllocator* descriptorAllocator = nullptr;
-	std::vector<D3D12_INPUT_ELEMENT_DESC> inputElements;
-	std::vector<std::wstring> psoFiles;
-};
+class MeshRegistry;
+class TextureRegistry;
+class MaterialRegistry;
 
 class RenderSystem
 {
 public:
-	explicit RenderSystem(RenderSystemInitInfo init_info);
-	RenderSystem(ID3D12Device* device, ID3D12RootSignature* rootSignature, const std::vector<D3D12_INPUT_ELEMENT_DESC>& inputElements, const std::vector<std::wstring>& psoFiles);
+	RenderSystem(const std::vector<D3D12_INPUT_ELEMENT_DESC>& inputElems, const std::vector<std::wstring>& psoFiles);
 	~RenderSystem();
 
-	void PrepareRender(_In_ UploadContext* uploadContext, _In_ DescriptorAllocator* descriptorAllocator, const CameraConstants& cameraData, const LightBlobView& lightData, uint32_t frameIndex);
-	void RenderFrame(_In_ ID3D12GraphicsCommandList* cmd, _In_ UploadContext* uploadContext);
+	void SyncGpu(ID3D12GraphicsCommandList* cmd);
+	void PrepareRender(const CameraConstants& cameraData, const LightBlobView& lightData, uint32_t frameIndex);
+	void RenderFrame(ID3D12GraphicsCommandList* cmd);
 	bool SubmitRenderItem(const RenderItem& item, std::string_view psoName);
 
 	PSOList* GetPSOList() { return m_psoList.get(); }
 	BundleRecorder* GetBundleRecorder() { return m_bundleRecorder.get(); }
-	const std::vector<PSOBucket>& GetBuckets() { return m_buckets; }
-	inline int GetPSOIndex(std::string_view psoName) { return m_psoList->IndexOf(psoName); }
+	
+	// Registry Getter
+	MeshRegistry* GetMeshRegistry() const { return m_meshRegistry.get(); }
+	TextureRegistry* GetTextureRegistry() const { return m_textureRegistry.get(); }
+	MaterialRegistry* GetMaterialRegistry() const { return m_materialRegistry.get(); }
 
 	// PSO Override & Extension
 	const auto& GetPsoOverrides() { return m_psoOverrides; }
@@ -70,25 +57,34 @@ public:
 	void ClearPSORules() { m_psoOverrides.clear(); m_psoExtensions.clear(); }
 
 private:
-	void SubmitToBucket(std::string_view psoName, const RenderItem& item);
+	bool SubmitToQueue(std::string_view psoName, const RenderItem& item);
+	uint64_t GenerateSortKey(uint16_t rsIndex, uint16_t psoIndex, const RenderItem& item);
 
 private:
-	ID3D12Device* m_device;
-	ID3D12RootSignature* m_rootSignature;
-	UploadContext* m_uploadContext;
-	DescriptorAllocator* m_descriptorAllocator;
 	std::vector<D3D12_INPUT_ELEMENT_DESC> m_inputElements;
 	std::vector<std::wstring> m_psoFiles;
 
 	std::unique_ptr<PSOList> m_psoList;
 	std::unique_ptr<BundleRecorder> m_bundleRecorder;
 
-	std::vector<PSOBucket> m_buckets;
+	struct DrawCommand
+	{
+		uint64_t sortKey;
+		uint32_t psoIndex;
+		RenderItem item;
+	};
+	std::vector<DrawCommand> m_renderQueue; //TODO : 투명 오브젝트 적용 시 transparentQueue를 별도로 둘 것(Depth 우선인 별도의 기준 필요)
+
 	std::unordered_map<std::string, std::string> m_psoOverrides;
 	std::unordered_multimap< std::string, std::string> m_psoExtensions;
 
 	BufferHandle m_cameraBuf{};
 	BufferHandle m_lightsBuf{};
 	D3D12_GPU_DESCRIPTOR_HANDLE m_lightsGpu{};
+
+	// Registry
+	std::unique_ptr<TextureRegistry> m_textureRegistry;
+	std::unique_ptr<MaterialRegistry> m_materialRegistry;
+	std::unique_ptr<MeshRegistry> m_meshRegistry;
 };
 

@@ -7,13 +7,13 @@ namespace TexImporter
 {
     bool IsDDSPath(const std::filesystem::path& path)
     {
-        std::wstring ext = ToLowerCopy(path.extension().wstring()); // ".dds"
+        std::wstring ext = StringUtils::ToLowerCopy(path.extension().wstring()); // ".dds"
         return (ext == L".dds");
     }
 
     bool IsWICPath(const std::filesystem::path& path)
     {
-        std::wstring ext = ToLowerCopy(path.extension().wstring());
+        std::wstring ext = StringUtils::ToLowerCopy(path.extension().wstring());
         return (ext == L".png" || ext == L".jpg" || ext == L".jpeg" || ext == L".bmp" || ext == L".tga");
     }
 
@@ -44,7 +44,7 @@ namespace TexImporter
     TextureSemantic DetectSemanticFromName(const std::filesystem::path& path)
     {
         // 파일명(확장자 제거) 기준으로 의미 추론
-        std::wstring stem = ToLowerCopy(path.stem().wstring()); // e.g. "rock_albedo"
+        std::wstring stem = StringUtils::ToLowerCopy(path.stem().wstring()); // e.g. "rock_albedo"
 
         auto hasSuffix = [&](std::wstring_view suffix)
             {
@@ -186,5 +186,19 @@ TextureAsset::TextureAsset(const std::filesystem::path& sourcePath, const std::f
         std::filesystem::path ddsPath = fullPath;
         ddsPath.replace_extension(L".dds");
         ThrowIfFailed(DirectX::LoadFromDDSFile(ddsPath.c_str(), DirectX::DDS_FLAGS_NONE, nullptr, *m_image));
+    }
+
+    if (m_image && m_image->GetImages())
+    {
+        m_metadata = m_image->GetMetadata();
+    }
+}
+
+void TextureAsset::ReleasePixelData()
+{
+    if (m_image)
+    {
+        m_image->Release();
+        m_image.reset(); // 포인터 파괴
     }
 }

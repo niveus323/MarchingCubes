@@ -1,24 +1,23 @@
 #pragma once
 #include "Core/Geometry/MarchingCubes/ITerrainBackend.h"
-#include <unordered_map>
+#include <mutex>
+#include <future>
 
 class CPUTerrainBackend :   public ITerrainBackend
 {
 public:
-	CPUTerrainBackend(ID3D12Device* device, const GridDesc& desc);
+	CPUTerrainBackend(ID3D12Device* device);
+	~CPUTerrainBackend();
 
 	// ITerrainBackend을(를) 통해 상속됨
-	void setGridDesc(const GridDesc&) override;
-	void setFieldPtr(std::shared_ptr<SdfField> grid) override;
-	void RequestBrush(const BrushRequest& r) override;
-	bool tryFetch(std::vector<ChunkUpdate>& OutChunkUpdate) override;
-	bool HasRequests() const override { return false; }
-
-protected:
-	GridDesc m_gridDesc{};
-	std::shared_ptr<SdfField> m_grd;
-
-	std::unordered_map<ChunkKey, GeometryData, ChunkKeyHash> m_chunkData;
-	float m_brushDelta = 0.05f;
+	void PushRequest(BuildRequest&& request) override;
+	bool TryFetch(std::vector<BuildResult>& OutResults) override;
+	bool HasRequests() const override;
+private:
+	void ProcessMarchingCubes(BuildRequest& request, BuildResult& result);
+	void CleanupFinishedTasks();
+private:
+	mutable std::mutex m_resultMutex;
+	std::vector<BuildResult> m_results;
+	std::vector<std::future<void>> m_runningTasks;
 };
-

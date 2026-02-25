@@ -1,12 +1,15 @@
 #include "pch.h"
 #include "DescriptorAllocator.h"
+#include "Core/Engine/EngineCore.h"
 
-DescriptorAllocator::DescriptorAllocator(ID3D12Device* device, DescriptorInitInfo info)
+DescriptorAllocator::DescriptorAllocator(uint32_t ringCount, uint32_t samplerCount, uint32_t staticCount, uint32_t descriptorsPerFrame)
 {
+    ID3D12Device* device = EngineCore::GetDevice();
+
 	//Sampler
 	D3D12_DESCRIPTOR_HEAP_DESC desc{};
 	desc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_SAMPLER;
-	desc.NumDescriptors = info.samplerCount;
+	desc.NumDescriptors = samplerCount;
 	desc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
 	ThrowIfFailed(device->CreateDescriptorHeap(&desc, IID_PPV_ARGS(m_samplerHeap.ReleaseAndGetAddressOf())));
 	NAME_D3D12_OBJECT_ALIAS(m_samplerHeap, L"Sampler");
@@ -14,17 +17,12 @@ DescriptorAllocator::DescriptorAllocator(ID3D12Device* device, DescriptorInitInf
 	m_samplerCpuBase = m_samplerHeap->GetCPUDescriptorHandleForHeapStart();
 	m_samplerGpuBase = m_samplerHeap->GetGPUDescriptorHandleForHeapStart();
 	m_samplerInc = device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_SAMPLER);
-	m_samplerCount = info.samplerCount;
+	m_samplerCount = samplerCount;
 	m_nextSampler = 0;
 
 	// CBV_SRV_UAV
-	m_ring = std::make_unique<DescriptorRing>(device, info.ringCount, info.descriptorsPerFrame, info.staticCount);
-	m_cursor.resize(info.ringCount, 0);
-}
-
-DescriptorAllocator::DescriptorAllocator(ID3D12Device* device, uint32_t ringCount, uint32_t samplerCount, uint32_t staticCount,  uint32_t descriptorsPerFrame) :
-	DescriptorAllocator(device, DescriptorInitInfo{ .ringCount = ringCount, .samplerCount = samplerCount, .staticCount = staticCount, .descriptorsPerFrame = descriptorsPerFrame })
-{
+	m_ring = std::make_unique<DescriptorRing>(ringCount, descriptorsPerFrame, staticCount);
+	m_cursor.resize(ringCount, 0);
 }
 
 uint32_t DescriptorAllocator::AllocateRTV(ID3D12Device* device)

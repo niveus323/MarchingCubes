@@ -1,9 +1,10 @@
 #pragma once
-#include "Material.h"
-#include "Core/Rendering/PSO/DescriptorAllocator.h"
-#include "Core/Rendering/UploadContext.h"
 #include "ThirdParty/FBXImporter.h"
+#include "Material/MaterialAsset.h"
 #include "MeshAsset.h"
+#include "TextureAsset.h"
+#include "DataAsset.h"
+#include <unordered_map>
 
 /* [ResourceManager]
 * - LifeTime : Engine Load -> Engine UnLoad
@@ -17,39 +18,46 @@
 * 	- SceneData : .scene 과 같이 에디터로 작업한 내역을 저장 + 로드하여 SceneData를 소유/참조 전달
 * 	- DataAsset : .xml, .tex 등 raw 데이터를 관리/참조 전달
 */
-
-// Forward Declaration
-class TextureRegistry;
-class MaterialRegistry;
-class MeshRegistry;
-class Mesh;
+class Serializer;
 
 class ResourceManager
 {
 public:
-	ResourceManager(ID3D12Device* device, UploadContext* uploadcontext, DescriptorAllocator* descriptorAllocator);
+	ResourceManager();
 	~ResourceManager();
 
-	void syncGpu(ID3D12GraphicsCommandList* cmd);
-	void BindDescriptorTable(ID3D12GraphicsCommandList* cmd);
-	void BuildTables(ID3D12GraphicsCommandList* cmd);
-
-	uint32_t LoadTexture(const std::filesystem::path& path);
-	size_t AddMaterial(const Material& material);
-	std::shared_ptr<Mesh> LoadMeshAsset(const std::filesystem::path& path, const MeshImportOptions& options);
+	// --- Texture Asset ---
+	std::shared_ptr<TextureAsset> LoadTextureAsset(const std::filesystem::path& path);
+	
+	// --- Material Asset ---
+	std::shared_ptr<MaterialAsset> LoadMaterialAsset(const std::filesystem::path& path);
+	
+	// --- Mesh Asset ---
+	std::shared_ptr<MeshAsset> LoadMeshAsset(const std::filesystem::path& path, const MeshImportOptions& options);
 	const MeshAsset* GetMeshAsset(const std::filesystem::path& path) const;
-	D3D12_GPU_DESCRIPTOR_HANDLE GetTextureGpuHandle(uint32_t handle) const;
-private:
-	void ProcessMaterials(const std::filesystem::path& basePath, const std::vector<ImportedMaterialDesc>& srcMaterials, std::vector<uint32_t>& outMatIndices);
+
+	// --- Data Asset ---
+	std::shared_ptr<DataAsset> LoadDataAsset(const std::filesystem::path& path);
+	bool SaveDataAsset(const std::filesystem::path & path, std::shared_ptr<DataAsset> asset);
+
 	static std::filesystem::path ResolveTexturePath(const std::filesystem::path& fbxPath, const std::filesystem::path& texRelativePath);
 
 private:
-	ID3D12Device* m_device = nullptr;
-	UploadContext* m_uploadContext = nullptr;
-	DescriptorAllocator* m_descriptorAllocator = nullptr;
+	void InitializePrimitives();
+	MeshImportOptions LoadMetaOptions(const std::filesystem::path& assetPath);
+	void SaveMetaOptions(const std::filesystem::path& assetPath, const MeshImportOptions& options);
+
+	//Serialize
+	std::shared_ptr<MaterialAsset> SerializeMaterialAsset(Serializer& ar);
+
+private:
 	std::unique_ptr<FBXImporter> m_fbxImporter;
-	std::unique_ptr<TextureRegistry> m_textureRegistry;
-	std::unique_ptr<MaterialRegistry> m_materialRegistry;
-	std::unique_ptr<MeshRegistry> m_meshRegistry;
+
+	// Cache
+	std::unordered_map<std::string, std::shared_ptr<DataAsset>> m_dataAssetCache;
+	std::unordered_map<std::string, std::shared_ptr<MeshAsset>> m_meshAssetCache;
+	std::unordered_map<std::string, std::shared_ptr<MaterialAsset>> m_materialAssetCache;
+	std::unordered_map<std::string, std::shared_ptr<TextureAsset>> m_textureAssetCache;
+	
 };
 

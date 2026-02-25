@@ -7,6 +7,7 @@
 class RenderSystem;
 class ResourceManager;
 class UploadContext;
+class GpuAllocator;
 class DescriptorAllocator;
 class InputState;
 struct ID3D12Device;
@@ -19,6 +20,7 @@ public:
     static ResourceManager* GetResourceManager() { return s_resourceManager; }
     static InputState* GetInputState() { return s_inputState; }
     static UploadContext* GetUploadContext() { return s_uploadContext; }
+    static GpuAllocator* GetGpuAllocator() { return s_gpuAllocator; }
     static DescriptorAllocator* GetDescriptorAllocator() { return s_descriptorAllocator; }
     static uint32_t GetFrameIndex() { return s_frameIndex; }
 
@@ -27,6 +29,7 @@ public:
     static void SetResourceManager(ResourceManager* rm) { s_resourceManager = rm; }
     static void SetInputState(InputState* input) { s_inputState = input; }
     static void SetUploadContext(UploadContext* uc) { s_uploadContext = uc; }
+    static void SetGpuAllocator(GpuAllocator* ga) { s_gpuAllocator = ga; }
     static void SetDescriptorAllocator(DescriptorAllocator* da) { s_descriptorAllocator = da; }
     static void SetFrameIndex(uint32_t frameIndex) { s_frameIndex = frameIndex; }
 
@@ -35,6 +38,12 @@ public:
     {
         system->Initialize();
         s_subsystems[typeid(T)] = system;
+    }
+    
+    static void RegisterSubsystem(std::type_index typeInfo, ISubSystem* system)
+    {
+        system->Initialize();
+        s_subsystems[typeInfo] = system;
     }
 
     template <std::derived_from<ISubSystem> T>
@@ -95,6 +104,7 @@ private:
     static ResourceManager* s_resourceManager;
     static InputState* s_inputState; // Scene 혹은 GameMode에서 Input을 받도록 하는게?
     static UploadContext* s_uploadContext;
+    static GpuAllocator* s_gpuAllocator;
     static DescriptorAllocator* s_descriptorAllocator; // Scene의 PrepareRender에서만 필요
     static uint32_t s_frameIndex;
 

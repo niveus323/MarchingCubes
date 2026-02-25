@@ -1,7 +1,7 @@
 #pragma once
 #include <Core/Geometry/MarchingCubes/SdfField.h>
 #include "Core/DataStructures/Data.h"
-#include <set>
+#include "Core/Engine/Serializer/Serializer.h"
 
 enum class TerrainMode
 {
@@ -11,11 +11,20 @@ enum class TerrainMode
 
 struct GridDesc
 {
-	DirectX::XMUINT3 resolution = { 0u, 0u,0u };
-	float cellsize = 0.0f;
-	DirectX::XMFLOAT3 origin = {0.0f, 0.0f, 0.0f};
-	uint32_t chunkSize = 0;
+	DirectX::XMUINT3 resolution = { 100u, 100u, 100u };
+	float cellsize = 1.0f; //TODO : 상수처리
+	DirectX::XMFLOAT3 origin = {0.0f, 0.0f, 0.0f}; // TODO : 상수처리
+	uint32_t cellsPerChunk = 50u;
 	float isoValue = 0.0f;
+
+	void Serialize(Serializer& ar)
+	{
+		ar.Serialize("Resolution", resolution);
+		ar.Serialize("CellSize", cellsize);
+		ar.Serialize("Origin", origin);
+		ar.Serialize("ChunkSize", cellsPerChunk);
+		ar.Serialize("IsoValue", isoValue);
+	}
 };
 
 struct ChunkKey
@@ -48,21 +57,29 @@ struct ChunkUpdate
 	bool empty = true;
 };
 
-struct BrushRequest
+//Forward Declaration
+class TerrainObject;
+
+struct BuildRequest
 {
-	float deltaTime = 0.016f;
-	DirectX::XMFLOAT3 center{};
-	float radius = 1.0f;
-	float weight = 1.0f;
+	ChunkKey key;
+	std::weak_ptr<TerrainObject> ptr;
+	std::shared_ptr<SdfField> fieldData;
+	GridDesc setting;
+};
+
+struct BuildResult
+{
+	ChunkKey key;
+	std::weak_ptr<TerrainObject> ptr;
+	std::vector<Vertex> vertices;
+	std::vector<uint32_t> indices;
 };
 
 struct ITerrainBackend
 {
 	virtual ~ITerrainBackend() = default;
-	virtual void setGridDesc(const GridDesc& desc) = 0;
-	virtual void setFieldPtr(std::shared_ptr<SdfField> grid) = 0;	// GPU: density3D 갱신 / CPU: 내부 GRD 보관
-	virtual void RequestBrush(const BrushRequest& r) = 0;
-	virtual void RequestRemesh(const std::set<ChunkKey>& chunkSet) = 0;
-	virtual bool tryFetch(std::vector<ChunkUpdate>& OutChunkUpdates) = 0;  // GPU : readback / CPU : GeometryData -> GeometryBuffer Commit
+	virtual void PushRequest(BuildRequest&& request) = 0;
+	virtual bool TryFetch(std::vector<BuildResult>& OutResults) = 0;
 	virtual bool HasRequests() const = 0;
 };

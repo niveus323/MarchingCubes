@@ -19,6 +19,12 @@ struct PSInput
 // Pixel Shader: output interpolated color
 float4 PSMain(PSInput input) : SV_TARGET
 {
+    // Material이 없을 경우 디폴트로 빨간색
+    if (gMaterialIndex == INVALID_MATERIAL_INDEX)
+    {
+        return float4(1.0f, 0.0f, 0.0f, 1.0f); // Error Color
+    }
+    
     EvaluatedMaterial mat = EvaluateMaterial(gMaterials[gMaterialIndex], input.TexCoord, input.WorldPos, input.WorldNormal, input.WorldTangent, input.TangentSign);
     float3 V = normalize(gCameraPos - input.WorldPos);
     float3 N = mat.normal;

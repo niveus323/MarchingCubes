@@ -1,12 +1,11 @@
 #pragma once
 #include "UIBuilder.h"
-#include <imgui.h>
 
 class ImGUIBuilder : public IUIBuilder
 {
 public:
 	// --- 윈도우/패널 관리 ---
-	virtual bool BeginPanel(const char* name, bool* pOpen) override;
+	virtual bool BeginPanel(const char* name, bool* pOpen, UI::UI_PanelOption flags = UI::UI_PanelOption::None) override;
 	virtual void EndPanel() override;
 
 	virtual bool BeginTable(const char* id, int columns) override;
@@ -17,6 +16,17 @@ public:
 	virtual void EndTabBar() override;
 	virtual bool BeginTabItem(const char* id, bool* pOpen = nullptr) override;
 	virtual void EndTabItem() override;
+
+	virtual void BeginMainMenuBar() override;
+	virtual void EndMainMenuBar() override;
+	virtual bool BeginMenuBar() override;
+	virtual void EndMenuBar() override;
+	virtual bool BeginMenu(const char* id) override;
+	virtual void EndMenu() override;
+	virtual bool MenuItem(const char* id, const char* shortcutKey = NULL, bool bSelected = false) override;
+
+	virtual void BeginDisabled(bool disabled = true) override;
+	virtual void EndDisabled() override;
 
 	// --- 기본 컨트롤 ---
 	virtual void Label(const char* text) override;
@@ -36,6 +46,7 @@ public:
 	virtual void TableHeadersRow() override;
 	virtual void TableNextRow() override;
 	virtual void TableNextColumn() override;
+	virtual void TableSetColumnIndex(int index) override;
 	virtual void TableSetupColumn(const char* id) override;
 	virtual void PropertyText(const char* label, const char* value) override;
 	virtual bool PropertyInputText(const char* label, std::string& text) override;
@@ -44,7 +55,10 @@ public:
 	// --- 레이아웃 헬퍼 ---
 	virtual void Separator() override;
 	virtual void SameLine(float offset, float spacing) override;
-
+	virtual void Indent(float width) override;
+	virtual void Unindent(float width) override;
+	virtual void AlignNextItem(UI::UI_Alignment align, float itemWidth = 0.0f) override;
+	
 	// --- ID 관리 ---
 	virtual void PushID(const char* str_id) override;
 	virtual void PushID(const void* ptr_id) override;
@@ -58,6 +72,7 @@ public:
 	virtual bool IsAnyItemHovered() override;
 	virtual bool IsItemDeactivated() override;
 	virtual bool IsWindowFocused() override;
+	virtual bool IsWindowHovered() override;
 	virtual bool IsKeyPressed_F12() override;
 	virtual void SetKeyboardFocus() override;
 	virtual bool IsMouseClicked(int button) override;
@@ -66,17 +81,27 @@ public:
 	virtual UI::Vector<float, 2> GetMousePos() override;
 	virtual void SetCursorScreenPos(const UI::Vector<float, 2>& pos) override;
 
-	// --- 검색 창 ---
+	// --- Search ---
 	virtual bool SearchBar(const char* hint, std::string& text) override;
+
+	// --- Selectable Combo Box ---
+	virtual void SelectableComboBox(const char* label, const std::vector<std::string>& items, int& selectedItem, UI::Vector<float, 2> size = { 0.0f,0.0f }) override;
+
+	// --- Dual List Box ---
+	virtual bool DualListBox(const char* label, std::vector<int>& availableItems, std::vector<int>& basketItems, std::function<std::string(int)> getItemNameFn) override;
 
 	// --- Hierarchy Tree ---
 	virtual bool BeginTreeNode(const char* label, bool isLeaf, bool isSelected) override;
 	virtual void EndTreeNode() override;
 
-	// --- 그래프 ---
+	// --- Graphs ---
 	virtual void PlotLines(const char* label, const float* values, int count) override;
 	virtual float GetAvailableWidth() override;
+	virtual UI::Vector<float, 2> GetRegionAvailable() override;
+	virtual UI::Vector<float, 2> GetWindowContentMin() override;
+	virtual UI::Vector<float, 2> GetWindowContentMax() override;
 	virtual UI::Vector<float, 2> GetCursorScreenPos() override;
+	virtual UI::Vector<float, 2> GetWindowPos()override;
 	virtual void Dummy(const UI::Vector<float, 2>& size) override;
 	virtual void DrawRect(const UI::Vector<float, 2>& p0, const UI::Vector<float, 2>& p1, const UI::Color& color) override;
 	virtual void DrawRectFilled(const UI::Vector<float, 2>& p0, const UI::Vector<float, 2>& p1, const UI::Color& color) override;

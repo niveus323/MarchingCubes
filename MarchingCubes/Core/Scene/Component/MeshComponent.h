@@ -1,41 +1,52 @@
 #pragma once
 #include "RendererComponent.h"
-#include "Core/DataStructures/Data.h"
+#include "Core/Rendering/Memory/CommonMemory.h"
+#include "Core/Assets/Material/MaterialAsset.h"
+#include "Core/Geometry/Mesh/Class/Mesh.h"
 
-class Mesh;
+#include <utility>
+#include <DirectXCollision.h>
+
 class SceneObject;
+class MaterialAsset;
+struct MaterialInstance;
 
 class MeshComponent : public RendererComponent
 {
-	REFLECT_GENERATED_BODY()
+	REFLECT_GENERATED_BODY(MeshComponent)
 public:
-	MeshComponent(SceneObject* owner);
-	MeshComponent(SceneObject* owner, Mesh* mesh, std::string_view psoName);
-	MeshComponent(SceneObject* owner, Mesh* mesh, const std::vector<std::string_view>& psoNames);
-	virtual ~MeshComponent() = default;
-
-	void SetMesh(Mesh* mesh);
-	void SetMaterial(int slot, uint32_t materialHandle);
-	void SetPSO(int slot, std::string_view psoName);
-	void SetPSO(std::string_view psoName);
-	virtual void Submit();
-
-	// Mesh Path Accessor
-	std::string GetMeshPath() const { return m_meshPath; }
-	void SetMeshByPath(const std::string& path);
+	virtual void Init() override;
+	virtual void Submit() override;
+	virtual void Serialize(Serializer& ar) override;
 
 	// Material Accessor
-	size_t GetMaterialSlotCount() const { return m_materials.size(); }
-	std::string GetMaterialName(int slot) const;
+	size_t GetMaterialSlotCount() const { return m_materialInstnaces.size(); }
 	void SetMaterialByPath(int slot, const std::string& matPath);
+	void SetMaterial(int slot, std::shared_ptr<MaterialAsset> matAsset);
+	void SetPSO(int slot, std::string_view psoName);
+	void SetPSO(std::string_view psoName);
 
-private:
-	// 런타임 렌더링용 캐시
-	Mesh* m_mesh = nullptr; 
-	std::vector<MaterialInstance> m_materials;
-	
-	// Serialization을 위해 에셋 경로로 관리
-	std::string m_meshPath;
-	std::vector<std::string> m_materialPaths;
+	// TODO : 동적 바인딩과 정적 바인딩을 각각 바인딩 할 수 있도록 수정필요
+	void AddOverlayPass(const std::string& name, const std::string& psoName, std::vector<ShaderBinding> extraBindings, bool bInitialState = false);
+	void SetOverlayPassActive(const std::string& name, bool bActive);
+	void RemoveOverlayPass(const std::string& name);
+	const std::vector<DirectX::BoundingBox>& GetBoundingBox() { return GetMesh()->GetBounds(); }
+
+protected:
+	virtual Mesh* GetMesh() const = 0;
+	void SyncMaterialSlots();
+
+protected:
+	std::vector<MaterialInstance> m_materialInstnaces = std::vector<MaterialInstance>(1);
+	// 특정 오브젝트에 대해 디버깅(히트 박스 표시 등), 특수 효과(실루엣 등)를 적용하고 싶을 때 사용
+	struct OverlayPass
+	{
+		std::string name;
+		std::string psoName;
+		bool bActive = false;
+		std::vector<ShaderBinding> resourceBindings;
+	};
+	std::vector<OverlayPass> m_overlayPasses;
+	std::vector<BufferHandle> m_objectCBList;//per-Submesh(material 때문에)
 };
 

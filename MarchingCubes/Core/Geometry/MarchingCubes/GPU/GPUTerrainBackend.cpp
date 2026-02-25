@@ -1,11 +1,14 @@
 #include "pch.h"
 #include "GPUTerrainBackend.h"
-#include "Core/Geometry/Mesh/MeshChunkRenderer.h"
-#include "Core/Geometry/MarchingCubes/GPU/SDFVolume3D.h"
-#include "Core/Geometry/MarchingCubes/GPU/GPUBrushCS.h"
 #include "Core/Geometry/MarchingCubes/GPU/GPUMarchingCubesCS.h"
 #include "Core/Rendering/PSO/DescriptorAllocator.h"
 #include "Core/Rendering/UploadContext.h"
+
+/*
+* 지형 편집은 CPU에서 진행하고 GPU에서는 '받은 데이터를 읽기만 해서 메쉬 버퍼를 쓰기만 한다'는 규칙을 지킨다.
+* Flow 예시 : A요청에 대해 MarchingCubesCS 실행->Readback 버퍼에 복사 -> Signal -> B요청에 대해 MarchingCubesCS 연산 -> Readback 버퍼에 복사 -> Signal
+*				CPU는 매 프레임 시작 시 
+*/
 
 static inline ChunkKey DecodeChunkKey(uint32_t idx, const XMUINT3& resolution)
 {
@@ -18,14 +21,11 @@ static inline ChunkKey DecodeChunkKey(uint32_t idx, const XMUINT3& resolution)
 	return k;
 }
 
-GPUTerrainBackend::GPUTerrainBackend(ID3D12Device* device, const GridDesc& gridDesc, DescriptorAllocator* descriptorAllocator) :
+GPUTerrainBackend::GPUTerrainBackend(ID3D12Device* device, DescriptorAllocator* descriptorAllocator) :
 	m_device(device),
-	m_grid(gridDesc),
 	m_descriptorAllocator(descriptorAllocator),
 	m_fenceEvent(nullptr)
 {
-	m_vol = std::make_unique<SDFVolume3D>(device);
-	m_brush = std::make_unique<GPUBrushCS>(device);
 	m_mc = std::make_unique<GPUMarchingCubesCS>(device);
 
 	D3D12_COMMAND_QUEUE_DESC queueDesc{
@@ -35,26 +35,15 @@ GPUTerrainBackend::GPUTerrainBackend(ID3D12Device* device, const GridDesc& gridD
 	ThrowIfFailed(m_device->CreateCommandQueue(&queueDesc, IID_PPV_ARGS(m_commandQueue.ReleaseAndGetAddressOf())));
 	NAME_D3D12_OBJECT(m_commandQueue);
 
-	for (uint32_t n = 0; n < kRBFrameCount; ++n)
-	{
-		ThrowIfFailed(m_device->CreateCommandAllocator(D3D12_COMMAND_LIST_TYPE_COMPUTE, IID_PPV_ARGS(m_commandAllocator[n].ReleaseAndGetAddressOf())));
-		NAME_D3D12_OBJECT_INDEXED(m_commandAllocator, n);
-	}
+	ThrowIfFailed(m_device->CreateCommandAllocator(D3D12_COMMAND_LIST_TYPE_COMPUTE, IID_PPV_ARGS(m_commandAllocator.ReleaseAndGetAddressOf())));
+	NAME_D3D12_OBJECT(m_commandAllocator);
 
 	ThrowIfFailed(m_device->CreateFence(0, D3D12_FENCE_FLAG_NONE, IID_PPV_ARGS(m_fence.ReleaseAndGetAddressOf())));
 	NAME_D3D12_OBJECT(m_fence);
-	m_fenceValues = 1;
-	m_lastSubmitFenceValues = 0;
+	m_fenceValues = 0;
 
-	ThrowIfFailed(m_device->CreateCommandList(0, D3D12_COMMAND_LIST_TYPE_COMPUTE, m_commandAllocator[m_rbCursor].Get(), nullptr, IID_PPV_ARGS(m_commandList.ReleaseAndGetAddressOf())));
+	ThrowIfFailed(m_device->CreateCommandList(0, D3D12_COMMAND_LIST_TYPE_COMPUTE, m_commandAllocator.Get(), nullptr, IID_PPV_ARGS(m_commandList.ReleaseAndGetAddressOf())));
 	ThrowIfFailed(m_commandList->Close());
-
-	computeNumChunks();
-	ensureTriangleBuffer();
-	for (uint32_t i = 0; i < kRBFrameCount; ++i)
-	{
-		ensureRBSlot(i);
-	}
 
 	if (m_descriptorAllocator) m_triTableSlot = m_descriptorAllocator->AllocateStaticSlot();
 }
@@ -67,436 +56,317 @@ GPUTerrainBackend::~GPUTerrainBackend()
 	}
 }
 
-void GPUTerrainBackend::setGridDesc(const GridDesc& desc)
+//텍스처 슬롯, 결과 담을 UAV 버퍼, Readback 버퍼 생성
+void GPUTerrainBackend::Initialize(uint32_t poolSize, uint32_t maxChunkSize)
 {
-	m_grid = desc;
+	m_maxChunkSize = maxChunkSize;
+	m_chunkSlots.resize(poolSize);
 
-	computeNumChunks();
-	// readback 버퍼 재생성
-	m_outBuffer.Reset();
-	ensureTriangleBuffer();
-	for (uint32_t i = 0; i < kRBFrameCount; ++i)
+	uint32_t maxTexSize = m_maxChunkSize + 2; // 양옆 Padding 1칸씩
+	m_tempExtractBuffer.resize(maxTexSize * maxTexSize * maxTexSize);
+
+	for (uint32_t i = 0; i < poolSize; ++i)
 	{
-		resetRBSlot(i);
-		ensureRBSlot(i);
+		CreateSlotResource(i);
 	}
+
+	uint64_t elementSize = sizeof(OutTriangle);
+	uint64_t bufferSize = static_cast<uint64_t>(MAX_TOTAL_TRIANGLES) * elementSize;
+
+	// Default Heap (GPU 전용)
+	auto heapProp = CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT);
+	auto resDesc = CD3DX12_RESOURCE_DESC::Buffer(bufferSize, D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS);
+	ThrowIfFailed(m_device->CreateCommittedResource(
+		&heapProp, D3D12_HEAP_FLAG_NONE, &resDesc,
+		D3D12_RESOURCE_STATE_UNORDERED_ACCESS, nullptr,
+		IID_PPV_ARGS(&m_outBuffer)
+	));
+	NAME_D3D12_OBJECT_ALIAS(m_outBuffer, L"MC_TraingleOutput");
+
+	// Counter Buffer (AppendBuffer용)
+	auto counterDesc = CD3DX12_RESOURCE_DESC::Buffer(sizeof(uint32_t), D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS);
+	ThrowIfFailed(m_device->CreateCommittedResource(
+		&heapProp, D3D12_HEAP_FLAG_NONE, &counterDesc,
+		D3D12_RESOURCE_STATE_UNORDERED_ACCESS, nullptr,
+		IID_PPV_ARGS(&m_outCounter)
+	));
+	NAME_D3D12_OBJECT_ALIAS(m_outCounter, L"MC_Counter");
+
+	// Readback 버퍼 생성
+	auto rbHeapProp = CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_READBACK);
+	auto rbDesc = CD3DX12_RESOURCE_DESC::Buffer(bufferSize + sizeof(uint32_t)); // 데이터(Size) + 카운터(4byte)
+	ThrowIfFailed(m_device->CreateCommittedResource(
+		&rbHeapProp, D3D12_HEAP_FLAG_NONE, &rbDesc,
+		D3D12_RESOURCE_STATE_COPY_DEST, nullptr,
+		IID_PPV_ARGS(&m_readbackBuffer)
+	));
+	m_readbackBuffer->SetName(L"MC_Readback");
+
+	// UAV Descriptor 생성
+	m_outBufferUavIndex = m_descriptorAllocator->AllocateStaticSlot();
+	DescriptorAllocator::CreateUAV_Structured(m_device, m_outBuffer.Get(), sizeof(OutTriangle), m_descriptorAllocator->GetStaticCpu(m_outBufferUavIndex), m_outCounter.Get());
+
 }
 
-void GPUTerrainBackend::setFieldPtr(std::shared_ptr<SdfField> grid)
+//들어온 요청을 단순히 대기열에 넣고 끝냄 (Non-blocking)
+void GPUTerrainBackend::PushRequest(BuildRequest&& request)
 {
-	m_gridData = std::move(grid);
-	//SDFVolume3D의 Upload는 m_fieldDirty를 체크하여 encode에서 처리.
-	m_fieldDirty = true;
+	m_waitingQueue.push_back({ std::move(request) });
 }
 
-void GPUTerrainBackend::RequestBrush(const BrushRequest& r)
+//Readback 버퍼의 작업이 완료(Fence)되었는지 확인 -> 버퍼 Map -> ChunkID 별로 결과 분류(Sorting) -> 최종 결과 반환
+bool GPUTerrainBackend::TryFetch(std::vector<BuildResult>& OutResults)
 {
-	m_brushQueue.push_back(r);
+	if (m_fence->GetCompletedValue() < m_lastReadbackFence || m_inFlightJobs.empty()) return false;
 
-	XMUINT3 regionMin, regionMax;
-	XMUINT3 brushCenter = computeBrushCenter(r.center, m_grid.origin, m_grid.cellsize);
-	computeBrushRegionCells(m_grid, brushCenter, r.radius, regionMin, regionMax);
+	uint8_t* pData = nullptr;
+	D3D12_RANGE readRange = { 0, m_readbackBuffer->GetDesc().Width };
+	ThrowIfFailed(m_readbackBuffer->Map(0, &readRange, reinterpret_cast<void**>(pData)));
 
-	uint32_t startCX = regionMin.x / s_chunkcubes;
-	uint32_t endCX = (regionMax.x + s_chunkcubes - 1) / s_chunkcubes;
-	uint32_t startCY = regionMin.y / s_chunkcubes;
-	uint32_t endCY = (regionMax.y + s_chunkcubes - 1) / s_chunkcubes;
-	uint32_t startCZ = regionMin.z / s_chunkcubes;
-	uint32_t endCZ = (regionMax.z + s_chunkcubes - 1) / s_chunkcubes;
+	uint32_t count = *reinterpret_cast<uint32_t*>(pData);
+	count = std::min(count, MAX_TOTAL_TRIANGLES);
 
-	for (uint32_t z = startCZ; z < endCZ; ++z)
-		for (uint32_t y = startCY; y < endCY; ++y)
-			for (uint32_t x = startCX; x < endCX; ++x)
-				m_pendingRemeshChunks.insert(ChunkKey{ x, y, z });
+	// 내용물 포장
+	OutTriangle* triangles = reinterpret_cast<OutTriangle*>(pData + sizeof(uint32_t));
+	std::unordered_map<uint32_t, BuildResult> resultMap;
+	for (uint32_t i = 0; i < count; ++i)
+	{
+		const auto& tri = triangles[i];
+		BuildResult& res = resultMap[tri.chunkIdx];
+		uint32_t baseIdx = static_cast<uint32_t>(res.vertices.size());
+		
+		res.vertices.push_back(tri.A);
+		res.vertices.push_back(tri.B);
+		res.vertices.push_back(tri.C);
+
+		res.indices.push_back(baseIdx + 0);
+		res.indices.push_back(baseIdx + 1);
+		res.indices.push_back(baseIdx + 2);
+	}
+
+	// 발송지 표기
+	for (const auto& job : m_inFlightJobs)
+	{
+		BuildResult& res = resultMap[job.slotIndex];
+		res.key = job.request.key;
+		res.ptr = job.request.ptr;
+		OutResults.push_back(std::move(res));
+	}
+
+	m_readbackBuffer->Unmap(0, nullptr);
+	m_inFlightJobs.clear();
+
+	return true;
 }
 
-void GPUTerrainBackend::RequestRemesh(const std::set<ChunkKey>& chunkSet)
-{
-	m_pendingRemeshChunks.insert(chunkSet.begin(), chunkSet.end());
-}
-
+//빈 슬롯에 대기열의 작업을 할당 -> 데이터 업로드 -> Compute Shader 실행 -> 결과를 Readback 버퍼로 복사 명령
 void GPUTerrainBackend::ExecuteCompute(uint32_t frameIndex, UploadContext* uploadContext, DescriptorAllocator* descriptorAllocator)
 {
-	// _GRD 갱신(m_fieldDirty == true), brush 사용(m_hasBrush == true)
-	if (!HasRequests()) return;
+    uint64_t completedFence = m_fence->GetCompletedValue();
+    for (auto& slot : m_chunkSlots)
+    {
+        if (!slot.isFree && slot.completionFence <= completedFence)
+        {
+            slot.isFree = true;
+        }
+    }
+    if (m_waitingQueue.empty()) return;
 
-	prepareComputeEncoding();
-
-	if (m_fieldDirty) encodeFieldUpload(uploadContext);
-
-	XMUINT3 regionMin = { 0,0,0 };
-	XMUINT3 regionMax = m_grid.resolution;
-	if (!m_brushQueue.empty())
-	{
-		// Density3D SRV -> UAV 전환
-		auto Density3DtoUav = CD3DX12_RESOURCE_BARRIER::Transition(m_vol->density(), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
-		m_commandList->ResourceBarrier(1, &Density3DtoUav);
-
-		for (const auto& req : m_brushQueue)
-		{
-			encodeBrushPass(frameIndex, uploadContext, req, regionMin, regionMax);
-		}
-
-		// Dispatch 후 상태 전환
-		auto backToSrv = CD3DX12_RESOURCE_BARRIER::Transition(m_vol->density(), D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
-		m_commandList->ResourceBarrier(1, &backToSrv);
-
-		m_brushQueue.clear();
-	}
-
-	if (!m_pendingRemeshChunks.empty())
-	{
-		encodeRemeshPass(frameIndex, uploadContext, std::move(m_pendingRemeshChunks), regionMin, regionMax);
-
-		m_pendingRemeshChunks.clear();
-	}
-
-	finishComputeEncoding();
-}
-
-bool GPUTerrainBackend::tryFetch(std::vector<ChunkUpdate>& OutChunkUpdates)
-{
-	if (!m_needsFetch) return false;
-	m_needsFetch = false;
-
-	if (m_fence->GetCompletedValue() < m_lastSubmitFenceValues)
-	{
-		ThrowIfFailed(m_fence->SetEventOnCompletion(m_lastSubmitFenceValues, m_fenceEvent));
-		WaitForSingleObjectEx(m_fenceEvent, INFINITE, false);
-	}
-
-	auto& r = m_rb[m_rbCursor];
-	void* p = nullptr;
-	CD3DX12_RANGE range(0, sizeof(uint32_t));
-	r.rbCount->Map(0, &range, &p);
-	memcpy(&r.count, p, sizeof(uint32_t));
-	r.rbCount->Unmap(0, nullptr);
-
-	if (r.count == 0) return false;
-
-	m_commandAllocator[m_rbCursor]->Reset();
-	m_commandList->Reset(m_commandAllocator[m_rbCursor].Get(), nullptr);
-	m_commandList->CopyBufferRegion(r.rbTriangles.Get(), 0, m_outBuffer.Get(), 0, r.count * sizeof(OutTriangle));
-	m_commandList->Close();
-	ID3D12CommandList* cmdList[] = { m_commandList.Get() };
-	m_commandQueue->ExecuteCommandLists(_countof(cmdList), cmdList);
-
-	m_commandQueue->Signal(m_fence.Get(), m_fenceValues);
-	m_fence->SetEventOnCompletion(m_fenceValues, m_fenceEvent);
-	WaitForSingleObjectEx(m_fenceEvent, INFINITE, false);
-	++m_fenceValues;
-
-	uint32_t triCount = r.count;
-	// OutTriangle
-	void* pTris = nullptr;
-	D3D12_RANGE rrTri{ 0, (SIZE_T)triCount * sizeof(OutTriangle) };
-	r.rbTriangles->Map(0, &rrTri, &pTris);
-	const OutTriangle* OutTriangles = reinterpret_cast<const OutTriangle*>(pTris);
-
-	std::vector<uint32_t> triPerChunk(m_numChunks, 0);
-	for (uint32_t i = 0; i < triCount; ++i)
-	{
-		++triPerChunk[OutTriangles[i].chunkIdx];
-	}
-	std::unordered_map<uint32_t, uint32_t> outchunkUpdatesTable;
-	for (uint32_t i = 0; i < m_numChunks; ++i)
-	{
-		if (triPerChunk[i] == 0) continue;
-		ChunkUpdate up;
-		up.key = DecodeChunkKey(i, m_numChunkAxis);
-		up.empty = false;
-		up.md.vertices.clear();
-		up.md.indices.clear();
-		up.md.vertices.reserve(static_cast<size_t>(triPerChunk[i]) * 3);
-		up.md.indices.reserve(static_cast<size_t>(triPerChunk[i]) * 3);
-		up.md.topology = D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST;
-		OutChunkUpdates.push_back(up);
-		outchunkUpdatesTable.insert_or_assign(i, static_cast<uint32_t>(OutChunkUpdates.size() - 1));
-	}
-
-	for (uint32_t i = 0; i < triCount; ++i)
-	{
-		const OutTriangle& tri = OutTriangles[i];
-		uint32_t index = outchunkUpdatesTable[tri.chunkIdx];
-		ChunkUpdate& up = OutChunkUpdates[index];
-
-		uint32_t baseIndex = static_cast<uint32_t>(up.md.vertices.size());
-
-		GeometryData& md = up.md;
-		md.vertices.push_back(Vertex{ .pos = tri.A.position, .normal = tri.A.normal , .tangent = tri.A.tangent});
-		md.vertices.push_back(Vertex{ .pos = tri.B.position, .normal = tri.B.normal , .tangent = tri.B.tangent});
-		md.vertices.push_back(Vertex{ .pos = tri.C.position, .normal = tri.C.normal , .tangent = tri.C.tangent});
-
-		md.indices.push_back(baseIndex + 0);
-		md.indices.push_back(baseIndex + 1);
-		md.indices.push_back(baseIndex + 2);
-		baseIndex += 3;
-	}
-	r.rbTriangles->Unmap(0, nullptr);
-
-	// 다음 프레임을 위한 링 advance
-	m_rbCursor = (m_rbCursor + 1) % kRBFrameCount;
-	return !OutChunkUpdates.empty();
-}
-
-void GPUTerrainBackend::ensureTriangleBuffer()
-{
-	if (m_outBuffer && m_outCounter) return;
-
-	const uint32_t numElems = m_numChunks * m_triCapPerChunk;
-	const uint32_t sizeBytes = numElems * sizeof(OutTriangle);
-
-	auto hpDef = CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT);
-
-	auto descUav = CD3DX12_RESOURCE_DESC::Buffer(sizeBytes, D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS);
-	ThrowIfFailed(m_device->CreateCommittedResource(&hpDef, D3D12_HEAP_FLAG_NONE, &descUav,D3D12_RESOURCE_STATE_COMMON, nullptr,IID_PPV_ARGS(m_outBuffer.ReleaseAndGetAddressOf())));
-	NAME_D3D12_OBJECT(m_outBuffer);
-
-	auto descCnt = CD3DX12_RESOURCE_DESC::Buffer(4, D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS);
-	ThrowIfFailed(m_device->CreateCommittedResource(&hpDef, D3D12_HEAP_FLAG_NONE, &descCnt,D3D12_RESOURCE_STATE_COMMON, nullptr,IID_PPV_ARGS(m_outCounter.ReleaseAndGetAddressOf())));
-	NAME_D3D12_OBJECT(m_outCounter);
-}
-
-void GPUTerrainBackend::computeNumChunks()
-{
-	const XMUINT3 totalCubes(m_grid.resolution.x - 1, m_grid.resolution.y - 1, m_grid.resolution.z - 1);
-
-	m_numChunkAxis = XMUINT3(
-		(totalCubes.x + (s_chunkcubes - 1)) / s_chunkcubes,
-		(totalCubes.y + (s_chunkcubes - 1)) / s_chunkcubes,
-		(totalCubes.z + (s_chunkcubes - 1)) / s_chunkcubes
-	);
-
-	m_numChunks = m_numChunkAxis.x * m_numChunkAxis.y * m_numChunkAxis.z;
-}
-
-void GPUTerrainBackend::ensureRBSlot(uint32_t slot)
-{
-	auto& r = m_rb[slot];
-	if (r.rbTriangles && r.rbCount) return;
-
-	CD3DX12_HEAP_PROPERTIES hp_Readback(D3D12_HEAP_TYPE_READBACK);
-	if (!r.rbTriangles)
-	{
-		const uint64_t bytes = uint64_t(m_numChunks) * uint64_t(m_triCapPerChunk) * sizeof(OutTriangle);
-		auto desc = CD3DX12_RESOURCE_DESC::Buffer(bytes);
-		ThrowIfFailed(m_device->CreateCommittedResource(
-			&hp_Readback,
-			D3D12_HEAP_FLAG_NONE,
-			&desc,
-			D3D12_RESOURCE_STATE_COPY_DEST,
-			nullptr,
-			IID_PPV_ARGS(r.rbTriangles.ReleaseAndGetAddressOf())));
-		NAME_D3D12_OBJECT(r.rbTriangles);
-	}
-
-	if (!r.rbCount)
-	{
-		auto desc = CD3DX12_RESOURCE_DESC::Buffer(4);
-		ThrowIfFailed(m_device->CreateCommittedResource(
-			&hp_Readback,
-			D3D12_HEAP_FLAG_NONE,
-			&desc,
-			D3D12_RESOURCE_STATE_COPY_DEST,
-			nullptr,
-			IID_PPV_ARGS(r.rbCount.ReleaseAndGetAddressOf())));
-		NAME_D3D12_OBJECT(r.rbCount);
-	}
-}
-
-void GPUTerrainBackend::resetRBSlot(uint32_t slot)
-{
-	auto& r = m_rb[slot];
-	r.rbCount.Reset();
-	r.rbTriangles.Reset();
-}
-
-void GPUTerrainBackend::prepareComputeEncoding()
-{
-	ThrowIfFailed(m_commandAllocator[m_rbCursor]->Reset());
-	ThrowIfFailed(m_commandList->Reset(m_commandAllocator[m_rbCursor].Get(), nullptr));
+    ID3D12GraphicsCommandList* cmd = m_commandList.Get();
+    m_commandAllocator->Reset();
+    m_commandList->Reset(m_commandAllocator.Get(), nullptr);
 
 	ID3D12DescriptorHeap* heaps[] = { m_descriptorAllocator->GetCbvSrvUavHeap() };
 	m_commandList->SetDescriptorHeaps(1, heaps);
-#if PIX_DEBUGMODE
-	if (m_hasBrush && PIXGetCaptureState() > 0)
+
+    bool workSubmitted = false;
+	while (!m_waitingQueue.empty())
 	{
-		PIXBeginEvent(m_commandList.Get(), PIX_COLOR(0, 255, 0), "GPUTerrainBackend");
+		ChunkSlot* slot = nullptr;
+		for (auto& s : m_chunkSlots)
+		{
+			if (s.isFree)
+			{
+				slot = &s;
+				break;
+			}
+		}
+		if (!slot) break; // 슬롯이 없으면 이번 프레임 처리는 여기서 중단 (다음 프레임에 계속)
+
+		PendingRequest req = std::move(m_waitingQueue.front());
+		m_waitingQueue.pop_front();
+		slot->isFree = false;
+
+		ExtractChunkData(req.request.fieldData.get(), req.request.key, req.request.setting, m_tempExtractBuffer);
+
+		uint32_t cellsPerChunk = req.request.setting.cellsPerChunk;
+		uint32_t borderedChunkSize = req.request.setting.cellsPerChunk + 2;
+		D3D12_SUBRESOURCE_DATA subData{
+			.pData = m_tempExtractBuffer.data(),
+			.RowPitch = borderedChunkSize * sizeof(float),
+			.SlicePitch = borderedChunkSize * borderedChunkSize * sizeof(float)
+		};
+		uploadContext->UploadTexture(m_commandList.Get(), slot->volumeTexture.Get(), { subData }, 
+			D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, "ChunkUpload");
+
+		GridCBData cbData{
+			.gridCells = req.request.setting.resolution,
+			.gridOrigin = req.request.setting.origin,
+			.isoValue = req.request.setting.isoValue,
+			.numChunkAxis = { 0,0,0 },
+			.chunkCubes = cellsPerChunk,
+			.regionCellMin = { 0,0,0 },
+			.regionCellMax = { cellsPerChunk, cellsPerChunk, cellsPerChunk }
+		};
+		BufferHandle cbHandle;
+		uploadContext->UploadConstants(&cbData, sizeof(GridCBData), cbHandle);
+
+		const uint32_t alignedMaxChunkSize = m_maxChunkSize + 2;
+        m_mc->encode(GPUMCEncodingContext{
+			.device = m_device,
+			.cmd = m_commandList.Get(),
+			.chunkCubes = cellsPerChunk,
+			.gridDimension = { alignedMaxChunkSize, alignedMaxChunkSize, alignedMaxChunkSize },
+			.regionCellMin = { 0, 0, 0 },
+			.regionCellMax = { cellsPerChunk, cellsPerChunk, cellsPerChunk },
+			.cbAddress = cbHandle.gpuVA,
+			.triTableSrv = descriptorAllocator->GetStaticGpu(0),
+			.densitySrv = descriptorAllocator->GetStaticGpu(slot->srvIndex),
+			.outBufferUav = descriptorAllocator->GetDynamicGpu(frameIndex, m_outBufferUavIndex)
+		});
+
+        m_inFlightJobs.push_back(InFlightJob{
+			.slotIndex = slot->index,
+			.request = std::move(req.request)
+		});
+        workSubmitted = true;
+    }
+
+    if (workSubmitted)
+    {
+		CD3DX12_RESOURCE_BARRIER barrier = CD3DX12_RESOURCE_BARRIER::Transition(m_outBuffer.Get(), D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_COPY_SOURCE);
+		m_commandList->ResourceBarrier(1, &barrier);
+
+		// 카운터 복사
+		m_commandList->CopyBufferRegion(m_readbackBuffer.Get(), 0, m_outCounter.Get(), 0, sizeof(uint32_t));
+
+		// 데이터 복사
+		m_commandList->CopyBufferRegion(m_readbackBuffer.Get(), sizeof(uint32_t), m_outBuffer.Get(), 0, m_outBuffer->GetDesc().Width);
+
+		CD3DX12_RESOURCE_BARRIER backBarrier = CD3DX12_RESOURCE_BARRIER::Transition(m_outBuffer.Get(), D3D12_RESOURCE_STATE_COPY_SOURCE, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
+		m_commandList->ResourceBarrier(1, &backBarrier);
+
+		uploadContext->ResetCounterUAV(m_commandList.Get(), m_outCounter.Get(), D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
+
+		// 제출
+		m_fenceValues++;
+		m_commandList->Close();
+		ID3D12CommandList* cmds[] = { m_commandList.Get() };
+		m_commandQueue->ExecuteCommandLists(1, cmds);
+		m_commandQueue->Signal(m_fence.Get(), m_fenceValues);
+		m_lastReadbackFence = m_fenceValues;
+
+		for (auto& job : m_inFlightJobs)
+		{
+			if (m_chunkSlots[job.slotIndex].completionFence < m_fenceValues)
+			{
+				m_chunkSlots[job.slotIndex].completionFence = m_fenceValues;
+			}
+		}
+    }
+	else
+	{
+		//Reset호출 시점에 CommandList가 닫혀있는지 아닌지를 구분할 수 없으므로 작성할 일이 없다면 일단 닫아둔다
+		m_commandList->Close();
 	}
-#endif
 }
 
-void GPUTerrainBackend::finishComputeEncoding()
+void GPUTerrainBackend::InitializeSlots(ID3D12Device* device, int count, int slotSize)
 {
-#if PIX_DEBUGMODE
-	if (PIXGetCaptureState() > 0)
+	m_chunkSlots.resize(count);
+	for (int i = 0; i < count; ++i)
 	{
-		PIXEndEvent(m_commandList.Get());
+		uint64_t alignedSize = AlignUp64(slotSize, D3D12_DEFAULT_RESOURCE_PLACEMENT_ALIGNMENT);
+		D3D12_HEAP_PROPERTIES hp(D3D12_HEAP_TYPE_DEFAULT);
+		CD3DX12_RESOURCE_DESC desc = CD3DX12_RESOURCE_DESC::Buffer(alignedSize);
+		ThrowIfFailed(device->CreateCommittedResource(&hp, D3D12_HEAP_FLAG_NONE, &desc, D3D12_RESOURCE_STATE_COMMON, nullptr, IID_PPV_ARGS(&m_chunkSlots[i].volumeTexture)));
+		NAME_D3D12_OBJECT_ALIAS(m_chunkSlots[i].volumeTexture, L"TerrainSystem TexrturePool");
 	}
-#endif
-	//Wait For GPU
-	m_commandList->Close();
-	ID3D12CommandList* ppCommandLists[] = { m_commandList.Get() };
-	m_commandQueue->ExecuteCommandLists(_countof(ppCommandLists), ppCommandLists);
-
-	// Compute 큐의 작업을 최대한 병렬로 처리하기 위해 Signal만 걸어두고 tryFetch에서 대기
-	ThrowIfFailed(m_commandQueue->Signal(m_fence.Get(), m_fenceValues));
-	m_lastSubmitFenceValues = m_fenceValues++;
-	m_needsFetch = true;
 }
 
-void GPUTerrainBackend::encodeFieldUpload(UploadContext* context)
+void GPUTerrainBackend::CreateSlotResource(int index)
 {
-	m_vol->uploadFromGRD(m_commandList.Get(),context, m_gridData.get());
+	auto& slot = m_chunkSlots[index];
+	slot.index = index;
+	slot.isFree = true;
+	slot.completionFence = 0;
 
-	m_fieldDirty = false;
+	uint32_t texSize = m_maxChunkSize + 2; // Border 양옆 1씩 적용
+	D3D12_RESOURCE_DESC desc = {
+		.Dimension = D3D12_RESOURCE_DIMENSION_TEXTURE3D,
+		.Width = texSize,
+		.Height = texSize,
+		.DepthOrArraySize = static_cast<UINT16>(texSize),
+		.MipLevels = 1,
+		.Format = DXGI_FORMAT_R32_FLOAT,
+		.SampleDesc = DXGI_SAMPLE_DESC{.Count = 1},
+		.Layout = D3D12_TEXTURE_LAYOUT_UNKNOWN,
+		.Flags = D3D12_RESOURCE_FLAG_NONE,
+	};
+	CD3DX12_HEAP_PROPERTIES heapProp(D3D12_HEAP_TYPE_DEFAULT);
+	ThrowIfFailed(m_device->CreateCommittedResource(&heapProp,
+		D3D12_HEAP_FLAG_NONE,
+		&desc,
+		D3D12_RESOURCE_STATE_COMMON,
+		nullptr,
+		IID_PPV_ARGS(slot.volumeTexture.ReleaseAndGetAddressOf())
+	));
+	NAME_D3D12_OBJECT_ALIAS(slot.volumeTexture, std::format(L"ChunkSlot_{}", index).c_str());
+
+	// SRV 생성
+	slot.srvIndex = m_descriptorAllocator->AllocateStaticSlot();
+	D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc = {
+		.Format = desc.Format,
+		.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE3D,
+		.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING,
+		.Texture3D = D3D12_TEX3D_SRV{
+			.MostDetailedMip = 0,
+			.MipLevels = 1
+		}
+	};
+	m_device->CreateShaderResourceView(slot.volumeTexture.Get(), &srvDesc, m_descriptorAllocator->GetStaticCpu(slot.srvIndex));
 }
 
-void GPUTerrainBackend::encodeBrushPass(uint32_t frameIndex, UploadContext* uploadContext, const BrushRequest& req, DirectX::XMUINT3& regionMin, DirectX::XMUINT3& regionMax)
+void GPUTerrainBackend::ExtractChunkData(const SdfField* field, const ChunkKey& key, const GridDesc& desc, std::vector<float>& outBuffer)
 {
-	const int r = (int)std::ceil(req.radius / m_grid.cellsize);
+	const int cellsPerChunk = desc.cellsPerChunk;
+	const int border = 1;
+	const int extractSize = cellsPerChunk + (border * 2);
+	const int totalVoxels = extractSize * extractSize * extractSize;
 
-	XMUINT3 brushCenter = computeBrushCenter(req.center, m_grid.origin, m_grid.cellsize);
-	computeBrushRegionCells(m_grid, brushCenter, req.radius, regionMin, regionMax);
-	
-	BrushCBData data{
-		.brushRadius = req.radius,
-		.brushWeight = req.weight,
-		.deltaTime = req.deltaTime,
-		.gridCells = m_grid.resolution,
-		.brushCenter = brushCenter,
-		.regionCellMin = regionMin,
-		.regionCellMax = regionMax
-	};
-	BufferHandle brushCB{};
-	uploadContext->UploadContstants(frameIndex, &data, sizeof(BrushCBData), brushCB);
+	const int sx = field->sx();
+	const int sy = field->sy();
+	const int sz = field->sz();
 
-	uint32_t densityUavSlot = m_descriptorAllocator->AllocateDynamic(frameIndex);
-	DescriptorAllocator::CreateUAV_Texture3D(m_device, m_vol->density(), DXGI_FORMAT_R32_FLOAT, m_descriptorAllocator->GetDynamicCpu(frameIndex, densityUavSlot));
+	const int baseX = key.x * cellsPerChunk;
+	const int baseY = key.y * cellsPerChunk;
+	const int baseZ = key.z * cellsPerChunk;
 
-	GPUBrushEncodingContext context{
-		.cmd = m_commandList.Get(),
-		.regionMin = regionMin,
-		.regionMax = regionMax,
-		.cbAddress = brushCB.gpuVA,
-		.densityUav = m_descriptorAllocator->GetDynamicGpu(frameIndex, densityUavSlot)
-	};
-	m_brush->encode(context);
-}
-
-void GPUTerrainBackend::encodeRemeshPass(uint32_t frameIndex, UploadContext* uploadContext, const std::set<ChunkKey>& chunkSet, const DirectX::XMUINT3& regionMin, const DirectX::XMUINT3& regionMax)
-{
-	uint32_t densitySrvSlot = m_descriptorAllocator->AllocateDynamic(frameIndex);
-	DescriptorAllocator::CreateSRV_Texture3D(m_device, m_vol->density(), DXGI_FORMAT_R32_FLOAT, m_descriptorAllocator->GetDynamicCpu(frameIndex, densitySrvSlot));
-
-	uint32_t outUavSlot = m_descriptorAllocator->AllocateDynamic(frameIndex);
-	DescriptorAllocator::CreateUAV_Structured(m_device, m_outBuffer.Get(), sizeof(OutTriangle), m_descriptorAllocator->GetDynamicCpu(frameIndex, outUavSlot), m_outCounter.Get());
-
-	auto trisToUav = CD3DX12_RESOURCE_BARRIER::Transition(m_outBuffer.Get(), D3D12_RESOURCE_STATE_COMMON, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
-	m_commandList->ResourceBarrier(1, &trisToUav);
-
-	// 카운터 리셋(0)
-	uploadContext->ResetCounterUAV(m_commandList.Get(), m_outCounter.Get(), D3D12_RESOURCE_STATE_COMMON, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
-
-	XMUINT3 expandedMin, expandedMax;
-	computeChunkAlignedRegion(m_grid.resolution, regionMin, regionMax, expandedMin, expandedMax);
-
-	GridCBData data{
-		.gridCells = m_grid.resolution,
-		.gridOrigin = m_grid.origin,
-		.isoValue = m_grid.isoValue,
-		.numChunkAxis = m_numChunkAxis,
-		.chunkCubes = s_chunkcubes,
-		.regionCellMin = expandedMin,
-		.regionCellMax = expandedMax
-	};
-
-	BufferHandle gridCB{};
-	uploadContext->UploadContstants(frameIndex, &data, sizeof(GridCBData), gridCB);
-
-	DescriptorAllocator::CreateSRV_Structured(m_device, m_mc->triTable(), sizeof(int), m_descriptorAllocator->GetStaticCpu(m_triTableSlot));
-
-	GPUMCEncodingContext ctx{
-		.device = m_device,
-		.cmd = m_commandList.Get(),
-		.chunkCubes = s_chunkcubes,
-		.gridDimension = m_grid.resolution,
-		.regionCellMin = expandedMin,
-		.regionCellMax = expandedMax,
-		.cbAddress = gridCB.gpuVA,
-		.triTableSrv = m_descriptorAllocator->GetStaticGpu(m_triTableSlot),
-		.densitySrv = m_descriptorAllocator->GetDynamicGpu(frameIndex, densitySrvSlot),
-		.outBufferUav = m_descriptorAllocator->GetDynamicGpu(frameIndex, outUavSlot)
-	};
-	m_mc->encode(ctx);
-
-	// readback 스케쥴
-	const uint32_t rbSlot = m_rbCursor;
-	ensureRBSlot(rbSlot);
-
-	// Output Readback
-	CD3DX12_RESOURCE_BARRIER toCopySrc[2] =
+	int outIndex = 0;
+	for (int z = -border; z < cellsPerChunk + border; ++z)
 	{
-		CD3DX12_RESOURCE_BARRIER::Transition(m_outBuffer.Get(), D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_COPY_SOURCE),
-		CD3DX12_RESOURCE_BARRIER::Transition(m_outCounter.Get(), D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_COPY_SOURCE)
-	};
-	m_commandList->ResourceBarrier(_countof(toCopySrc), toCopySrc);
+		int gz = std::clamp(baseZ + z, 0, sz - 1);
 
-	m_commandList->CopyBufferRegion(m_rb[rbSlot].rbCount.Get(), 0, m_outCounter.Get(), 0, sizeof(uint32_t));
+		for (int y = -border; y < cellsPerChunk + border; ++y)
+		{
+			int gy = std::clamp(baseY + y, 0, sy - 1);
 
-	CD3DX12_RESOURCE_BARRIER backToUav[2] =
-	{
-		CD3DX12_RESOURCE_BARRIER::Transition(m_outBuffer.Get(), D3D12_RESOURCE_STATE_COPY_SOURCE, D3D12_RESOURCE_STATE_UNORDERED_ACCESS),
-		CD3DX12_RESOURCE_BARRIER::Transition(m_outCounter.Get(), D3D12_RESOURCE_STATE_COPY_SOURCE, D3D12_RESOURCE_STATE_UNORDERED_ACCESS)
-	};
-	m_commandList->ResourceBarrier(_countof(backToUav), backToUav);
+			for (int x = -border; x < cellsPerChunk + border; ++x)
+			{
+				int gx = std::clamp(baseX + x, 0, sx - 1);
+				outBuffer[outIndex++] = field->at(gx,gy,gz);
+			}
+		}
+	}
 }
 
-XMUINT3 GPUTerrainBackend::computeBrushCenter(const XMFLOAT3& hitpos, const XMFLOAT3& gridorigin, const float cellsize)
-{
-	return {
-		static_cast<uint32_t>((hitpos.x - gridorigin.x) / cellsize),
-		static_cast<uint32_t>((hitpos.y - gridorigin.y) / cellsize),
-		static_cast<uint32_t>((hitpos.z - gridorigin.z) / cellsize)
-	};
-}
-
-void GPUTerrainBackend::computeBrushRegionCells(const GridDesc& grid, const DirectX::XMUINT3& brushCenter, const float brushRadius, DirectX::XMUINT3& outRegionMin, DirectX::XMUINT3& outRegionMax)
-{
-	const uint32_t halo = 1;
-	const XMUINT3 gridDim = grid.resolution;
-
-	const float radiusCell = brushRadius / grid.cellsize;
-	const uint32_t r = static_cast<uint32_t>(std::ceil(radiusCell));
-
-	outRegionMin.x = MathHelper::SafeSub(brushCenter.x + halo, r);
-	outRegionMin.y = MathHelper::SafeSub(brushCenter.y + halo, r);
-	outRegionMin.z = MathHelper::SafeSub(brushCenter.z + halo, r);
-
-	outRegionMax.x = std::min<uint32_t>(gridDim.x, brushCenter.x + r + halo);
-	outRegionMax.y = std::min<uint32_t>(gridDim.y, brushCenter.y + r + halo);
-	outRegionMax.z = std::min<uint32_t>(gridDim.z, brushCenter.z + r + halo);
-}
-
-void GPUTerrainBackend::computeChunkAlignedRegion(const XMUINT3& resolution, const XMUINT3& brushRegionMin, const XMUINT3& brushRegionMax, XMUINT3& outRegionMin, XMUINT3& outRegionMax)
-{
-	XMUINT3 cmin{
-		brushRegionMin.x / s_chunkcubes,
-		brushRegionMin.y / s_chunkcubes,
-		brushRegionMin.z / s_chunkcubes
-	};
-
-	XMUINT3 cmax{
-		(brushRegionMax.x + s_chunkcubes - 1) / s_chunkcubes,
-		(brushRegionMax.y + s_chunkcubes - 1) / s_chunkcubes,
-		(brushRegionMax.z + s_chunkcubes - 1) / s_chunkcubes
-	};
-
-	outRegionMin.x = std::min(cmin.x * s_chunkcubes, resolution.x);
-	outRegionMin.y = std::min(cmin.y * s_chunkcubes, resolution.y);
-	outRegionMin.z = std::min(cmin.z * s_chunkcubes, resolution.z);
-
-	outRegionMax.x = std::min(cmax.x * s_chunkcubes, resolution.x);
-	outRegionMax.y = std::min(cmax.y * s_chunkcubes, resolution.y);
-	outRegionMax.z = std::min(cmax.z * s_chunkcubes, resolution.z);
-}

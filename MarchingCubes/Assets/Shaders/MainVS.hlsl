@@ -1,4 +1,4 @@
-// shaders.hlsl
+// MainVS.hlsl
 #include "Common.hlsli"
 
 // Vertex input structure
@@ -8,7 +8,6 @@ struct VSInput
     float3 Normal : NORMAL;
     float4 Tangent : TANGENT; // xyz : tagnent, w: handedness
     float2 TexCoord : TEXCOORD0;
-    float4 Color : COLOR;       // For Debugging
 };
 
 // Vertex-to-pixel output structure
@@ -39,6 +38,6 @@ PSInput VSMain(VSInput input)
     output.TangentSign = input.Tangent.w;
     
     output.TexCoord = input.TexCoord;
-    output.Color = input.Color;
+    output.Color = float4(1.0f, 1.0f, 1.0f, 1.0f);
     return output;
 }

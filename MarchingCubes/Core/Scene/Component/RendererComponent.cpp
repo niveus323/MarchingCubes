@@ -1,15 +1,14 @@
 #include "pch.h"
 #include "RendererComponent.h"
-#include "Core/Scene/Object/SceneObject.h"
+#include "Core/Scene/Object/GameObject.h"
 #include "Core/Scene/Scene.h"
 
-RendererComponent::RendererComponent(SceneObject* owner) : 
-	Component(owner)
-{
-}
+BEGIN_REFLECTION(RendererComponent, Component)
+END_REFLECTION()
 
 void RendererComponent::Init()
 {
+	Component::Init();
 	if (auto scene = GetOwner()->GetScene())
 	{
 		scene->RegisterRenderable(this);

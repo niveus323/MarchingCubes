@@ -6,11 +6,8 @@ class IUIBuilder;
 
 class Controller : public GameObject
 {
-	REFLECT_GENERATED_BODY()
+	REFLECT_GENERATED_BODY(Controller)
 public:
-	Controller(Scene* scene) : GameObject(scene) {}
-	virtual ~Controller() = default;
-
 	virtual void Update(float deltaTime) override;
 	virtual void Possess(Pawn* pawn);
 	virtual void UnPossess();

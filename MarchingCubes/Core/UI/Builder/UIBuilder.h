@@ -1,6 +1,10 @@
 #pragma once
+#include "Core/Utils/EnumBitmask.h"
 #include <format>
 #include <concepts>
+#include <cstdint>
+#include <functional>
+
 
 namespace UI
 {
@@ -229,22 +233,39 @@ namespace UI
         }
         return 1; // Int, Float, Bool 등
     }
-}
 
+    enum class UI_Alignment
+    {
+        AlignLeft,
+        AlignCenter,
+        AlignRight
+    };
+
+    enum class UI_PanelOption : uint32_t
+    {
+        None = 0,
+        MenuBar = 1 << 0,
+        NoDocking = 1 << 1,
+        NoMove = 1 << 2,
+        NoInput = 1 << 3,
+        NoScrollBar = 1 << 4
+    };
+}
+ENABLE_BITMASK(UI::UI_PanelOption);
+
+/*
+NOTE : UI 빌더 규칙
+    1. 위치, 크기 등 제어 가능한 모든 값들은 float 단위로 한다
+    2. 값을 입력 받는 함수는 타입 추론(UI_DataType을 활용)하여 사용한다
+    3. Color는 (R,G,B,A) 4 원소로 통일하여 사용한다
+*/
 class IUIBuilder
 {
-    /*
-    * UI 함수 선언 규칙
-    * 1. 위치, 크기 등 제어 가능한 모든 값들은 float 단위로 한다
-    * 2. 불필요한 함수 선언은 지양한다 (UI_DataType을 활용하여 타입 추론)
-    * 3. Color는 (R,G,B,A) 4 원소로 통일하여 사용한다
-    */
-
 public:
     virtual ~IUIBuilder() = default;
 
     // --- 윈도우/패널 관리 ---
-    virtual bool BeginPanel(const char* name, bool* pOpen = nullptr) = 0;
+    virtual bool BeginPanel(const char* name, bool* pOpen = nullptr, UI::UI_PanelOption flags = UI::UI_PanelOption::None) = 0;
     virtual void EndPanel() = 0;
 
     virtual bool BeginTable(const char* id, int columns) = 0;
@@ -255,6 +276,17 @@ public:
     virtual void EndTabBar() = 0;
     virtual bool BeginTabItem(const char* id, bool* pOpen = nullptr) = 0;
     virtual void EndTabItem() = 0;
+
+    virtual void BeginMainMenuBar() = 0;
+    virtual void EndMainMenuBar() = 0;
+    virtual bool BeginMenuBar() = 0;
+    virtual void EndMenuBar() = 0;
+    virtual bool BeginMenu(const char* id) = 0;
+    virtual void EndMenu() = 0;
+    virtual bool MenuItem(const char* id, const char* shortcutKey = NULL, bool bSelected = false) = 0;
+
+    virtual void BeginDisabled(bool disabled = true) = 0; // NOTE : ScopedDisable 사용
+    virtual void EndDisabled() = 0;
 
     // --- 기본 컨트롤 ---
     virtual void Label(const char* text) = 0;
@@ -286,6 +318,7 @@ public:
     virtual void TableHeadersRow() = 0;
     virtual void TableNextRow() = 0;
     virtual void TableNextColumn() = 0;
+    virtual void TableSetColumnIndex(int index) = 0;
     virtual void TableSetupColumn(const char* id) = 0;
     template<typename T>
     bool Property(const char* label, T* v, float speed = 1.0f)
@@ -300,7 +333,10 @@ public:
     // --- 레이아웃 헬퍼 ---
     virtual void Separator() = 0;
     virtual void SameLine(float offset_from_start_x = 0.0f, float spacing = -1.0f) = 0;
-    
+    virtual void Indent(float width = 0) = 0;
+    virtual void Unindent(float width = 0) = 0;
+    virtual void AlignNextItem(UI::UI_Alignment align, float itemWidth = 0.0f) = 0;
+
     // --- ID 관리 ---
     virtual void PushID(const char* str_id) = 0;
     virtual void PushID(const void* ptr_id) = 0;
@@ -314,6 +350,7 @@ public:
     virtual bool IsAnyItemHovered() = 0;
     virtual bool IsItemDeactivated() = 0;
     virtual bool IsWindowFocused() = 0;
+    virtual bool IsWindowHovered() = 0;
     virtual bool IsKeyPressed_F12() = 0;
     virtual void SetKeyboardFocus() = 0;
     virtual bool IsMouseClicked(int button) = 0;
@@ -322,17 +359,27 @@ public:
     virtual UI::Vector<float, 2> GetMousePos() = 0;
     virtual void SetCursorScreenPos(const UI::Vector<float, 2>& pos) = 0;
     
-    // --- 검색 창 ---
+    // --- Search ---
     virtual bool SearchBar(const char* hint, std::string& text) = 0;
+
+    // --- Selectable Combo Box ---
+    virtual void SelectableComboBox(const char* label, const std::vector<std::string>& items, int& selectedIdx, UI::Vector<float, 2> size = { 0.0f,0.0f }) = 0;
+
+    // --- Dual List Box ---
+    virtual bool DualListBox(const char* label, std::vector<int>& availableItems, std::vector<int>& basketItems, std::function<std::string(int)> getItemNameFn) = 0;
 
     // --- Hierarchy Tree ---
     virtual bool BeginTreeNode(const char* label, bool isLeaf, bool isSelected) = 0;
     virtual void EndTreeNode() = 0;
 
-    // --- 그래프 ---
+    // --- Graphs ---
     virtual void PlotLines(const char* label, const float* values, int count) = 0;
     virtual float GetAvailableWidth() = 0;
+    virtual UI::Vector<float, 2> GetRegionAvailable() = 0;
+    virtual UI::Vector<float, 2> GetWindowContentMin() = 0;
+    virtual UI::Vector<float, 2> GetWindowContentMax() = 0;
     virtual UI::Vector<float, 2> GetCursorScreenPos() = 0;
+    virtual UI::Vector<float, 2> GetWindowPos() = 0;
     virtual void Dummy(const UI::Vector<float, 2>& size) = 0;
     virtual void DrawRect(const UI::Vector<float, 2>& p0, const UI::Vector<float, 2>& p1, const UI::Color& color) = 0;
     virtual void DrawRectFilled(const UI::Vector<float, 2>& p0, const UI::Vector<float, 2>& p1, const UI::Color& color) = 0;

@@ -5,10 +5,8 @@
 
 class PlayerController : public Controller
 {
+    REFLECT_GENERATED_BODY(PlayerController)
 public:
-    PlayerController(Scene* scene);
-    virtual ~PlayerController() = default;
-
     void AddMappingContext(std::shared_ptr<InputMappingContext> context) { m_activeContexts.push_back(context); }
     void RemoveMappingContext(std::shared_ptr<InputMappingContext> context) { std::erase(m_activeContexts, context); }
     void ClearMappingContexts() { m_activeContexts.clear(); }

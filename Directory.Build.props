@@ -16,7 +16,7 @@
   </PropertyGroup>
   <ItemDefinitionGroup>
     <ClCompile>
-      <PreprocessorDefinitions>ASSETS_ROOT=L"$(AssetsRoot)";SHADERS_ROOT=L"$(ShadersRoot)";TEXTURES_ROOT=L"$(TexturesRoot)";THIRDPARTY_ROOT=L"$(ThirdPartyRoot)";%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <PreprocessorDefinitions>ASSETS_ROOT=L"$(AssetsRoot)";SHADERS_ROOT=L"$(ShadersRoot)";CONTENTS_ROOT=L"$(ContentsRoot)";TEXTURES_ROOT=L"$(TexturesRoot)";THIRDPARTY_ROOT=L"$(ThirdPartyRoot)";%(PreprocessorDefinitions)</PreprocessorDefinitions>
     </ClCompile>
   </ItemDefinitionGroup>
   <ItemGroup>
@@ -34,6 +34,9 @@
     </BuildMacro>
     <BuildMacro Include="TexturesRoot">
         <Value>$(TexturesRoot)</Value>
+    </BuildMacro>
+    <BuildMacro Include="ContentsRoot">
+        <Value>$(ContentsRoot)</Value>
     </BuildMacro>
   </ItemGroup>
 

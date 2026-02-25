@@ -1,0 +1,12 @@
+{
+  "PSO": "Line",
+  "MaterialConstants": {
+      "Albedo": [ 1.0, 1.0, 1.0 ],
+      "Metallic": 0.0,
+      "Roughness": 1.0,
+      "SpecularStrength": 0.04,
+      "AO": 1.0,
+      "IOR": 1.0,
+      "Opacity": 1.0
+    }
+  }

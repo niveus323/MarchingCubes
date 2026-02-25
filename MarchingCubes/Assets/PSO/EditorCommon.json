@@ -1,14 +1,87 @@
 {
   "schema": 1,
+  "rootSignatures": [
+    {
+      "id": "Default",
+      "params": [
+        {
+          "name" :  "CameraBuffer",
+          "type": "CBV",
+          "register": 0,
+          "flags": "Volatile"
+        },
+        {
+          "name" :  "ObjectBuffer",
+          "type": "CBV",
+          "register": 1,
+          "flags": "Volatile"
+        },
+        {
+          "name" :  "LightBuffer",
+          "type": "CBV",
+          "count": 1,
+          "register": 2
+        },
+        {
+          "type": "Table",
+          "ranges": [
+            {
+              "name" :  "MaterialBuffer",
+              "type": "SRV",
+              "count": 1,
+              "register": 0
+            }
+          ]
+        },
+        {
+          "type": "Table",
+          "ranges": [
+            {
+              "name" :  "EnvMap",
+              "type": "SRV",
+              "count": 1,
+              "register": 1
+            }
+          ]
+        },
+        {
+          "type": "Table",
+          "ranges": [
+            {
+              "name" :  "MaterialTextures",
+              "type": "SRV",
+              "count": -1,
+              "register": 2,
+              "flags": "Volatile"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "Overlay",
+      "inherits": "Default",
+      "params": [
+        {
+          "name" :  "ChunkBoundaryBuffer",
+          "type": "CBV",
+          "register": 3,
+          "num32Bit": 12
+        }
+      ]
+
+    }
+  ],
   "pso": [
     {
       "id": "Filled",
       "order": 10,
+      "rootSignature": "Default",
       "shaders": {
         "vs": "MainVS.cso",
         "ps": "MainPS.cso"
       },
-      "rt": {
+      "renderTarget": {
         "format": "R8G8B8A8_UNORM",
         "dsv": "D32_FLOAT",
         "msaa": 1,
@@ -31,14 +104,14 @@
       "id": "Line",
       "order": 20,
       "inherits": "Filled",
-      "shaders": { "ps": "LinePS.cso" },
+      "shaders": { "ps": "LinePS_Material.cso" },
       "topology": "line"
     },
     {
       "id": "Wire",
       "order": 30,
       "inherits": "Filled",
-      "shaders": { "ps": "LinePS.cso" },
+      "shaders": { "ps": "LinePS_Material.cso" },
       "raster": {
         "fill": "wireframe",
         "cull": "back"
@@ -50,8 +123,19 @@
       "inherits": "Filled",
       "shaders": {
         "gs": "NormalGS.cso",
-        "ps": "LinePS.cso"
+        "ps": "LinePS_Visualizer.cso"
+      }
+    },
+    {
+      "id": "DrawChunkBoundary",
+      "order": 41,
+      "inherits": "Filled",
+      "rootSignature": "Overlay",
+      "shaders": {
+        "gs": "TerrainChunkBorderGS.cso",
+        "ps": "LinePS_Visualizer.cso"
       }
     }
+
   ]
 }

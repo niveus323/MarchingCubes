@@ -7,11 +7,6 @@ void RecordDrawItem(ID3D12GraphicsCommandList* cmdList, const DrawBindingInfo& b
 {
 	if (!cmdList) return;
 
-	if (bi.objectCBGpuVA != 0ull)
-	{
-		cmdList->SetGraphicsRootConstantBufferView(1, bi.objectCBGpuVA);
-	}
-
 	if (bi.indexCount > 0)
 	{
 		cmdList->IASetVertexBuffers(0, 1, &bi.vbv);
@@ -25,21 +20,37 @@ void DrawItem(ID3D12GraphicsCommandList* cmd, const RenderItem& item)
 {
 	if (!item.meshBuffer) return;
 
+	if (item.indexCount == 0)
+	{
+		//Log::Print("RenderSystem", "%s : Index Count is Zero", item.debugName.c_str());
+		return;
+	}
+
 	cmd->IASetPrimitiveTopology(item.topology);
 
-	auto vbHandle = item.meshBuffer->GetVBHandle();
-	if (vbHandle.res)
+	D3D12_VERTEX_BUFFER_VIEW vbv = item.meshBuffer->GetVBV();
+	if (vbv.BufferLocation != 0) cmd->IASetVertexBuffers(0, 1, &vbv);
+
+	D3D12_INDEX_BUFFER_VIEW ibv = item.meshBuffer->GetIBV();
+	if (ibv.BufferLocation != 0) cmd->IASetIndexBuffer(&ibv);
+
+	for (const auto& binding : item.resourceBindings)
 	{
-		D3D12_VERTEX_BUFFER_VIEW vbv{ vbHandle.res->GetGPUVirtualAddress() + vbHandle.offset, (UINT)vbHandle.size, sizeof(Vertex) };
-		cmd->IASetVertexBuffers(0, 1, &vbv);
+		switch (binding.type)
+		{
+			case EBindingType::CBV:
+				cmd->SetGraphicsRootConstantBufferView(binding.rootParameterIndex, binding.gpuAddress);
+				break;
+			case EBindingType::SRV:
+			case EBindingType::UAV:
+				cmd->SetGraphicsRootDescriptorTable(binding.rootParameterIndex, binding.gpuDescriptorHandle);
+				break;
+			default:
+				Log::Print("RednerItem", "Invalid ExtraBinding!!!!\n Check For: %s", item.debugName);
+				break;
+		}
 	}
 
-	auto ibHandle = item.meshBuffer->GetIBHandle();
-	if (ibHandle.res)
-	{
-		D3D12_INDEX_BUFFER_VIEW ibv{ ibHandle.res->GetGPUVirtualAddress() + ibHandle.offset, (UINT)ibHandle.size, DXGI_FORMAT_R32_UINT };
-		cmd->IASetIndexBuffer(&ibv);
-	}
+	cmd->DrawIndexedInstanced(item.indexCount, item.instanceCount, item.indexOffset, static_cast<INT>(item.baseVertexLocation), 0);
 
-	cmd->DrawIndexedInstanced(item.indexCount, item.instanceCount, item.indexOffset, item.baseVertexLocation, 0);
 }

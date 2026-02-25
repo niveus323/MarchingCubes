@@ -25,52 +25,37 @@ UploadRing::~UploadRing()
 }
 
 // 업로드 할 공간 할당
-bool UploadRing::Allocate(const uint64_t alignedSize, uint64_t& outOffset, uint8_t*& outPtr)
+bool UploadRing::Allocate(const uint64_t size, const uint64_t alignment, uint64_t& outOffset, uint8_t*& outPtr)
 {
-	// 할당 크기가 가능한 전체 크기보다 클 경우 무조건 실패
-	if (alignedSize > m_totalSize)
-	{
-		Log::Print("UploadRing", "Allocated Failed. total : %llu, trying : %llu", m_totalSize, alignedSize);
-		return false;
-	}
-
-	uint64_t used = (m_head < m_tail) ? (m_totalSize - m_tail) + m_head : m_head - m_tail;
-	// 남은 공간에 할당 가능한지 체크
-	if (alignedSize > m_totalSize - used - 1)
-	{
-		Log::Print("UploadRing", "Allocated Failed. remain : %llu, trying : %llu", m_totalSize - used - 1, alignedSize);
-		return false;
-	}
+	uint64_t alignedHead = AlignUp64(m_head, alignment);
 
 	if (m_head < m_tail)
 	{
-		// [head, tail)
-		outOffset = m_head;
-		m_head += alignedSize;
-	}
-	else if (alignedSize > m_totalSize - m_head)
-	{
-		if (alignedSize > m_tail)
-		{
-			Log::Print("UplaodRing", "Allocated Failed. trying %llu > tail %llu", alignedSize, m_tail);
-			return false;
-		}
+		if (alignedHead + size >= m_tail) return false; //head가 tail과 같아지는 것을 방지하기 위해 >= 사용
 
-		// [0, tail)
-		outOffset = 0;
-		m_head = alignedSize;
+		outOffset = alignedHead;
+		m_head = alignedHead + size;
 	}
-	else
+	else //m_head >= m_tail
 	{
-		// [head, End)
-		outOffset = m_head;
-		m_head += alignedSize;
+		if (alignedHead + size <= m_totalSize)
+		{
+			outOffset = alignedHead;
+			m_head = alignedHead + size;
+		}
+		else
+		{
+			if (size >= m_tail) return false;
+
+			outOffset = 0;
+			m_head = size;
+		}
 	}
 
 	outPtr = m_mappedPtr + outOffset;
 	UploadAllocation alloc{};
 	alloc.offset = outOffset;
-	alloc.size = alignedSize;
+	alloc.size = size;
 	alloc.fenceValue = 0;
 	m_unframed.push_back(alloc);
 

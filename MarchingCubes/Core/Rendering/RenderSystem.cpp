@@ -1,116 +1,131 @@
 #include "pch.h"
 #include "RenderSystem.h"
 #include "Core/DataStructures/Data.h"
+#include "Core/Assets/TextureRegistry.h"
+#include "Core/Assets/MeshRegistry.h"
+#include "Core/Assets/Material/MaterialRegistry.h"
+#include "Core/Engine/EngineCore.h"
+#include "Core/Rendering/UploadContext.h"
 #include <unordered_map>
+#include <numeric>
+#include <algorithm>
 
-RenderSystem::RenderSystem(RenderSystemInitInfo init_info) : 
-	m_device(init_info.device),
-	m_rootSignature(init_info.rootSignature),
-	m_uploadContext(init_info.uploadContext),
-	m_descriptorAllocator(init_info.descriptorAllocator),
-	m_inputElements(std::move(init_info.inputElements)),
-	m_psoFiles(std::move(init_info.psoFiles))
+RenderSystem::RenderSystem(const std::vector<D3D12_INPUT_ELEMENT_DESC>& inputElems, const std::vector<std::wstring>& psoFiles) :
+	m_inputElements(inputElems),
+	m_psoFiles(psoFiles)
 {
-	assert(m_device && "RenderSystem : InValid Device!!!!");
-	assert(m_rootSignature && "RenderSystem : InValid RootSignature!!!!");
-	
-	std::vector<PSOSpec> mergedSpecs;
-	for (auto& psoFile : m_psoFiles)
+	ID3D12Device* device = EngineCore::GetDevice();
+	DescriptorAllocator* descriptorAllocator = EngineCore::GetDescriptorAllocator();
+
+	// PipelineState 객체들 생성
 	{
-		int schema = 0;
-		std::filesystem::path filePath = GetFullPath(AssetType::Default, L"PSO") / psoFile;
-		auto specs = LoadPSOJsonResolved(filePath.c_str(), &schema);
-		mergedSpecs.insert(mergedSpecs.end(), specs.begin(), specs.end());
-	}
-
-	PSOList::BuildContext ctx{
-		.device = m_device,
-		.root = m_rootSignature,
-		.inputLayout = D3D12_INPUT_LAYOUT_DESC{
-			.pInputElementDescs = m_inputElements.data(),
-			.NumElements = static_cast<UINT>(m_inputElements.size())
+		std::vector<RootSignatureSpec> rsSpecs;
+		std::vector<PSOSpec> psoSpecs;
+		for (auto& psoFile : m_psoFiles)
+		{
+			int schema = 0;
+			std::filesystem::path filePath = GetFullPath(AssetType::Default, L"PSO") / psoFile;
+			auto data = LoadPipelineBundle(filePath.c_str());
+			rsSpecs.insert(rsSpecs.end(), data.rsSpecs.begin(), data.rsSpecs.end());
+			psoSpecs.insert(psoSpecs.end(), data.psoSpecs.begin(), data.psoSpecs.end());
 		}
-	};
-	
-	m_psoList = std::make_unique<PSOList>(ctx, mergedSpecs);
-	m_buckets.resize(m_psoList->Count());
 
-	m_bundleRecorder = std::make_unique<BundleRecorder>(m_device, m_rootSignature, m_psoList.get(), 2);
-}
+		PSOList::BuildContext ctx{
+			.device = device,
+			.inputLayout = D3D12_INPUT_LAYOUT_DESC{
+				.pInputElementDescs = m_inputElements.data(),
+				.NumElements = static_cast<UINT>(m_inputElements.size())
+			}
+		};
 
-RenderSystem::RenderSystem(ID3D12Device* device, ID3D12RootSignature* rootSignature, const std::vector<D3D12_INPUT_ELEMENT_DESC>& inputElements, const std::vector<std::wstring>& psoFiles) :
-	RenderSystem(RenderSystemInitInfo{
-		.device = device,
-		.rootSignature = rootSignature,
-		.inputElements = inputElements,
-		.psoFiles = psoFiles })
-{
+		m_psoList = std::make_unique<PSOList>(ctx, psoSpecs, rsSpecs);
+	}
+	m_bundleRecorder = std::make_unique<BundleRecorder>(device, m_psoList.get(), 2);
+
+	//Registry
+	m_textureRegistry = std::make_unique<TextureRegistry>();
+	m_materialRegistry = std::make_unique<MaterialRegistry>(m_textureRegistry.get());
+	m_meshRegistry = std::make_unique<MeshRegistry>();
+
 }
 
 RenderSystem::~RenderSystem()
 {
-	for (auto& bucket : m_buckets)
-	{
-		bucket.renderItems.clear();
-	}
+	m_renderQueue.clear();
+}
+
+void RenderSystem::SyncGpu(ID3D12GraphicsCommandList* cmd)
+{
+	m_textureRegistry->SyncGpu(cmd);
+	m_materialRegistry->SyncGpu(cmd);
 }
 
 // PSO의 공용 CB를 업로드
-void RenderSystem::PrepareRender(_In_ UploadContext* uploadContext, _In_ DescriptorAllocator* descriptorAllocator, const CameraConstants& cameraData, const LightBlobView& lightData, uint32_t frameIndex)
+void RenderSystem::PrepareRender(const CameraConstants& cameraData, const LightBlobView& lightData, uint32_t frameIndex)
 {
-	uploadContext->UploadContstants(frameIndex, &cameraData, sizeof(CameraConstants), m_cameraBuf);
-	
+	UploadContext* uploadContext = EngineCore::GetUploadContext();
+	DescriptorAllocator* descriptorAllocator = EngineCore::GetDescriptorAllocator();
+
+	uploadContext->UploadConstants(&cameraData, sizeof(CameraConstants), m_cameraBuf);
+
 	const uint32_t lightCBSize = AlignUp(sizeof(LightConstantsHeader) + kMaxLights * sizeof(Light), D3D12_CONSTANT_BUFFER_DATA_PLACEMENT_ALIGNMENT);
 	const uint32_t blobSizeToCopy = (lightData.size <= lightCBSize) ? lightData.size : lightCBSize;
-	uploadContext->UploadContstants(frameIndex, lightData.data, blobSizeToCopy, m_lightsBuf);
+	uploadContext->UploadConstants(lightData.data, blobSizeToCopy, m_lightsBuf);
+
 	uint32_t lightsSlot = descriptorAllocator->AllocateDynamic(frameIndex);
 	D3D12_CPU_DESCRIPTOR_HANDLE lightsCpu = descriptorAllocator->GetDynamicCpu(frameIndex, lightsSlot);
 	D3D12_CONSTANT_BUFFER_VIEW_DESC desc = {};
 	desc.BufferLocation = m_lightsBuf.gpuVA;
 	desc.SizeInBytes = AlignUp(blobSizeToCopy, D3D12_CONSTANT_BUFFER_DATA_PLACEMENT_ALIGNMENT);
-	m_device->CreateConstantBufferView(&desc, lightsCpu);
+	EngineCore::GetDevice()->CreateConstantBufferView(&desc, lightsCpu);
 	m_lightsGpu = descriptorAllocator->GetDynamicGpu(frameIndex, lightsSlot);
+
+	// 렌더 큐 사전 정렬
+	std::sort(m_renderQueue.begin(), m_renderQueue.end(), [](const auto& a, const auto& b) { return a.sortKey < b.sortKey; });
 }
 
 // 렌더링 
-void RenderSystem::RenderFrame(_In_ ID3D12GraphicsCommandList* cmd, _In_ UploadContext* uploadContext)
+void RenderSystem::RenderFrame(ID3D12GraphicsCommandList* cmd)
 {
-	// Bind Common RootCBV
-	cmd->SetGraphicsRootConstantBufferView(0, m_cameraBuf.gpuVA);
-	cmd->SetGraphicsRootDescriptorTable(2, m_lightsGpu);
+	DescriptorAllocator* descriptorAllocator = EngineCore::GetDescriptorAllocator();
+	ID3D12DescriptorHeap* ppHeaps[] = { descriptorAllocator->GetCbvSrvUavHeap(), descriptorAllocator->GetSamplerHeap(0) };
+	cmd->SetDescriptorHeaps(_countof(ppHeaps), ppHeaps);
 
-	// PSO 별로 Draw Command 실행
-	for (int i = 0; i < m_psoList->Count(); ++i) 
+	uint16_t currentRSIndex = 0xFFFF;
+	uint16_t currentPSOIndex = 0xFFFF;
+	for (const auto& entry : m_renderQueue)
 	{
-		auto* pso = m_psoList->Get(i);
-		auto& bucket = m_buckets[i];
-		if (!pso || bucket.renderItems.empty()) continue;
-		cmd->SetPipelineState(pso);
-		for (auto& item : bucket.renderItems)
+		uint16_t nextPSOIndex = entry.psoIndex;
+		// PSO 교체 확인
+		if (currentPSOIndex != nextPSOIndex)
 		{
-			// Object CB 세팅
-			ObjectConstants objConsts{
-				.materialIndex = item.materialIndex
-			};
+			auto pipelineData = m_psoList->Get(nextPSOIndex);
 
-			// row-major -> column-major 변환
-			XMMATRIX worldMatrix = XMLoadFloat4x4(&item.worldMatrix);
-			XMStoreFloat4x4(&objConsts.worldMatrix, XMMatrixTranspose(worldMatrix));
-			XMStoreFloat4x4(&objConsts.worldInvMatrix, XMMatrixInverse(nullptr, worldMatrix));
-			
-			BufferHandle cbHandle;
-			uploadContext->UploadContstants(0, &objConsts, sizeof(ObjectConstants), cbHandle);
-			cmd->SetGraphicsRootConstantBufferView(1, cbHandle.gpuVA);
-			DrawItem(cmd, item);
+			// RS 교체 확인
+			uint16_t nextRSIndex = m_psoList->GetRSIndex(nextPSOIndex);
+			if (currentRSIndex != nextRSIndex)
+			{
+				cmd->SetGraphicsRootSignature(pipelineData.rs);
+				currentRSIndex = nextRSIndex;
+
+				// Bind Common Resources
+				cmd->SetGraphicsRootConstantBufferView(0, m_cameraBuf.gpuVA);
+				cmd->SetGraphicsRootConstantBufferView(2, m_lightsBuf.gpuVA);
+				m_materialRegistry->BindDescriptorTable(cmd);
+				m_textureRegistry->BindDescriptorTable(cmd);
+			}
+			cmd->SetPipelineState(pipelineData.pso);
+			currentPSOIndex = nextPSOIndex;
 		}
-		bucket.renderItems.clear();
+		DrawItem(cmd, entry.item); //MeshBuffer는 있는데 vb, ib의 res 객체가 null 인 케이스 존재.
 	}
+	m_renderQueue.clear();
 }
 
 bool RenderSystem::SubmitRenderItem(const RenderItem& item, std::string_view psoName)
 {
 	std::string finalPSO(psoName);
-	if (!m_psoOverrides.empty())
+	if (!m_psoOverrides.empty()) // PSO 덮어쓰기 기능을 사용하는 경우 PSO 변경
 	{
 		auto it = m_psoOverrides.find(finalPSO);
 		if (it != m_psoOverrides.end())
@@ -118,15 +133,16 @@ bool RenderSystem::SubmitRenderItem(const RenderItem& item, std::string_view pso
 			finalPSO = it->second;
 		}
 	}
+	SubmitToQueue(finalPSO, item);
 
-	SubmitToBucket(finalPSO, item);
+	// 추가 PSO 사용 여부 확인
 	if (!m_psoExtensions.empty())
 	{
 		auto range = m_psoExtensions.equal_range(std::string(psoName));
 		for (auto it = range.first; it != range.second; ++it)
 		{
 			const std::string& extPSO = it->second;
-			SubmitToBucket(extPSO, item);
+			SubmitToQueue(extPSO, item);
 		}
 	}
 
@@ -146,18 +162,33 @@ void RenderSystem::RemovePSOExtension(const std::string& from, const std::string
 	}
 }
 
-void RenderSystem::SubmitToBucket(std::string_view psoName, const RenderItem& item)
+bool RenderSystem::SubmitToQueue(std::string_view psoName, const RenderItem& item)
 {
-	int psoIdx = GetPSOIndex(psoName);
-	auto& bucket = m_buckets[psoIdx];
+	int psoIndexInt = m_psoList->IndexOf(psoName);
+	if (psoIndexInt == -1) return false;
+	uint16_t psoIndex = static_cast<uint16_t>(psoIndexInt);
+	uint16_t rsIndex = m_psoList->GetRSIndex(psoIndex);
 
-	for (auto& iter : bucket.renderItems)
-	{
-		if (iter.meshBuffer == item.meshBuffer)
-		{
-			Log::Print("RenderSystem", "SubmitRenderItem : Already Registered Object!!!!");
-			return;
-		}
-	}
-	bucket.renderItems.push_back(item);
+	// TODO : 투명 오브젝트 적용 시 Transparent 필드 추가 및 처리
+	// bool bTransparent = ...;
+
+	// SortKey 생성
+	uint64_t key = GenerateSortKey(rsIndex, psoIndex, item);
+	m_renderQueue.push_back({ key, psoIndex, item });
+	return true;
+}
+
+uint64_t RenderSystem::GenerateSortKey(uint16_t rsIndex, uint16_t psoIndex, const RenderItem& item)
+{
+	uint64_t key = 0;
+
+	// TODO : 투명 오브젝트들의 Key 별도 처리
+	//if (bTransparent)
+	//{ ... }
+
+	// RS -> PSO -> Material 정렬
+	key |= ((uint64_t)rsIndex << 48);
+	key |= ((uint64_t)psoIndex << 32);
+	key |= ((uint64_t)item.materialIndex);
+	return key;
 }

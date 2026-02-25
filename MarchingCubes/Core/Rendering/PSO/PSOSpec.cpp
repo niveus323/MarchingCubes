@@ -1,22 +1,9 @@
 #include "pch.h"
 #include "PSOSpec.h"
-#include <fstream>
+#include "Core/Utils/FileUtils.h"
 #include <stdexcept>
 #include <algorithm>
 #include <unordered_map>
-#include <nlohmann/json.hpp>
-using json = nlohmann::json;
-
-// -------- JSON helpers --------
-static std::optional<std::string> jopt_str(const json& j, const char* k) {
-    auto it = j.find(k); if (it != j.end() && it->is_string()) return it->get<std::string>(); return std::nullopt;
-}
-static std::optional<bool> jopt_bool(const json& j, const char* k) {
-    auto it = j.find(k); if (it != j.end() && it->is_boolean()) return it->get<bool>(); return std::nullopt;
-}
-static std::optional<int> jopt_int(const json& j, const char* k) {
-    auto it = j.find(k); if (it != j.end() && it->is_number_integer()) return it->get<int>(); return std::nullopt;
-}
 
 // -------- Merge helpers (child overrides if has value) --------
 static void merge(PSOShaderPaths& out, const PSOShaderPaths& parent, const PSOShaderPathsRaw& child) {
@@ -52,58 +39,69 @@ static void merge(PSODepth& out, const PSODepth& parent, const PSODepthRaw& chil
 }
 
 // -------- Parse a single raw item --------
-static PSOSpecRaw parse_raw(const json& jp, int schema)
+static PSOSpecRaw parse_raw(const nlohmann::json& jp, int schema)
 {
     PSOSpecRaw s; s.schemaVersion = schema;
     s.id = jp.at("id").get<std::string>();
-    s.order = jopt_int(jp, "order");
-    s.inherits = jopt_str(jp, "inherits");
+    s.order = FileUtils::jopt_int(jp, "order");
+    s.inherits = FileUtils::jopt_str(jp, "inherits");
+    s.rootsignature = FileUtils::jopt_str(jp, "rootSignature");
 
-    if (jp.contains("shaders")) {
+    if (jp.contains("shaders")) 
+    {
         const auto& js = jp["shaders"];
-        s.shaders.vs = jopt_str(js, "vs");
-        s.shaders.ps = jopt_str(js, "ps");
-        s.shaders.ds = jopt_str(js, "ds");
-        s.shaders.hs = jopt_str(js, "hs");
-        s.shaders.gs = jopt_str(js, "gs");
+        s.shaders.vs = FileUtils::jopt_str(js, "vs");
+        s.shaders.ps = FileUtils::jopt_str(js, "ps");
+        s.shaders.ds = FileUtils::jopt_str(js, "ds");
+        s.shaders.hs = FileUtils::jopt_str(js, "hs");
+        s.shaders.gs = FileUtils::jopt_str(js, "gs");
     }
-    if (jp.contains("rt")) {
-        const auto& jr = jp["rt"];
-        s.rt.format = jopt_str(jr, "format");
-        s.rt.dsv = jopt_str(jr, "dsv");
-        s.rt.msaa = jopt_int(jr, "msaa");
-        s.rt.depthOnly = jopt_bool(jr, "depthOnly");
+    
+    if (jp.contains("renderTarget")) 
+    {
+        const auto& jr = jp["renderTarget"];
+        s.rt.format = FileUtils::jopt_str(jr, "format");
+        s.rt.dsv = FileUtils::jopt_str(jr, "dsv");
+        s.rt.msaa = FileUtils::jopt_int(jr, "msaa");
+        s.rt.depthOnly = FileUtils::jopt_bool(jr, "depthOnly");
     }
-    if (jp.contains("raster")) {
+    
+    if (jp.contains("raster")) 
+    {
         const auto& jr = jp["raster"];
-        s.raster.fill = jopt_str(jr, "fill");
-        s.raster.cull = jopt_str(jr, "cull");
-        s.raster.frontCCW = jopt_bool(jr, "frontCCW");
+        s.raster.fill = FileUtils::jopt_str(jr, "fill");
+        s.raster.cull = FileUtils::jopt_str(jr, "cull");
+        s.raster.frontCCW = FileUtils::jopt_bool(jr, "frontCCW");
     }
-    if (jp.contains("blend")) {
+    
+    if (jp.contains("blend")) 
+    {
         const auto& jb = jp["blend"];
-        s.blend.alpha = jopt_bool(jb, "alpha");
+        s.blend.alpha = FileUtils::jopt_bool(jb, "alpha");
     }
-    if (jp.contains("depth")) {
+
+    if (jp.contains("depth")) 
+    {
         const auto& jd = jp["depth"];
-        s.depth.enable = jopt_bool(jd, "enable");
-        s.depth.write = jopt_bool(jd, "write");
-        s.depth.func = jopt_str(jd, "func");
+        s.depth.enable = FileUtils::jopt_bool(jd, "enable");
+        s.depth.write = FileUtils::jopt_bool(jd, "write");
+        s.depth.func = FileUtils::jopt_str(jd, "func");
     }
-    s.topology = jopt_str(jp, "topology");
+    s.topology = FileUtils::jopt_str(jp, "topology");
     return s;
 }
 
 // -------- Resolve inheritance (DFS with cycle detect) --------
 enum class Visit { Not, Visiting, Done };
 
-static PSOSpec resolve_one(
+static PSOSpec ResolvePSOSpec(
     const std::string& id,
     const std::unordered_map<std::string, PSOSpecRaw>& raws,
     std::unordered_map<std::string, Visit>& state,
     std::unordered_map<std::string, PSOSpec>& memo)
 {
-    if (auto it = memo.find(id); it != memo.end()) return it->second;
+    if (auto it = memo.find(id); it != memo.end()) 
+        return it->second;
 
     auto itR = raws.find(id);
     if (itR == raws.end()) throw std::runtime_error("Unknown PSO id in inheritance: " + id);
@@ -120,14 +118,16 @@ static PSOSpec resolve_one(
     parent.id = id;
     parent.order = 0;
     parent.shaders = {};
+    parent.rootSignature = {};
     parent.rt = {};
     parent.raster = {};
     parent.blend = {};
     parent.depth = {};
     parent.topology = "triangle";
 
-    if (raw.inherits && !raw.inherits->empty()) {
-        parent = resolve_one(*raw.inherits, raws, state, memo);
+    if (raw.inherits && !raw.inherits->empty()) 
+    {
+        parent = ResolvePSOSpec(*raw.inherits, raws, state, memo);
     }
 
     // merge child onto parent
@@ -135,6 +135,10 @@ static PSOSpec resolve_one(
     res.schemaVersion = raw.schemaVersion;
     res.id = raw.id;
     if (raw.order) res.order = *raw.order;
+
+    //기존에 쓰던 rootSignature가 명시되어 있지 않고 상속받을 rootSignature가 명시되어 있는 경우 이를 채용
+    if (raw.rootsignature) 
+        res.rootSignature = *raw.rootsignature; 
 
     merge(res.shaders, parent.shaders, raw.shaders);
     merge(res.rt, parent.rt, raw.rt);
@@ -148,75 +152,163 @@ static PSOSpec resolve_one(
     return res;
 }
 
-std::vector<PSOSpec> LoadPSOJsonResolved(LPCWSTR path, int* outSchema)
+std::vector<PSOSpec> LoadPSOJsonResolved(_In_ nlohmann::json& root, int schema)
 {
-    FILE* fp = nullptr;
-    errno_t err = _wfopen_s(&fp, path, L"rb");
-    if (err != 0 || fp == nullptr)
-    {
-        throw std::runtime_error("Cannot open: " + UTF16ToUTF8(path));
-    }
-    if (fseek(fp, 0, SEEK_END) != 0)
-    {
-        fclose(fp);
-        throw std::runtime_error("fseek failed");
-    }
-    long size = ftell(fp);
-    if (size < 0)
-    {
-        fclose(fp);
-        throw std::runtime_error("ftell failed");
-    }
-
-    if (fseek(fp, 0, SEEK_SET) != 0)
-    {
-        fclose(fp);
-        throw std::runtime_error("fseek rewind failed");
-    }
-
-    std::string buffer;
-    buffer.resize(static_cast<size_t>(size));
-
-    if (size > 0)
-    {
-        size_t readCount = fread(buffer.data(), 1, buffer.size(), fp);
-        if (readCount != buffer.size())
-        {
-            fclose(fp);
-            throw std::runtime_error("fread failed (partial read)");
-        }
-    }
-
-    fclose(fp);
-
-    json root = json::parse(buffer);
-
-    int schema = root.value("schema", 1);
-    if (outSchema) *outSchema = schema;
-
     // load raws
     std::unordered_map<std::string, PSOSpecRaw> raws;
-    for (const auto& jp : root.at("pso")) {
+    for (const auto& jp : root.at("pso")) 
+    {
         PSOSpecRaw r = parse_raw(jp, schema);
         raws[r.id] = std::move(r);
     }
 
-    // resolve all
+    // resolve
     std::vector<PSOSpec> out;
     out.reserve(raws.size());
     std::unordered_map<std::string, Visit> state;
     std::unordered_map<std::string, PSOSpec> memo;
 
     for (auto& kv : raws) state[kv.first] = Visit::Not;
-    for (auto& kv : raws) {
+    for (auto& kv : raws) 
+    {
         if (state[kv.first] == Visit::Done) continue;
-        out.push_back(resolve_one(kv.first, raws, state, memo));
+        out.push_back(ResolvePSOSpec(kv.first, raws, state, memo));
     }
 
     // order sort
     std::sort(out.begin(), out.end(), [](const PSOSpec& a, const PSOSpec& b) {
         if (a.order != b.order) return a.order < b.order;
         return a.id < b.id;
-        });
+    });
+
     return out;
+}
+
+static ERootParamType ParseRootParamType(const std::string& s) 
+{
+    if (s == "Constant") return ERootParamType::Constants;
+    if (s == "CBV") return ERootParamType::CBV;
+    if (s == "SRV") return ERootParamType::SRV;
+    if (s == "UAV") return ERootParamType::UAV;
+    if (s == "Table") return ERootParamType::Table;
+    return ERootParamType::Unknown;
+}
+
+static RootParamSpec ParseRootParam(const nlohmann::json& j) 
+{
+    RootParamSpec spec;
+    spec.type = ParseRootParamType(j.value("type", ""));
+    spec.baseRegister = j.value("register", 0);
+    spec.registerSpace = j.value("space", 0);
+    spec.flags = j.value("flgas", 0);
+
+    if (spec.type == ERootParamType::Constants) 
+    {
+        spec.numConstants = j.value("num32Bit", 0);
+    }
+    else if (spec.type == ERootParamType::Table) 
+    {
+        if (j.contains("ranges")) 
+        {
+            for (const auto& r : j["ranges"]) 
+            {
+                DescriptorRangeSpec range;
+                range.type = ParseRootParamType(r.value("type", ""));
+                range.baseRegister = r.value("register", 0);
+                range.registerSpace = r.value("space", 0);
+                range.count = r.value("count", 1);
+                range.flags = r.value("flags", "None");
+                spec.ranges.push_back(range);
+            }
+        }
+    }
+    return spec;
+}
+
+static RootSignatureSpecRaw ParseRootSigRaw(const nlohmann::json& j) 
+{
+    RootSignatureSpecRaw raw;
+    raw.id = j.value("id", "Unknown");
+    if (j.contains("inherits")) raw.inherits = j["inherits"];
+
+    if (j.contains("params")) 
+    {
+        for (const auto& p : j["params"]) 
+        {
+            raw.params.push_back(ParseRootParam(p));
+        }
+    }
+    return raw;
+}
+
+static RootSignatureSpec ResolveRSSpec(const std::string& id,
+    const std::unordered_map<std::string, RootSignatureSpecRaw>& raws,
+    std::unordered_map<std::string, RootSignatureSpec>& memo,
+    std::vector<std::string>& callStack)
+{
+    if (memo.count(id)) return memo[id];
+
+    // 순환 참조 방지
+    for (const auto& s : callStack) 
+    {
+        if (s == id) throw std::runtime_error("Circular inheritance detected in RootSignatures: " + id);
+    }
+    callStack.push_back(id);
+
+    auto it = raws.find(id);
+    if (it == raws.end()) throw std::runtime_error("RootSignature ID not found: " + id);
+    const auto& raw = it->second;
+
+    RootSignatureSpec res;
+    res.id = id;
+
+    if (raw.inherits) 
+    {
+        RootSignatureSpec parent = ResolveRSSpec(*raw.inherits, raws, memo, callStack);
+        res.params = parent.params;
+    }
+    res.params.insert(res.params.end(), raw.params.begin(), raw.params.end());
+
+    memo[id] = res;
+    callStack.pop_back();
+    return res;
+}
+
+std::vector<RootSignatureSpec> LoadRSJsonResolved(_In_ nlohmann::json& root, int schema)
+{
+    // Load Raw RootSigs
+    std::unordered_map<std::string, RootSignatureSpecRaw> rsRaws;
+    if (root.contains("rootSignatures"))
+    {
+        for (const auto& item : root["rootSignatures"])
+        {
+            RootSignatureSpecRaw raw = ParseRootSigRaw(item);
+            rsRaws[raw.id] = std::move(raw);
+        }
+    }
+
+    // Resolve RootSigs
+    std::vector<RootSignatureSpec> out;
+    std::unordered_map<std::string, RootSignatureSpec> rsMemo;
+    std::vector<std::string> rsStack;
+    for (const auto& [id, raw] : rsRaws) out.push_back(ResolveRSSpec(id, rsRaws, rsMemo, rsStack));
+
+    return out;
+}
+
+PipelineBundle LoadPipelineBundle(LPCWSTR path)
+{
+    nlohmann::json root;
+    std::string pathStr = StringUtils::ToString(path);
+    if (!FileUtils::ReadJSON(pathStr, root))
+    {
+        throw std::runtime_error("Cannot open or parse JSON file: " + pathStr);
+    }
+
+    int schemaVersion = root.value("schema", 1);
+    return PipelineBundle{
+        .schemaVersion = schemaVersion,
+        .rsSpecs = LoadRSJsonResolved(root, schemaVersion),
+        .psoSpecs = LoadPSOJsonResolved(root, schemaVersion)
+    };
 }

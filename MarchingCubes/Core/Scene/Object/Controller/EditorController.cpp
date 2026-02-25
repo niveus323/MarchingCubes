@@ -5,15 +5,14 @@
 #include "Core/Scene/Scene.h"
 #include "Core/Scene/Object/Pawn.h"
 #include "Core/UI/Builder/UIBuilder.h"
+#include "Core/Scene/Component/MeshComponent.h"
+#include "Core/Math/PhysicsHelper.h"
+#include "Core/Scene/Component/CameraComponent.h"
 
 BEGIN_REFLECTION(EditorController, Controller)
     REFLECT_PROPERTY(m_cameraSpeed, EPropertyType::Float)
     REFLECT_PROPERTY(m_mouseSensitivity, EPropertyType::Float)
 END_REFLECTION()
-
-EditorController::EditorController(Scene* scene) : Controller(scene)
-{
-}
 
 void EditorController::Update(float deltaTime)
 {
@@ -38,19 +37,31 @@ void EditorController::SetTool(std::shared_ptr<IEditorTool> newTool)
     if (m_activeTool) m_activeTool->OnActivated(this);
 }
 
+void EditorController::SelectObject(GameObject* obj)
+{
+    if (m_selectedObject == obj) return;
+
+    m_selectedObject = obj;
+    if(m_activeTool) m_activeTool->OnSelectionUpdated(obj);
+    if (m_selectionCallback) m_selectionCallback(m_selectedObject);
+}
+
 void EditorController::ProcessInput(float deltaTime)
 {
     auto input = EngineCore::GetInputState();
-    
+
+    bool bInputConsumed = false;
+    if (m_activeTool)
+    {
+        bInputConsumed = m_activeTool->ProcessInput(input, deltaTime);
+    }
+
+    if (bInputConsumed) return;
+
     if (input->IsPressed(ActionKey::RightClick))
     {
         UpdateCameraMovement(deltaTime);
         RotateCamera(deltaTime);
-    }
-
-    if (m_activeTool)
-    {
-        m_activeTool->ProcessInput(input, deltaTime);
     }
 }
 
@@ -88,12 +99,11 @@ void EditorController::UpdateCameraMovement(float deltaTime)
 
 void EditorController::RotateCamera(float deltaTime)
 {
-    auto input = EngineCore::GetInputState();
-    auto* camera = m_scene->GetMainCamera();
-    if (!camera || !input) return;
-
-    AddYawInput(input->GetAxisValue(ActionKey::MouseX));
-    AddPitchInput(input->GetAxisValue(ActionKey::MouseY));    
+    if (auto input = EngineCore::GetInputState())
+    {
+        AddYawInput(input->GetAxisValue(ActionKey::MouseX));
+        AddPitchInput(input->GetAxisValue(ActionKey::MouseY));
+    }
 }
 
 void EditorController::AddYawInput(float val)

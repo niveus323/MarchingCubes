@@ -10,7 +10,6 @@ struct Vertex
 	DirectX::XMFLOAT3 normal{0.0f, 0.0f, 1.0f};
 	DirectX::XMFLOAT4 tangent{ 1.0f, 0.0f, 0.0f, 1.0f };
 	DirectX::XMFLOAT2 texCoord{0.0f, 0.0f};
-	DirectX::XMFLOAT4 color{1.0f, 1.0f, 1.0f, 1.0f};
 };
 
 struct GeometryData
@@ -25,14 +24,7 @@ struct MeshSubmesh
 	uint32_t indexCount = 0;
 	uint32_t indexOffset = 0;
 	uint32_t baseVertexLocation = 0;
-	uint32_t materialIndex = 0;
-};
-
-struct Transform
-{
-	DirectX::XMFLOAT3 position{ 0.0f, 0.0f, 0.0f };
-	DirectX::XMFLOAT3 rotation{ 0.0f, 0.0f, 0.0f };
-	DirectX::XMFLOAT3 scale{ 1.0f, 1.0f, 1.0f };
+	uint32_t materialslot = 0;
 };
 
 static uint32_t kMaxLights = 256u;
@@ -42,8 +34,19 @@ struct LightBlobView
 	uint32_t size;
 };
 
-struct MaterialInstance
+enum class EBindingType
 {
-	uint32_t index = 0;
-	std::string psoName = "Filled";
+	CBV, // Constant Buffer View
+	SRV, // Shader Resource View (Texture/Buffer)
+	UAV  // Unordered Access View
+};
+
+struct ShaderBinding
+{
+	EBindingType type;
+	uint32_t rootParameterIndex;
+	union {
+		D3D12_GPU_VIRTUAL_ADDRESS gpuAddress;
+		D3D12_GPU_DESCRIPTOR_HANDLE gpuDescriptorHandle;
+	};
 };

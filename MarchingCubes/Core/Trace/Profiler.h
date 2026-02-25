@@ -38,7 +38,7 @@ struct ProfilerSnapshot
 	uint64_t timestamp = 0;
 	std::unordered_map<std::string, Metric> metrics;
 	// Debugging Fields
-	std::vector<BufferPoolInfo> pools;
+	std::vector<MemoryInfo> pools;
 	std::vector<DedicatedBufferInfo> dedicatedBuffers;
 };
 
@@ -57,8 +57,8 @@ public:
 	void SetMetric(const std::string& name, const MetricValue& v);   // set latest value
 	void PushHistogram(const std::string& name, double sample);        // append for histogram/series
 
-	// For larger/structured data (buffer pools), set via this API:
-	void SetBufferPools(const std::vector<BufferPoolInfo>& pools);
+	// For larger/structured data (owner pools), set via this API:
+	void SetBufferPools(const std::vector<MemoryInfo>& pools);
 	void SetDedicatedBuffers(const std::vector<DedicatedBufferInfo>& buffers);
 
 	// Called once per frame on update thread: captures current state into a write snapshot and swaps
@@ -75,7 +75,7 @@ private:
 	std::mutex m_writeMutex;
 	std::unordered_map<std::string, Metric> m_metrics;
 
-	std::vector<BufferPoolInfo> m_currentPools;
+	std::vector<MemoryInfo> m_currentPools;
 	std::vector<DedicatedBufferInfo> m_dedicatedBuffers;
 
 	// double-buffered snapshots (swap via atomic index)

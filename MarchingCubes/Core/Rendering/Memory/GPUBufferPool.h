@@ -11,6 +11,13 @@ struct RetiredBlock
 	RetiredBlock(BufferBlock b, uint64_t f) : offset(b.offset), size(b.size), fence(f) {}
 };
 
+/* [GPUBufferPool]
+* - LifeTime : GpuAllocator Load -> GpuAllocator UnLoad (Engine Load -> Engine UnLoad)
+* - OwnerShip : GpuAllocator
+* - Access : GpuAllocator::Alloc, GpuAllocator::FreeLater
+* - Responsibility :
+*	- Dynamic Mesh Memory Management : Dynamic Mesh의 VB/IB를 서브할당 및 관리
+*/
 class GPUBufferPool
 {
 public:
@@ -24,6 +31,7 @@ public:
 	uint64_t GetCapacity() const { return m_capacity; }
 	std::vector<BufferBlock> GetFreeBlocks() const { return m_free; }
 	std::vector<BufferBlock> GetAllocatedBlocks() const { return m_allocated; }
+	MemoryInfo GetPoolInfo(const std::string& name) const;
 private:
 	void MergeFree();
 

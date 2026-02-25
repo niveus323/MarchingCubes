@@ -2,7 +2,7 @@
 class DescriptorRing
 {
 public:
-    DescriptorRing(ID3D12Device* device, uint32_t ringCount, uint32_t descriptorsPerFrame, uint32_t staticCount);
+    DescriptorRing(uint32_t ringCount, uint32_t descriptorsPerFrame, uint32_t staticCount);
 
     // µ¿Àû GPU Descriptor Handle À§Ä¡ ÀÎµ¦½Ì
     D3D12_GPU_DESCRIPTOR_HANDLE GpuAt(uint32_t frameIdx, uint32_t slot) const;

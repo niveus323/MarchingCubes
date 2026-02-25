@@ -103,7 +103,7 @@ void FBXImporter::ProcessScene(fbxsdk::FbxScene* scene, ImportSceneData& outData
 		AppendFbxMeshToGeometry(mesh, matPtrToIndex, outData.geometry, &outData.submeshes);
 	}
 
-	if (options.applyUnitConversion && options.uniformScale != 1.0f)
+	if (options.bUnitConversion && options.uniformScale != 1.0f)
 	{
 		ApplyUniformScale(outData.geometry, options.uniformScale);
 	}
@@ -213,7 +213,7 @@ void FBXImporter::AppendFbxMeshToGeometry(FbxMesh* fbxMesh, const std::unordered
 	auto flushSubmesh = [&]() {
 		if (outSubmeshes && currentSubmesh.indexCount > 0)
 		{
-			currentSubmesh.materialIndex = currentGlobalMatIdx;
+			currentSubmesh.materialslot = currentGlobalMatIdx;
 			outSubmeshes->push_back(currentSubmesh);
 		}
 	};

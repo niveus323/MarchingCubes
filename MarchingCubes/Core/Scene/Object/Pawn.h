@@ -3,8 +3,8 @@
 
 class Pawn : public SceneObject
 {
+	REFLECT_GENERATED_BODY(Pawn)
 public:
-	Pawn(Scene* scene) : SceneObject(scene) {}
 	virtual ~Pawn() = default;
 
 	virtual void OnPossess() {}
@@ -13,10 +13,6 @@ public:
 	virtual void AddMovementInput(DirectX::XMVECTOR dir, float scale);
 	virtual void AddControllerYawInput(float val);
 	virtual void AddControllerPitchInput(float val);
-
-protected:
-	
-private:
 
 };
 

@@ -1,7 +1,7 @@
 ﻿#include "pch.h"
 #include "GPUBufferPool.h"
 #include <algorithm>
-#include "StaticBufferRegistry.h"
+#include <numeric>
 
 GPUBufferPool::GPUBufferPool(ID3D12Device* device, uint64_t totalSize, const wchar_t* debugName)
 {
@@ -30,6 +30,8 @@ GPUBufferPool::~GPUBufferPool()
 bool GPUBufferPool::SubAlloc(ID3D12Device* device, uint64_t bytes, uint64_t align, BufferHandle& out, std::string_view owner)
 {
 	bytes = AlignUp64(bytes, align);
+	if (bytes > m_capacity) return false;
+
 	for (size_t i = 0; i < m_free.size(); ++i)
 	{
 		const uint64_t blockOffset = m_free[i].offset;
@@ -44,8 +46,9 @@ bool GPUBufferPool::SubAlloc(ID3D12Device* device, uint64_t bytes, uint64_t alig
 		out.res = m_buffer.Get();
 		out.offset = offset;
 		out.size = bytes;
+		out.gpuVA = m_buffer->GetGPUVirtualAddress() + offset;
+		out.cpuPtr = nullptr; // Default Buffer는 Map이 불가
 		out.retireFence = 0;
-
 		m_allocated.push_back(BufferBlock(offset, bytes, owner));
 
 		// free 앞 공간 재설정
@@ -123,6 +126,21 @@ void GPUBufferPool::Reclaim(uint64_t completedFence)
 	}
 
 	if(bErased)	MergeFree();
+}
+
+MemoryInfo GPUBufferPool::GetPoolInfo(const std::string& name) const
+{
+	auto allocated = GetAllocatedBlocks();
+	uint64_t totalUsed = std::accumulate(allocated.begin(), allocated.end(), 0ULL,
+		[](uint64_t sum, const BufferBlock& b) { return sum + b.size; });
+
+	return MemoryInfo{
+		.name = name,
+		.capacity = GetCapacity(),
+		.used = totalUsed,
+		.free = GetFreeBlocks(),
+		.allocated = allocated,
+	};
 }
 
 void GPUBufferPool::MergeFree()

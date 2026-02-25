@@ -1,86 +1,78 @@
 #include "pch.h"
+#include "Core/DataStructures/Data.h"
+#include "Core/Scene/Class/Entity.h"
+#include "Core/Engine/EngineCore.h"
 #include "UploadContext.h"
 #include "Memory/GpuAllocator.h"
-#include "Memory/StaticBufferRegistry.h"
 #include <unordered_map>
-
-UploadContext::UploadContext(ID3D12Device* device, GpuAllocator* allocator, StaticBufferRegistry* staticBufferRegistry, DescriptorAllocator* descriptorAllocator) :
-	m_device(device),
-	m_allocator(allocator),
-	m_staticBufferRegistry(staticBufferRegistry),
-	m_descriptorAllocator(descriptorAllocator)
-{
-}
 
 // 업로드 제출
 void UploadContext::Execute(ID3D12GraphicsCommandList* cmd)
 {
-	assert(m_device && "UploadContext::Execute : device is Invalid!!!!");
-	assert(m_allocator && "UploadContext::Execute : allocator is Invalid!!!!");
-	std::unordered_map<ID3D12Resource*, D3D12_RESOURCE_STATES> targets;
-	targets.reserve(m_pendingUploads.size());
-	auto recordTarget = [](std::unordered_map<ID3D12Resource*, D3D12_RESOURCE_STATES>& targets, ID3D12Resource* res, D3D12_RESOURCE_STATES back) {
-		if (!res) return;
-		auto iter = targets.find(res);
-		if (iter == targets.end()) targets.emplace(res, back);
-		};
-
-	// 1단계 : COPY_DEST로 상태 전이
+	auto device = EngineCore::GetDevice();
+	auto gpuAllocator = EngineCore::GetGpuAllocator();
+	assert(device && "UploadContext::Execute : device is Invalid!!!!");
+	assert(gpuAllocator && "UploadContext::Execute : allocator is Invalid!!!!");
+	
+	// 1단계 : COPY_DEST로 상태 전이 -> 암시적 상태 전이가 이루어지므로 불필요
+	/*std::vector<D3D12_RESOURCE_BARRIER> barriers;
+	barriers.reserve(m_pendingUploads.size());
 	for (auto& pending : m_pendingUploads)
 	{
 		if (pending.state != PendingUpload::UploadState::Enqueued) continue;
-		if (pending.vbSize && pending.vbHandle.res) recordTarget(targets, pending.vbHandle.res, D3D12_RESOURCE_STATE_VERTEX_AND_CONSTANT_BUFFER);
-		if (pending.ibSize && pending.ibHandle.res) recordTarget(targets, pending.ibHandle.res, D3D12_RESOURCE_STATE_INDEX_BUFFER);
+		barriers.push_back(CD3DX12_RESOURCE_BARRIER::Transition(pending.dstHandle.res, pending.afterState, D3D12_RESOURCE_STATE_COPY_DEST));
 	}
-
-	if (!targets.empty())
-	{
-		std::vector<D3D12_RESOURCE_BARRIER> barriers;
-		barriers.reserve(targets.size());
-		for (auto& [res, back] : targets)
-		{
-			barriers.push_back(CD3DX12_RESOURCE_BARRIER::Transition(res, back, D3D12_RESOURCE_STATE_COPY_DEST));
-		}
-		cmd->ResourceBarrier((uint32_t)barriers.size(), barriers.data());
-	}
+	cmd->ResourceBarrier((uint32_t)barriers.size(), barriers.data());*/
 
 	// 2단계 : Upload -> Default 복사
 	for (auto& pending : m_pendingUploads)
 	{
 		if (pending.state != PendingUpload::UploadState::Enqueued) continue;
 
-		const BufferHandle& staging = pending.stagingHandle;
-		// vb
-		if (pending.vbSize && pending.vbHandle.res)
+		if (pending.size && pending.dstHandle.res != nullptr)
 		{
-			cmd->CopyBufferRegion(pending.vbHandle.res, pending.vbHandle.offset, staging.res, staging.offset, pending.vbSize);
+			const BufferHandle& staging = pending.srcHandle;
+			cmd->CopyBufferRegion(pending.dstHandle.res, pending.dstHandle.offset, staging.res, staging.offset, pending.size);
+			pending.state = PendingUpload::UploadState::Recorded;
 		}
-		// ib (dst offset = dstIB.offset + vbAligned)
-		if (pending.ibSize && pending.ibHandle.res)
-		{
-			const uint64_t ibOffset = staging.offset + pending.vbAligned;
-			cmd->CopyBufferRegion(pending.ibHandle.res, pending.ibHandle.offset, staging.res, ibOffset, pending.ibSize);
-		}
-		pending.state = PendingUpload::UploadState::Recorded;
 	}
 
 	// 3단계 : 상태 되돌리기
-	if (!targets.empty())
+	std::vector<D3D12_RESOURCE_BARRIER> restoreBarriers;
+	restoreBarriers.reserve(m_pendingUploads.size());
+	std::vector<ID3D12Resource*> processedResources;
+	processedResources.reserve(m_pendingUploads.size());
+	
+	for (auto& pending : m_pendingUploads)
 	{
-		std::vector<D3D12_RESOURCE_BARRIER> barriers;
-		barriers.reserve(targets.size());
-		for (auto& [res, back] : targets)
+		if (pending.state != PendingUpload::UploadState::Recorded) continue;
+		if (pending.dstHandle.res == nullptr) continue;
+		bool isDuplicate = false;
+		for (const auto& res : processedResources)
 		{
-			barriers.push_back(CD3DX12_RESOURCE_BARRIER::Transition(res, D3D12_RESOURCE_STATE_COPY_DEST, back));
+			if (res == pending.dstHandle.res)
+			{
+				isDuplicate = true;
+				break;
+			}
 		}
-		cmd->ResourceBarrier((uint32_t)barriers.size(), barriers.data());
+
+		if (!isDuplicate)
+		{
+			restoreBarriers.push_back(CD3DX12_RESOURCE_BARRIER::Transition(pending.dstHandle.res, D3D12_RESOURCE_STATE_COPY_DEST, pending.afterState));
+			processedResources.push_back(pending.dstHandle.res);
+		}
 	}
+	if(!restoreBarriers.empty())
+		cmd->ResourceBarrier((uint32_t)restoreBarriers.size(), restoreBarriers.data());
+
 }
 
 // GPU 명령 작업이 끝난 것들은 침범할 수 없도록 inflight 처리
 void UploadContext::TrackPendingAllocations(uint64_t submitFenceValue)
 {
-	m_allocator->TagFence(submitFenceValue);
+	auto gpuAllocator = EngineCore::GetGpuAllocator();
+	assert(gpuAllocator && "TrackPendingAllocations : Invalid GpuAllocator");
 
 	for (auto& pu : m_pendingUploads)
 	{
@@ -98,7 +90,7 @@ void UploadContext::TrackPendingAllocations(uint64_t submitFenceValue)
 		toFree.swap(m_reclaimed);
 		for (auto& handle : toFree)
 		{
-			m_allocator->FreeLater(handle, submitFenceValue);
+			gpuAllocator->FreeLater(handle, submitFenceValue);
 		}
 	}
 }
@@ -113,7 +105,6 @@ void UploadContext::Reclaim(uint64_t completedFenceValue)
 		}
 	}
 
-	m_allocator->Reclaim(completedFenceValue);
 	m_lastReclaimedFenceValue = completedFenceValue;
 
 	auto it = std::remove_if(m_pendingUploads.begin(), m_pendingUploads.end(), [](const PendingUpload& p) { return p.state == PendingUpload::UploadState::Reclaimed; });
@@ -121,36 +112,49 @@ void UploadContext::Reclaim(uint64_t completedFenceValue)
 		m_pendingUploads.erase(it, m_pendingUploads.end());
 }
 
-// Object CB 업로드
-void UploadContext::UploadObjectConstants(uint32_t frameIndex, GeometryBuffer* buf, const ObjectConstants& cb)
-{
-	if (!buf) return;
-
-	BufferHandle handle{};
-	UploadContstants(frameIndex, &cb, sizeof(ObjectConstants), handle);
-
-	buf->SwapCBHandle(handle);
-	if (handle.res) FreeBufferHandle(handle);
-}
-
 void UploadContext::UploadStructuredBuffer(ID3D12GraphicsCommandList* cmd, const void* srcData, uint64_t byteSize, ID3D12Resource* buffer, uint64_t dstOffset, std::string_view debugName)
 {
 	if (!srcData || !buffer || byteSize == 0) return;
-	assert(m_device && m_allocator && "UploadStructuredBuffer : Invalid state");
+	auto gpuAllocator = EngineCore::GetGpuAllocator();
+	assert(gpuAllocator && "UploadStructuredBuffer : Invalid GpuAllocator");
 
 	BufferHandle staging{};
-	m_allocator->Alloc(m_device, GPUAllocDesc::MakeStagingBufferDesc(byteSize, 4, AllocDesc::LifeTime::LONG, debugName), staging);
-	assert(staging.cpuPtr != 0 && "Allocated Buffer Ptr is Invalid!!!!");
+	gpuAllocator->Alloc(AllocDesc::Ring(byteSize, 4), staging);
+	assert(staging.cpuPtr != nullptr && "Allocated Buffer Ptr is Invalid!!!!");
 	std::memcpy(staging.cpuPtr, srcData, byteSize);
 
 	cmd->CopyBufferRegion(buffer, dstOffset, staging.res, staging.offset, byteSize);
 }
 
-void UploadContext::UploadContstants(uint32_t frameIndex, const void* srcData, uint32_t size, BufferHandle& outHandle)
+void UploadContext::UploadConstants(const void* srcData, uint32_t size, BufferHandle& outHandle)
 {
-	m_allocator->Alloc(m_device, GPUAllocDesc::MakeConstantBufferDesc(size), outHandle);
-	assert(outHandle.cpuPtr && "Handle Ptr is Invalid!!!!");
+	auto gpuAllocator = EngineCore::GetGpuAllocator();
+	assert(gpuAllocator && "UploadConstants : Invalid GpuAllocator");
+
+	gpuAllocator->Alloc(AllocDesc::Ring(size), outHandle);
+	assert(outHandle.cpuPtr != nullptr && "Handle Ptr is Invalid!!!!");
 	memcpy(outHandle.cpuPtr, srcData, size);
+}
+
+// 동적 할당/해제 형태로 두어 업데이트가 필요할 때만 이루어지도록 한다
+void UploadContext::UploadDynamicConstants(const void* srcData, uint32_t size, BufferHandle& outHandle, Entity* owner)
+{
+	auto gpuAllocator = EngineCore::GetGpuAllocator();
+	assert(gpuAllocator && "UploadDynamicConstants : Invalid GpuAllocator");
+
+	// 기존 Default 버퍼가 있다면 해제 예약을 걸어 둔다.(N프레임의 작업 내용을 N+1프레임에 수정하는 Data Hazard를 방지하기 위해 새로 할당)
+	if (outHandle.res != nullptr) FreeBufferHandle(outHandle);
+
+	gpuAllocator->Alloc(AllocDesc::Dynamic(size, owner->GetName(), D3D12_CONSTANT_BUFFER_DATA_PLACEMENT_ALIGNMENT), outHandle);
+	assert(outHandle.res != nullptr);
+
+	BufferHandle staging{};
+	gpuAllocator->Alloc(AllocDesc::Ring(size), staging);
+
+	assert(staging.cpuPtr != nullptr && "Allocated Buffer Ptr is Invalid!!!!");
+	memcpy(staging.cpuPtr, srcData, size);
+
+	PushOrUpdateUpload(outHandle, staging, size, owner);
 }
 
 void UploadContext::UploadTexture(
@@ -161,12 +165,20 @@ void UploadContext::UploadTexture(
 	D3D12_RESOURCE_STATES after,
 	std::string_view debugName)
 {
+	auto gpuAllocator = EngineCore::GetGpuAllocator();
+	assert(gpuAllocator && "UploadTexture : Invalid GpuAllocator");
+
 	const UINT numSubresources = static_cast<UINT>(subResources.size());
 	const UINT64 requiredSize = GetRequiredIntermediateSize(pDestinationResource, 0, numSubresources);
+
 	BufferHandle handle{};
-	m_allocator->Alloc(m_device, GPUAllocDesc::MakeStagingBufferDesc(requiredSize, D3D12_TEXTURE_DATA_PLACEMENT_ALIGNMENT, AllocDesc::LifeTime::LONG, debugName), handle);
+	gpuAllocator->Alloc(AllocDesc::Ring(requiredSize, D3D12_TEXTURE_DATA_PLACEMENT_ALIGNMENT), handle);
 	assert(handle.res != nullptr && "UploadTexture2D : Failed to Allocate!!!!");
-	cmd->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(pDestinationResource, before, D3D12_RESOURCE_STATE_COPY_DEST));
+
+	if (before != D3D12_RESOURCE_STATE_COPY_DEST)
+	{
+		cmd->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(pDestinationResource, before, D3D12_RESOURCE_STATE_COPY_DEST));
+	}
 	UpdateSubresources(cmd, pDestinationResource, handle.res, handle.offset, 0, numSubresources, subResources.data());
 	cmd->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(pDestinationResource, D3D12_RESOURCE_STATE_COPY_DEST, after));
 }
@@ -192,51 +204,30 @@ void UploadContext::ResetCounterUAV(ID3D12GraphicsCommandList* cmd, ID3D12Resour
 
 void UploadContext::UploadGeometry(GeometryBuffer* buffer, const GeometryData& cpuData, std::string_view debugName)
 {
+	auto gpuAllocator = EngineCore::GetGpuAllocator();
+	assert(gpuAllocator && "UploadGeometry : Invalid GpuAllocator");
+
 	const uint64_t vbBytes = cpuData.vertices.size() * sizeof(Vertex);
 	const uint64_t ibBytes = cpuData.indices.size() * sizeof(uint32_t);
-	uint64_t vbAligned = AlignUp64(vbBytes, 4ull); // 4byte 정렬
-	uint64_t ibAligned = AlignUp64(ibBytes, 4ull); // R32_UINT 사용하므로 4bytes 정렬
-	uint64_t totalBytes = vbAligned + ibAligned;
-
-	// Default VB/IB 바인딩되어있는지 확인하고 없으면 할당받는다.
-	EnsureDefaultVB(buffer, vbBytes, debugName);
-	EnsureDefaultIB(buffer, ibBytes, debugName);
-
-	// Stage VB/IB
-	BufferHandle stagingHandle{};
-	m_allocator->Alloc(m_device, GPUAllocDesc::MakeStagingBufferDesc(totalBytes, 4u, AllocDesc::LifeTime::SHORT, debugName), stagingHandle);
-
-	uint8_t* ptr = stagingHandle.cpuPtr;
-	assert(ptr && "Staging Handle Pointer is Invalid !!!!");
-
-	memcpy(ptr, cpuData.vertices.data(), vbBytes);
-	memcpy(ptr + vbAligned, cpuData.indices.data(), ibBytes);
-
-	bool already = false;
-	for (auto& e : m_pendingUploads)
+	
+	if (vbBytes > 0)
 	{
-		// 이미 copy 대기 상태였다면 Upload 버퍼만 교체
-		if (e.state == PendingUpload::UploadState::Enqueued && e.buffer == buffer)
-		{
-			already = true;
-			e.vbHandle = buffer->GetVBHandle();
-			e.ibHandle = buffer->GetIBHandle();
-			e.stagingHandle = stagingHandle;
-			break;
-		}
+		BufferHandle stagingVB{};
+		gpuAllocator->Alloc(AllocDesc::Ring(vbBytes, 4ull), stagingVB);  // 4byte 정렬
+		assert(stagingVB.cpuPtr!=0 && "Staging VB Ptr is Invalid!!!!");
+		memcpy(stagingVB.cpuPtr, cpuData.vertices.data(), vbBytes);
+		
+		PushOrUpdateUpload(buffer->GetVBHandle(), stagingVB, vbBytes, buffer);
 	}
-	if (!already)
+
+	if (ibBytes > 0)
 	{
-		PendingUpload pu{};
-		pu.stagingHandle = stagingHandle;
-		pu.vbHandle = buffer->GetVBHandle();
-		pu.ibHandle = buffer->GetIBHandle();
-		pu.state = PendingUpload::UploadState::Enqueued;
-		pu.vbSize = vbBytes;
-		pu.ibSize = ibBytes;
-		pu.vbAligned = vbAligned;
-		pu.buffer = buffer;
-		m_pendingUploads.push_back(std::move(pu));
+		BufferHandle stagingIB{};
+		gpuAllocator->Alloc(AllocDesc::Ring(ibBytes, 4ull), stagingIB); // R32_UINT 사용하므로 4bytes 정렬
+		assert(stagingIB.cpuPtr != 0 && "Staging IB Ptr is Invalid!!!!");
+		memcpy(stagingIB.cpuPtr, cpuData.indices.data(), ibBytes);
+
+		PushOrUpdateUpload(buffer->GetIBHandle(), stagingIB, ibBytes, buffer);
 	}
 }
 
@@ -254,62 +245,28 @@ void UploadContext::FreeGeometryBuffer(GeometryBuffer& buffer)
 		FreeBufferHandle(ib);
 	}
 
-	BufferHandle cb = buffer.GetCBHandle();
-	if (cb.size > 0 && cb.res != nullptr)
-	{
-		FreeBufferHandle(cb);
-	}
-
 	buffer.ReleaseGPUResources();
 }
 
-void UploadContext::EnsureDefaultVB(GeometryBuffer* buf, uint64_t neededSize, std::string_view debugName)
-{
-	BufferHandle curVB = buf->GetVBHandle();
-	if (curVB.size < neededSize)
-	{
-		BufferHandle handle{};
-		m_allocator->Alloc(m_device, GPUAllocDesc::MakeVertexBufferDesc(neededSize, AllocDesc::LifeTime::LONG, debugName), handle);
-
-		buf->SwapVBHandle(handle);
-		if (handle.res) FreeBufferHandle(handle);
-		return;
-	}
-}
-
-void UploadContext::EnsureDefaultIB(GeometryBuffer* buf, uint64_t neededSize, std::string_view debugName)
-{
-	BufferHandle curIB = buf->GetIBHandle();
-	if (curIB.size < neededSize)
-	{
-		BufferHandle handle{};
-		m_allocator->Alloc(m_device, GPUAllocDesc::MakeIndexBufferDesc(neededSize, AllocDesc::LifeTime::LONG, debugName), handle);
-
-		buf->SwapIBHandle(handle);
-		if (handle.res) FreeBufferHandle(handle);
-	}
-}
-
-void UploadContext::FreeBufferHandle(const BufferHandle& handle)
+void UploadContext::FreeBufferHandle(BufferHandle& handle)
 {
 	for (auto& r : m_reclaimed)
 	{
-		if (r.res == handle.res && r.offset == handle.offset && r.size == handle.size)
-		{
-			return;
-		}
+		if (r.res == handle.res && r.offset == handle.offset && r.size == handle.size) return;
 	}
 	m_reclaimed.push_back(handle);
+	handle = {};
 }
 
 void UploadContext::EnsureZeroUintUpload()
 {
 	if (m_zeroUintUpload) return;
+	auto device = EngineCore::GetDevice();
 
 	auto hpUpload = CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD);
 	auto desc = CD3DX12_RESOURCE_DESC::Buffer(sizeof(uint32_t));
 
-	ThrowIfFailed(m_device->CreateCommittedResource(&hpUpload, D3D12_HEAP_FLAG_NONE, &desc, D3D12_RESOURCE_STATE_GENERIC_READ, nullptr, IID_PPV_ARGS(&m_zeroUintUpload)));
+	ThrowIfFailed(device->CreateCommittedResource(&hpUpload, D3D12_HEAP_FLAG_NONE, &desc, D3D12_RESOURCE_STATE_GENERIC_READ, nullptr, IID_PPV_ARGS(&m_zeroUintUpload)));
 	NAME_D3D12_OBJECT(m_zeroUintUpload);
 
 	// 4바이트 0으로 채워두기
@@ -318,4 +275,40 @@ void UploadContext::EnsureZeroUintUpload()
 	ThrowIfFailed(m_zeroUintUpload->Map(0, &range, &p));
 	*reinterpret_cast<uint32_t*>(p) = 0u;
 	m_zeroUintUpload->Unmap(0, nullptr);
+}
+
+void UploadContext::PushOrUpdateUpload(const BufferHandle& dst, const BufferHandle& src, uint64_t size, void* owner, D3D12_RESOURCE_STATES afterState)
+{
+	auto gpuAllocator = EngineCore::GetGpuAllocator();
+	assert(gpuAllocator && "PushOrUpdateUpload : Invalid GpuAllocator");
+
+	for (auto& pending : m_pendingUploads)
+	{
+		// 아직 기록되지 않은(Enqueued) 요청 중에서, 목적지가 같은 것을 찾음
+		if (pending.state == PendingUpload::UploadState::Enqueued &&
+			pending.dstHandle.res == dst.res &&
+			pending.dstHandle.offset == dst.offset)
+		{
+			// 기존에 대기 중이던 Staging 메모리는 이제 쓸모가 없으므로 반환해야 함 (아직 GPU에 제출되지 않았으므로 Fence=0으로 즉시 회수 가능하거나, 다음 회수 주기까지 대기)
+			gpuAllocator->FreeLater(pending.srcHandle, m_lastReclaimedFenceValue);
+
+			// 새로운 데이터로 교체 (덮어쓰기)
+			pending.srcHandle = src;
+			pending.size = size;
+			pending.owner = owner; // 소유자가 바뀌었을 수도 있으니 갱신
+			pending.afterState = afterState;
+
+			return;
+		}
+	}
+
+	PendingUpload pu{
+		.srcHandle = src,
+		.dstHandle = dst,
+		.state = PendingUpload::UploadState::Enqueued,
+		.size = size,
+		.owner = owner,
+		.afterState = afterState
+	};
+	m_pendingUploads.push_back(std::move(pu));
 }

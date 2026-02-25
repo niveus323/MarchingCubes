@@ -5,7 +5,7 @@ static const int cornerIndexBFromEdge[12] = { 1, 2, 3, 0, 5, 6, 7, 4, 4, 5, 6, 7
 cbuffer GridCB : register(b0)
 {
     uint3 gridCells; 
-    uint _padding0;
+    uint chunkID;
     
     float3 gridOrigin;
     float isoValue;
@@ -25,7 +25,7 @@ struct Vertex
     float3 position;
     float3 normal;
     float4 tangent; // xyz: tangent, w: handedness(+1)
-    int2 id; // 이 정점이 어떤 Edge 사이의 정점인지를 표현. (A 포인트 인덱스 - B 포인트 인덱스) 
+    float2 texcoord;
 }; 
 
 struct Triangle 
@@ -70,9 +70,67 @@ float3 CalculateNormal(int3 coord)
     return (dot(n, n) > 1e-20) ? -normalize(n) : float3(0, 1, 0);
 }
 
+float2 CalculateBoxUV(float3 position, float3 normal)
+{
+    // 텍스처 타일링 스케일 (값이 클수록 텍스처가 촘촘해짐)
+    const float texScale = 0.05f;
+
+    float3 p = position * texScale;
+    float3 absN = abs(normal);
+
+    // 노말의 성분이 가장 큰 축을 기준으로 투영 면 결정
+    if (absN.x > absN.y && absN.x > absN.z)
+    {
+        // X축이 주축 -> 옆면 (YZ 평면 투영)
+        return p.yz;
+    }
+    else if (absN.z > absN.y)
+    {
+        // Z축이 주축 -> 앞/뒷면 (XY 평면 투영)
+        return p.xy;
+    }
+    else
+    {
+        // Y축이 주축 -> 윗면/바닥 (XZ 평면 투영)
+        return p.xz;
+    }
+}
+
+float4 CalculateBoxTangent(float3 normal)
+{
+    float3 absN = abs(normal);
+    float3 tempTangent;
+
+    // UV 생성 로직과 "U 좌표"의 진행 방향을 맞춰야 함
+    if (absN.x > absN.y && absN.x > absN.z)
+    {
+        // X축 주축 (YZ 평면 투영) -> UV가 p.yz 이므로 U는 y축, V는 z축
+        // 따라서 탄젠트(U방향)는 (0, 1, 0) 이어야 함 (혹은 회전 여부에 따라 0,0,1)
+        // 여기서는 일반적인 매핑 기준인 Z축 진행을 가정
+        tempTangent = float3(0.0f, 0.0f, 1.0f);
+    }
+    else if (absN.z > absN.y)
+    {
+        // Z축 주축 (XY 평면 투영) -> UV가 p.xy
+        // U는 x축
+        tempTangent = float3(1.0f, 0.0f, 0.0f);
+    }
+    else
+    {
+        // Y축 주축 (XZ 평면 투영) -> UV가 p.xz
+        // U는 x축
+        tempTangent = float3(1.0f, 0.0f, 0.0f);
+    }
+
+    // Gram-Schmidt 직교화: 노멀과 수직이 되도록 보정
+    // tangent = normalize(temp - normal * dot(temp, normal));
+    return float4(normalize(tempTangent - normal * dot(tempTangent, normal)), 1.0f);
+}
+
 // Edge 보간 정점 생성
 Vertex CreateVertex(int3 coordA, int3 coordB)
 {
+    Vertex v;
     float dA = SampleDensity(coordA);
     float dB = SampleDensity(coordB);
     
@@ -81,49 +139,36 @@ Vertex CreateVertex(int3 coordA, int3 coordB)
  
     float3 posA = float3(coordA + gridOrigin);
     float3 posB = float3(coordB + gridOrigin);
-    float3 position = lerp(posA, posB, saturate(t));
+    v.position = lerp(posA, posB, saturate(t));
     
     float3 nA = CalculateNormal(coordA);
     float3 nB = CalculateNormal(coordB);
-    float3 normal = normalize(lerp(nA, nB, saturate(t)));
+    v.normal = normalize(lerp(nA, nB, saturate(t)));
     
-    float3 up = (abs(normal.y) > 0.999f) ? float3(1.0f, 0.0f, 0.0f) : float3(0.0f, 1.0f, 0.0f);
-    float3 tangent = normalize(cross(up, normal));
+    v.texcoord = CalculateBoxUV(v.position, v.normal);
     
-    // Edge ID
-    int idxA = IndexFromCoord(coordA);
-    int idxB = IndexFromCoord(coordB);
-    
-    Vertex v;
-    v.position = position;
-    v.normal = normal;
-    v.tangent = float4(tangent, 1.0f);
-    v.id = int2(min(idxA, idxB), max(idxA, idxB));
+    v.tangent = CalculateBoxTangent(v.normal);
     
     return v;
 }
 
 [numthreads(8, 8, 8)]
-void MCMainCS(uint3 groupId : SV_GroupID, uint3 groupThreadID : SV_GroupThreadID)
+void MCMainCS(uint3 DTid : SV_DispatchThreadID)
 {   
-    uint3 base = regionCellMin + groupId * 8 + groupThreadID;
-    uint3 limit = min(regionCellMax, gridCells - uint3(1, 1, 1));
-
+    int3 localPos = int3(DTid) + int3(1, 1, 1);
     // 범위 밖이면 return
-    if (any(base >= limit))
-        return;
+    if (any(DTid >= chunkCubes)) return;
     
-    uint3 chunkCoord = base / chunkCubes;
     // 현재 Edge를 원점으로 하는 큐브를 형성
     int3 c[8];
-    c[0] = base + int3(0, 0, 0);
-    c[1] = base + int3(1, 0, 0);
-    c[2] = base + int3(1, 0, 1);
-    c[3] = base + int3(0, 0, 1);
-    c[4] = base + int3(0, 1, 0);
-    c[5] = base + int3(1, 1, 0);
-    c[6] = base + int3(1, 1, 1);
-    c[7] = base + int3(0, 1, 1);
+    c[0] = localPos + int3(0, 0, 0);
+    c[1] = localPos + int3(1, 0, 0);
+    c[2] = localPos + int3(1, 0, 1);
+    c[3] = localPos + int3(0, 0, 1);
+    c[4] = localPos + int3(0, 1, 0);
+    c[5] = localPos + int3(1, 1, 0);
+    c[6] = localPos + int3(1, 1, 1);
+    c[7] = localPos + int3(0, 1, 1);
 
     // Marching Cubes 알고리즘 적용
     int cfg = 0;
@@ -163,7 +208,7 @@ void MCMainCS(uint3 groupId : SV_GroupID, uint3 groupThreadID : SV_GroupThreadID
         tri.vertexA = vC;
         tri.vertexB = vB;
         tri.vertexC = vA;
-        tri.chunkIdx = (chunkCoord.z * numChunkAxis.y + chunkCoord.y) * numChunkAxis.x + chunkCoord.x;
+        tri.chunkIdx = chunkID;
         gTriangles.Append(tri);
     }
 }

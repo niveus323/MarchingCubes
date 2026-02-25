@@ -4,10 +4,11 @@
 
 class LightComponent : public Component
 {
-	REFLECT_GENERATED_BODY()
+	REFLECT_GENERATED_BODY(LightComponent)
 public:
-	LightComponent(GameObject* owner, ELightType type = ELightType::Directional, DirectX::XMFLOAT3 radiance = { 1.0f, 1.0f, 1.0f }, float range = 100.0f, float spotInnerCos = 0.9f);
-	virtual ~LightComponent();
+	virtual void Init() override;
+	virtual void Destroy() override;
+	void Serialize(Serializer& ar);
 
 	Light GetLightInfo() const;
 	DirectX::XMFLOAT3 GetLightDirection() const;

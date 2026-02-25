@@ -33,7 +33,9 @@ namespace
 
 void InspectorPanel::OnRenderUI(IUIBuilder* ui)
 {
-    if (ui->BeginPanel("Inspector"))
+    if (!m_bShowPanel) return;
+
+    if (ui->BeginPanel("Inspector", &m_bShowPanel))
     {
         if (m_target)
         {
@@ -61,13 +63,15 @@ void InspectorPanel::OnRenderUI(IUIBuilder* ui)
 
             for (auto* comp : m_target->GetComponents())
             {
+                // Flags 체크 (굳이 노출하지 않아도 될 디버깅 목적 등의 컴포넌트는 배제)
+                if (comp->HasAnyFlags(EObjectFlags::Invisible)) continue;
+
                 ui->PushID(comp);
-                auto* typeDescriptor = comp->GetType();
-                if (ui->BeginCollapsingHeader(typeDescriptor->GetName().c_str(), true))
+                if (ui->BeginCollapsingHeader(comp->GetName().c_str(), true))
                 {
                     if (ui->BeginTable("ComponentProps", 2))
                     {
-                        RenderComponentProperties(ui, reinterpret_cast<void*>(comp), typeDescriptor);
+                        RenderComponentProperties(ui, reinterpret_cast<void*>(comp), comp->GetType());
                         ui->EndTable();
                     }
                 }
@@ -105,62 +109,92 @@ void InspectorPanel::DrawTypeProperties(IUIBuilder* ui, void* componentPtr, Type
         DrawTypeProperties(ui, componentPtr, typeDesc->GetParent());
     }
 
-    if (!typeDesc->GetProperties().empty())
-    {
-        for (const Property& prop : typeDesc->GetProperties())
-        {
-            if (prop.isVisible && !prop.isVisible(componentPtr)) continue;
+    const auto& properties = typeDesc->GetProperties();
+    if (properties.empty()) return;
 
-            const char* name = prop.name.c_str();
-            switch (prop.type)
+    for (const Property& prop : typeDesc->GetProperties())
+    {
+        if (prop.isArray)
+        {
+            size_t count = prop.getArraySize(componentPtr);
+            if (ui->BeginCollapsingHeader(prop.name.c_str()))
             {
-                case EPropertyType::Bool:
-                    HandleProperty<bool>(componentPtr, prop, [&](bool* ptr) {
-                        return ui->Property(name, ptr);
-                    });
-                    break;
-                case EPropertyType::Int:
-                    HandleProperty<int>(componentPtr, prop, [&](int* ptr) {
-                        return ui->Property(name, ptr);
-                    });
-                    break;
-                case EPropertyType::Float:
-                    HandleProperty<float>(componentPtr, prop, [&](float* ptr) {
-                        return ui->Property(name, ptr);
-                    });
-                    break;
-                case EPropertyType::Vector3:
-                    HandleProperty<UI::Vector<float, 3>>(componentPtr, prop, [&](auto* ptr) {
-                        return ui->Property(name, ptr);
-                    });
-                    break;
-                case EPropertyType::Color:
-                    HandleProperty<UI::Color>(componentPtr, prop, [&](auto* ptr) {
-                        return ui->Property(name, ptr);
-                    });
-                    break;
-                case EPropertyType::String:
-                    HandleProperty<std::string>(componentPtr, prop, [&](std::string* ptr) {
-                        return ui->PropertyInputText(name, *ptr);
-                    });
-                    break;
-                case EPropertyType::Enum:
-                    // Enum은 HandleProperty를 활용하되 내부에서 메타데이터 검색
-                    HandleProperty<int>(componentPtr, prop, [&](int* ptr) {
-                        EnumDescriptor* enumDesc = ReflectionRegistry::Get().GetEnum(prop.enumName);
-                        if (!enumDesc) return false;
-                        // NOTE : 최적화 필요 시 캐싱 혹은 static 변수로 선언할것.
-                        std::vector<std::string> names;
-                        std::vector<int> values;
-                        for (const auto& entry : enumDesc->GetEntries()) 
-                        {
-                            names.push_back(entry.name);
-                            values.push_back(entry.value);
-                        }
-                        return ui->PropertyEnum(name, ptr, names, values);
-                    });
-                    break;
+                ui->Indent();
+                for (size_t i = 0; i < count; ++i)
+                {
+                    void* elementPtr = prop.getArrayElement(componentPtr, i);
+                    // 배열 원소용 임시 Property 생성
+                    Property elemProp = prop;
+                    elemProp.name = std::format("[{}]", i);
+                    elemProp.offset = 0;
+                    elemProp.isArray = false;
+                    elemProp.getter = nullptr;
+                    elemProp.setter = nullptr;
+                    DrawSingleProperty(ui, elementPtr, elemProp);
+                }
+                ui->Unindent();
             }
+            continue;
         }
+
+        DrawSingleProperty(ui, componentPtr, prop);  
     }
+}
+
+void InspectorPanel::DrawSingleProperty(IUIBuilder* ui, void* instance, const Property& prop)
+{
+    if (prop.isVisible && !prop.isVisible(instance)) return;
+
+    const char* name = prop.name.c_str();
+
+    switch (prop.type)
+    {
+        case EPropertyType::Bool:
+            HandleProperty<bool>(instance, prop, [&](bool* ptr) {
+                return ui->Property(name, ptr);
+                });
+            break;
+        case EPropertyType::Int:
+            HandleProperty<int>(instance, prop, [&](int* ptr) {
+                return ui->Property(name, ptr);
+                });
+            break;
+        case EPropertyType::Float:
+            HandleProperty<float>(instance, prop, [&](float* ptr) {
+                return ui->Property(name, ptr);
+                });
+            break;
+        case EPropertyType::Vector3:
+            HandleProperty<UI::Vector<float, 3>>(instance, prop, [&](auto* ptr) {
+                return ui->Property(name, ptr);
+                });
+            break;
+        case EPropertyType::Color:
+            HandleProperty<UI::Color>(instance, prop, [&](auto* ptr) {
+                return ui->Property(name, ptr);
+                });
+            break;
+        case EPropertyType::String:
+            HandleProperty<std::string>(instance, prop, [&](std::string* ptr) {
+                return ui->PropertyInputText(name, *ptr);
+                });
+            break;
+        case EPropertyType::Enum:
+            // Enum은 HandleProperty를 활용하되 내부에서 메타데이터 검색
+            HandleProperty<int>(instance, prop, [&](int* ptr) {
+                EnumDescriptor* enumDesc = ReflectionRegistry::Get().GetEnum(prop.enumName);
+                if (!enumDesc) return false;
+                // NOTE : 최적화 필요 시 캐싱 혹은 static 변수로 선언할것.
+                std::vector<std::string> names;
+                std::vector<int> values;
+                for (const auto& entry : enumDesc->GetEntries())
+                {
+                    names.push_back(entry.name);
+                    values.push_back(entry.value);
+                }
+                return ui->PropertyEnum(name, ptr, names, values);
+                });
+            break;
+    }
+
 }
