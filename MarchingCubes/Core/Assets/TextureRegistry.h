@@ -5,6 +5,7 @@
 // Forward Delclaration
 class UploadContext;
 class DescriptorAllocator;
+class TextureAsset;
 
 enum class TextureResolutionTier : uint8_t
 {
@@ -36,24 +37,24 @@ struct TextureResource
     uint32_t bindlessSlot = UINT32_MAX;
 };
 
-
+/* [TextureRegistry]
+* - LifeTime : RenderSystem Load -> UnLoad
+* - OwnerShip : RenderSystem
+* - Access : ResourceManager::GetTextureRegistry
+* - Responsibility :
+*   - Texture Upload : Texture CPU->GPU 업로드 및 관리
+*/
 class TextureRegistry
 {
 public:
-    struct InitInfo {
-        ID3D12Device* device = nullptr;
-        UploadContext* upload = nullptr;
-        DescriptorAllocator* descriptorAllocator = nullptr;
-        uint32_t rootSlot = 6;
-    };
-
-	explicit TextureRegistry(const InitInfo& initInfo);
+	TextureRegistry(uint32_t rootSlot = 5);
 	~TextureRegistry();
 
-	void syncGpu(ID3D12GraphicsCommandList* cmd);
+	void SyncGpu(ID3D12GraphicsCommandList* cmd);
 	void BindDescriptorTable(ID3D12GraphicsCommandList* cmd);
 
-	uint32_t LoadTexture(const std::filesystem::path& logicalPath);
+    uint32_t GetTextureHandle(const std::string& path);
+	uint32_t LoadTexture(const std::shared_ptr<TextureAsset>& texAsset);
 	const TextureResource& GetTexture(size_t texHandle) const { return m_textures[texHandle]; }
     uint32_t GetDescriptorBaseSlot() const { return m_descriptorBaseSlot; }
     uint32_t GetBindlessIndex(uint32_t handle) const;
@@ -63,21 +64,20 @@ private:
     TextureMeta FinalizeMeta(const D3D12_RESOURCE_DESC& desc);
 
 private:
-    ID3D12Device* m_device = nullptr;
-    UploadContext* m_uploadContext = nullptr;
-    DescriptorAllocator* m_descriptorAllocator = nullptr;
-    uint32_t m_rootSlot = 6;
+    uint32_t m_rootSlot = 5;
     uint32_t m_descriptorBaseSlot = UINT32_MAX;
 
 	std::vector<TextureResource> m_textures;
+    std::unordered_map<std::string, uint32_t> m_pathCache;
 
     // Lazy-Upload
 	struct PendingTextures
 	{
 		ComPtr<ID3D12Resource> dst;
-		std::unique_ptr<DirectX::ScratchImage> image;
+        std::shared_ptr<TextureAsset> asset;
         std::string debugName = "";
 	};
 	std::vector<PendingTextures> m_pendingTextures;
+
 };
 

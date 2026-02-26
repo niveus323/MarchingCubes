@@ -1,7 +1,9 @@
 #include "pch.h"
 #include "ImGUIBuilder.h"
+#include <imgui.h>
 #include <imgui_stdlib.h>
 #include <cstdarg>
+#include <unordered_map>
 #include <algorithm>
 
 namespace UI
@@ -27,11 +29,25 @@ namespace UI
 		}
 		return ImGuiDataType_Float;
 	}
+
+	struct DualListBoxState
+	{
+		ImGuiSelectionBasicStorage selections[2];
+		bool optKeepSorted = true;
+	};
+
 }
 
-bool ImGUIBuilder::BeginPanel(const char* name, bool* pOpen)
+bool ImGUIBuilder::BeginPanel(const char* name, bool* pOpen, UI::UI_PanelOption flags)
 {
-	return ImGui::Begin(name, pOpen);
+	ImGuiWindowFlags windowFlag = ImGuiWindowFlags_None;
+	if (HasFlag(flags, UI::UI_PanelOption::MenuBar)) windowFlag |= ImGuiWindowFlags_MenuBar;
+	if (HasFlag(flags, UI::UI_PanelOption::NoDocking)) windowFlag |= ImGuiWindowFlags_NoDocking;
+	if (HasFlag(flags, UI::UI_PanelOption::NoInput)) windowFlag |= ImGuiWindowFlags_NoInputs;
+	if (HasFlag(flags, UI::UI_PanelOption::NoMove)) windowFlag |= ImGuiWindowFlags_NoMove;
+	if (HasFlag(flags, UI::UI_PanelOption::NoScrollBar)) windowFlag |= ImGuiWindowFlags_NoScrollbar;
+
+	return ImGui::Begin(name, pOpen, windowFlag);
 }
 
 void ImGUIBuilder::EndPanel()
@@ -78,6 +94,51 @@ bool ImGUIBuilder::BeginTabItem(const char* id, bool* pOpen)
 void ImGUIBuilder::EndTabItem()
 {
 	ImGui::EndTabItem();
+}
+
+void ImGUIBuilder::BeginMainMenuBar()
+{
+	ImGui::BeginMainMenuBar();
+}
+
+void ImGUIBuilder::EndMainMenuBar()
+{
+	ImGui::EndMainMenuBar();
+}
+
+bool ImGUIBuilder::BeginMenuBar()
+{
+	return ImGui::BeginMenuBar();
+}
+
+void ImGUIBuilder::EndMenuBar()
+{
+	ImGui::EndMenuBar();
+}
+
+bool ImGUIBuilder::BeginMenu(const char* id)
+{
+	return ImGui::BeginMenu(id);
+}
+
+void ImGUIBuilder::EndMenu()
+{
+	ImGui::EndMenu();
+}
+
+bool ImGUIBuilder::MenuItem(const char* id, const char* shortcutKey, bool bSelected)
+{
+	return ImGui::MenuItem(id, shortcutKey, bSelected);
+}
+
+void ImGUIBuilder::BeginDisabled(bool disabled)
+{
+	ImGui::BeginDisabled(disabled);
+}
+
+void ImGUIBuilder::EndDisabled()
+{
+	ImGui::EndDisabled();
 }
 
 void ImGUIBuilder::Label(const char* text)
@@ -182,6 +243,11 @@ void ImGUIBuilder::TableNextColumn()
 	ImGui::TableNextColumn();
 }
 
+void ImGUIBuilder::TableSetColumnIndex(int index)
+{
+	ImGui::TableSetColumnIndex(index);
+}
+
 void ImGUIBuilder::TableSetupColumn(const char* id)
 {
 	ImGui::TableSetupColumn(id);
@@ -220,6 +286,34 @@ void ImGUIBuilder::Separator()
 void ImGUIBuilder::SameLine(float offset, float spacing)
 {
 	ImGui::SameLine(offset, spacing);
+}
+
+void ImGUIBuilder::Indent(float width)
+{
+	ImGui::Indent(width);
+}
+
+void ImGUIBuilder::Unindent(float width)
+{
+	ImGui::Unindent(width);
+}
+
+void ImGUIBuilder::AlignNextItem(UI::UI_Alignment align, float itemWidth)
+{
+	float nextItemPos = ImGui::GetCursorPosX();
+	switch (align)
+	{
+		case UI::UI_Alignment::AlignCenter:
+			nextItemPos += (ImGui::GetContentRegionAvail().x - itemWidth) * 0.5f;
+			break;
+		case UI::UI_Alignment::AlignRight:
+			nextItemPos += (ImGui::GetContentRegionAvail().x - itemWidth);
+			break;
+		case UI::UI_Alignment::AlignLeft:
+		default:
+			return;
+	}
+	ImGui::SetCursorPosX(nextItemPos);
 }
 
 void ImGUIBuilder::PushID(const char* str_id)
@@ -272,6 +366,11 @@ bool ImGUIBuilder::IsWindowFocused()
 	return ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows);
 }
 
+bool ImGUIBuilder::IsWindowHovered()
+{
+	return ImGui::IsWindowHovered();
+}
+
 bool ImGUIBuilder::IsKeyPressed_F12()
 {
 	return ImGui::IsKeyPressed(ImGuiKey_F12);
@@ -319,12 +418,162 @@ bool ImGUIBuilder::SearchBar(const char* hint, std::string& text)
 	return ImGui::InputTextWithHint("##Search", hint, &text);
 }
 
+void ImGUIBuilder::SelectableComboBox(const char* label, const std::vector<std::string>& items, int& selectedIdx, UI::Vector<float, 2> size)
+{
+	std::string hiddenLabel = "##";
+	hiddenLabel += label;
+
+	if (ImGui::BeginListBox(hiddenLabel.c_str(), ImVec2(size.x, size.y)))
+	{
+		for (int n = 0; n < items.size(); n++)
+		{
+			const bool is_selected = (selectedIdx == n);
+			if (ImGui::Selectable(items[n].c_str(), is_selected))
+				selectedIdx = n;
+
+			// Set the initial focus when opening the combo (scrolling + keyboard navigation focus)
+			if (is_selected)
+				ImGui::SetItemDefaultFocus();
+		}
+		ImGui::EndListBox();
+	}
+}
+
+bool ImGUIBuilder::DualListBox(const char* label, std::vector<int>& availableItems, std::vector<int>& basketItems, std::function<std::string(int)> getItemNameFn)
+{
+	bool dataChanged = false;
+
+	ImGuiID id = ImGui::GetID(label);
+
+	// ID마다 고유한 상태 관리를 위해 정적 변수로 정의 및 관리
+	static std::unordered_map<ImGuiID, UI::DualListBoxState> s_states;
+	UI::DualListBoxState& state = s_states[id];
+
+	ImGui::PushID(label);
+
+	std::vector<int>* items[2] = { &availableItems, &basketItems };
+
+	// 이동 함수
+	auto MoveAll = [&](int src, int dst) {
+		for (int item_id : *items[src]) items[dst]->push_back(item_id);
+		items[src]->clear();
+		if (state.optKeepSorted) std::sort(items[dst]->begin(), items[dst]->end());
+
+		state.selections[src].Swap(state.selections[dst]);
+		state.selections[src].Clear();
+		dataChanged = true;
+	};
+
+	auto MoveSelected = [&](int src, int dst) {
+		for (auto it = items[src]->begin(); it != items[src]->end(); )
+		{
+			if (state.selections[src].Contains((ImGuiID)*it))
+			{
+				items[dst]->push_back(*it);
+				it = items[src]->erase(it);
+				dataChanged = true;
+			}
+			else { ++it; }
+		}
+		if (state.optKeepSorted) std::sort(items[dst]->begin(), items[dst]->end());
+
+		state.selections[src].Swap(state.selections[dst]);
+		state.selections[src].Clear();
+	};
+
+	auto ApplySelectionRequests = [&](ImGuiMultiSelectIO* ms_io, int side) {
+		state.selections[side].UserData = items[side]->data();
+		state.selections[side].AdapterIndexToStorageId = [](ImGuiSelectionBasicStorage* self, int idx) {
+			return (ImGuiID)((int*)self->UserData)[idx];
+		};
+		state.selections[side].ApplyRequests(ms_io);
+	};
+
+	if (ImGui::BeginTable("DualListBoxTable", 3))
+	{
+		ImGui::TableSetupColumn("Available", 0);
+		ImGui::TableSetupColumn("Controls", ImGuiTableColumnFlags_WidthFixed, 40.0f);
+		ImGui::TableSetupColumn("Basket", 0);
+		ImGui::TableNextRow();
+
+		int request_move_selected = -1;
+		int request_move_all = -1;
+		float child_height_0 = 0.0f;
+
+		for (int side = 0; side < 2; side++)
+		{
+			ImGui::TableSetColumnIndex((side == 0) ? 0 : 2);
+			ImGui::Text("%s (%zu)", (side == 0) ? "Available" : "Basket", items[side]->size());
+
+			const float items_height = ImGui::GetTextLineHeightWithSpacing();
+			ImGui::SetNextWindowContentSize(ImVec2(0.0f, items[side]->size() * items_height));
+
+			bool child_visible;
+			if (side == 0)
+			{
+				ImGui::SetNextWindowSizeConstraints(ImVec2(0.0f, ImGui::GetFrameHeightWithSpacing() * 4), ImVec2(FLT_MAX, FLT_MAX));
+				child_visible = ImGui::BeginChild("0", ImVec2(-FLT_MIN, ImGui::GetFontSize() * 15), ImGuiChildFlags_FrameStyle | ImGuiChildFlags_ResizeY);
+				child_height_0 = ImGui::GetWindowSize().y;
+			}
+			else
+			{
+				child_visible = ImGui::BeginChild("1", ImVec2(-FLT_MIN, child_height_0), ImGuiChildFlags_FrameStyle);
+			}
+
+			if (child_visible)
+			{
+				ImGuiMultiSelectIO* ms_io = ImGui::BeginMultiSelect(ImGuiMultiSelectFlags_None, state.selections[side].Size, (int)items[side]->size());
+				ApplySelectionRequests(ms_io, side);
+
+				for (size_t item_n = 0; item_n < items[side]->size(); item_n++)
+				{
+					int item_id = (*items[side])[item_n];
+					bool item_is_selected = state.selections[side].Contains((ImGuiID)item_id);
+
+					ImGui::SetNextItemSelectionUserData(item_n);
+					std::string itemName = getItemNameFn(item_id);
+
+					ImGui::Selectable(itemName.c_str(), item_is_selected, ImGuiSelectableFlags_AllowDoubleClick);
+
+					if (ImGui::IsItemFocused())
+					{
+						if (ImGui::IsKeyPressed(ImGuiKey_Enter) || ImGui::IsKeyPressed(ImGuiKey_KeypadEnter) || ImGui::IsMouseDoubleClicked(0))
+							request_move_selected = side;
+					}
+				}
+
+				ms_io = ImGui::EndMultiSelect();
+				ApplySelectionRequests(ms_io, side);
+			}
+			ImGui::EndChild();
+		}
+
+		ImGui::TableSetColumnIndex(1);
+		ImGui::Dummy({ 0, ImGui::GetTextLineHeight() });
+
+		ImVec2 button_sz = { ImGui::GetFrameHeight(), ImGui::GetFrameHeight() };
+
+		if (ImGui::Button(">>", button_sz)) request_move_all = 0;
+		if (ImGui::Button(">", button_sz))  request_move_selected = 0;
+		if (ImGui::Button("<", button_sz))  request_move_selected = 1;
+		if (ImGui::Button("<<", button_sz)) request_move_all = 1;
+
+		if (request_move_all != -1) MoveAll(request_move_all, request_move_all ^ 1);
+		if (request_move_selected != -1) MoveSelected(request_move_selected, request_move_selected ^ 1);
+
+		ImGui::EndTable();
+	}
+
+	ImGui::PopID();
+	return dataChanged;
+}
+
 bool ImGUIBuilder::BeginTreeNode(const char* label, bool isLeaf, bool isSelected)
 {
 	ImGui::TableNextRow();
 	ImGui::TableNextColumn();
 
-	ImGuiTreeNodeFlags flags = ImGuiTreeNodeFlags_OpenOnArrow | ImGuiTreeNodeFlags_OpenOnDoubleClick | ImGuiTreeNodeFlags_SpanFullWidth;
+	ImGuiTreeNodeFlags flags = ImGuiTreeNodeFlags_OpenOnArrow | ImGuiTreeNodeFlags_OpenOnDoubleClick | ImGuiTreeNodeFlags_SpanAvailWidth;
 	if (isSelected) flags |= ImGuiTreeNodeFlags_Selected;
 	if (isLeaf)     flags |= ImGuiTreeNodeFlags_Leaf | ImGuiTreeNodeFlags_Bullet;
 
@@ -346,10 +595,34 @@ float ImGUIBuilder::GetAvailableWidth()
 	return ImGui::GetContentRegionAvail().x;
 }
 
+UI::Vector<float, 2> ImGUIBuilder::GetRegionAvailable()
+{
+	ImVec2 size = ImGui::GetContentRegionAvail();
+	return UI::Vector<float, 2>(size.x, size.y);
+}
+
+UI::Vector<float, 2> ImGUIBuilder::GetWindowContentMin()
+{
+	ImVec2 min = ImGui::GetWindowContentRegionMin();
+	return UI::Vector<float, 2>(min.x, min.y);
+}
+
+UI::Vector<float, 2> ImGUIBuilder::GetWindowContentMax()
+{
+	ImVec2 max = ImGui::GetWindowContentRegionMax();
+	return UI::Vector<float, 2>(max.x, max.y);
+}
+
 UI::Vector<float, 2> ImGUIBuilder::GetCursorScreenPos()
 {
 	ImVec2 p0 = ImGui::GetCursorScreenPos();
-	return UI::Vector<float, 2>{ p0.x, p0.y };
+	return UI::Vector<float, 2>(p0.x, p0.y);
+}
+
+UI::Vector<float, 2> ImGUIBuilder::GetWindowPos()
+{
+	ImVec2 p0 = ImGui::GetWindowPos();
+	return UI::Vector<float, 2>(p0.x, p0.y);
 }
 
 void ImGUIBuilder::Dummy(const UI::Vector<float, 2>& size)

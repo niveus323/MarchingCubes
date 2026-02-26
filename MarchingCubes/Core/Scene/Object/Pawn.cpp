@@ -1,6 +1,9 @@
 #include "pch.h"
 #include "Pawn.h"
 
+BEGIN_REFLECTION(Pawn, SceneObject)
+END_REFLECTION()
+
 void Pawn::AddMovementInput(DirectX::XMVECTOR dir, float scale)
 {
     if (auto transformComp = GetTransformComponent())

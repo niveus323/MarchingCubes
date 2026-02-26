@@ -1,12 +1,16 @@
 ﻿#include "pch.h"
 #include "EditorApp.h"
 #include "Win32Application.h"
-#include "Core/Assets/ResourceManager.h"
 #include "Core/UI/ImGUIRenderer.h"
 #include "Core/UI/UIRenderer.h"
 #include "Core/Trace/Profiler.h"
+#include "Core/Rendering/Memory/GpuAllocator.h"
 #include "Core/Input/InputState.h"
-#include <numeric>
+#include "Core/Scene/Object/Controller/EditorController.h"
+#include "Core/Engine/EngineCore.h"
+#include "Core/Rendering/PSO/DescriptorAllocator.h"
+#include "Core/Engine/Serializer/JsonSerializer.h"
+#include "Core/Utils/FileUtils.h"
 using namespace std::placeholders;
 
 void EditorApp::OnDestroy()
@@ -23,11 +27,11 @@ void EditorApp::OnUpdate(float deltaTime)
 	}
 
 #ifdef _DEBUG
-	if (m_inputState->GetKeyState(ActionKey::ToggleDebugView) == ActionKeyState::JustPressed)
+	if (m_inputState->GetKeyState(ActionKey::ToggleDebugView) == ActionKeyState::JustReleased)
 	{
 		SetDebugViewMode(m_hDefaultView);
 	}
-	else if (m_inputState->GetKeyState(ActionKey::ToggleWireFrame) == ActionKeyState::JustPressed)
+	else if (m_inputState->GetKeyState(ActionKey::ToggleWireFrame) == ActionKeyState::JustReleased)
 	{
 		if (m_renderSystem->IsOverrideActive("Filled", "Wire"))
 		{
@@ -38,7 +42,7 @@ void EditorApp::OnUpdate(float deltaTime)
 			SetDebugViewMode(m_hWireView);
 		}
 	}
-	else if (m_inputState->GetKeyState(ActionKey::ToggleDebugNormal) == ActionKeyState::JustPressed)
+	else if (m_inputState->GetKeyState(ActionKey::ToggleDebugNormal) == ActionKeyState::JustReleased)
 	{
 		SetDebugViewMode(m_hNormalView); // Just Toggle
 	}
@@ -48,34 +52,6 @@ void EditorApp::OnUpdate(float deltaTime)
 
 void EditorApp::OnBuildInitialScene(ID3D12GraphicsCommandList* initCommand)
 {
-	if (ResourceManager* resourceManager = GetResourceManager())
-	{
-		uint32_t sandTexHandle = resourceManager->LoadTexture(GetFullPath(AssetType::Texture, L"gravelly_sand/gravelly_sand_diffuse"));
-		uint32_t sandNormalHandle = resourceManager->LoadTexture(GetFullPath(AssetType::Texture, L"gravelly_sand/gravelly_sand_normal"));
-		uint32_t sandArmHandle = resourceManager->LoadTexture(GetFullPath(AssetType::Texture, L"gravelly_sand/gravelly_sand_arm"));
-		uint32_t sandDispHandle = resourceManager->LoadTexture(GetFullPath(AssetType::Texture, L"gravelly_sand/gravelly_sand_displace"));
-		
-		Material defaultMatCpu;
-		defaultMatCpu.SetMaterialConstants(MaterialConstants{
-			.albedo = {1.0f, 1.0f, 1.0f},
-			.metallic = 0.0f,
-			.specularStrength = 0.04f,
-			.roughness = 1.0f,
-			.ao = 1.0f,
-			.ior = 1.0f,
-			.shadingModel = EShadingModel::DefaultLit,
-			.opacity = 1.0f
-		});
-		defaultMatCpu.SetTextureMapping(ETextureMappingTypes::Triplanar);
-		defaultMatCpu.SetTriplanarParams(TriplanarParams{ .scale = 0.01f });
-		defaultMatCpu.SetDiffuseTex(sandTexHandle);
-		defaultMatCpu.SetNormalTex(sandNormalHandle);
-		defaultMatCpu.SetArmTex(sandArmHandle);
-		defaultMatCpu.SetDisplacementTex(sandDispHandle);
-
-		resourceManager->AddMaterial(defaultMatCpu);
-	}
-
 	// 기본 Debug View Mode 등록
 	{
 		m_hDefaultView = RegisterDebugViewMode("Default", [](RenderSystem* rs) {
@@ -130,8 +106,39 @@ void EditorApp::InitUI(ID3D12GraphicsCommandList* cmd)
 		.enabled = true,
 		.id = "Fps"
 		});
+	
+	// Main Menu Bar 등록 (화면 최상단)
+	m_uiToken_MainMenuBar = m_uiRenderer->AddFrameRenderCallbackToken(
+		std::bind(&EditorApp::RenderMainMenuBarUI, this, _1),
+		UI::UICallbackOptions{
+			.layer = UI::EUILayer::Editor_Panel, // 혹은 별도의 최상위 레이어
+			.enabled = true,
+			.id = "MainMenuBar"
+		}
+	);
 
-	m_hierarchyPanel = std::make_unique<SceneHierarchyPanel>();
+	// Subsystem Manager 패널 등록
+	m_uiToken_SubsystemManager = m_uiRenderer->AddFrameRenderCallbackToken(
+		std::bind(&EditorApp::RenderSubsystemManagerUI, this, _1),
+		UI::UICallbackOptions{
+			.layer = UI::EUILayer::Editor_Panel,
+			.enabled = true,
+			.id = "SubsystemManager"
+		}
+	);
+
+	m_hierarchyPanel = AddPanel<SceneHierarchyPanel>();
+	m_hierarchyPanel->SetOnSelectionChanged([&](GameObject* selected){
+		if (m_currentScene)
+		{
+			if (auto controller = dynamic_cast<EditorController*>(m_currentScene->GetController()))
+			{
+				controller->SelectObject(selected);
+			}
+		}
+		if (m_inspectorPanel) m_inspectorPanel->SetTarget(selected);
+	});
+
 	m_uiToken_Hierarchy = m_uiRenderer->AddFrameRenderCallbackToken(
 		std::bind(&EditorApp::RenderHierarchyUI, this, _1),
 		UI::UICallbackOptions{
@@ -141,7 +148,7 @@ void EditorApp::InitUI(ID3D12GraphicsCommandList* cmd)
 		}
 	);
 
-	m_inspectorPanel = std::make_unique<InspectorPanel>();
+	m_inspectorPanel = AddPanel<InspectorPanel>();
 	m_uiToken_Inspector = m_uiRenderer->AddFrameRenderCallbackToken(
 		std::bind(&EditorApp::RenderInspectorUI, this, _1),
 		UI::UICallbackOptions{
@@ -168,49 +175,16 @@ void EditorApp::InitUI(ID3D12GraphicsCommandList* cmd)
 
 void EditorApp::OnUpdateUI(float deltaTime)
 {
-	// TODO : Profiler 에디터로 옮기기
 #ifdef _DEBUG
 	GpuAllocator* gpuAllocator = GetGpuAllocator();
-	StaticBufferRegistry* staticBufferRegistry = GetStaticBufferRegistry();
-	if (auto p = m_profiler.lock())
+	if (gpuAllocator)
 	{
-		std::vector<BufferPoolInfo> poolInfos;
-		std::vector<DedicatedBufferInfo> promotedInfos;
-		// GpuAllocator
-		for (auto& dbg : gpuAllocator->GetDebugPools())
+		if (auto p = m_profiler.lock())
 		{
-			BufferPoolInfo poolInfo;
-			poolInfo.name = dbg.name;
-			poolInfo.capacity = dbg.pool->GetCapacity();
-			std::vector<BufferBlock>& allocated = dbg.pool->GetAllocatedBlocks();
-			poolInfo.used = std::accumulate(allocated.cbegin(), allocated.cend(), 0ULL, [](uint64_t sum, const BufferBlock& b) { return sum + b.size; });
-			poolInfo.free = dbg.pool->GetFreeBlocks();
-			poolInfo.allocated = dbg.pool->GetAllocatedBlocks();
-			poolInfos.push_back(poolInfo);
+			p->SetBufferPools(gpuAllocator->GetMemoryInfos());
+			p->SetDedicatedBuffers(gpuAllocator->GetDebugDedicatedBuffers());
+			p->UpdateFrame(GetTimer().GetTimeMs());
 		}
-
-		// StaticBufferRegistry
-		BufferPoolInfo pi_vb;
-		pi_vb.name = "StaticVB";
-		pi_vb.capacity = staticBufferRegistry->GetVBCapacity();
-		std::vector<BufferBlock>& allocatedVB = staticBufferRegistry->GetVBAllocated();
-		pi_vb.used = std::accumulate(allocatedVB.cbegin(), allocatedVB.cend(), 0ULL, [](uint64_t sum, const BufferBlock& b) {return sum + b.size; });
-		pi_vb.free = staticBufferRegistry->GetVBFree();
-		pi_vb.allocated = allocatedVB;
-		poolInfos.push_back(pi_vb);
-
-		BufferPoolInfo pi_ib;
-		pi_ib.name = "StaticIB";
-		pi_ib.capacity = staticBufferRegistry->GetIBCapacity();
-		std::vector<BufferBlock>& allocatedIB = staticBufferRegistry->GetIBAllocated();
-		pi_ib.used = std::accumulate(allocatedIB.cbegin(), allocatedIB.cend(), 0ULL, [](uint64_t sum, const BufferBlock& b) {return sum + b.size; });
-		pi_ib.free = staticBufferRegistry->GetIBFree();
-		pi_ib.allocated = allocatedIB;
-		poolInfos.push_back(pi_ib);
-
-		p->SetBufferPools(poolInfos);
-		p->SetDedicatedBuffers(gpuAllocator->GetDebugDedicatedBuffers());
-		p->UpdateFrame(GetTimer().GetTimeMs());
 	}
 #endif
 }
@@ -220,34 +194,17 @@ void EditorApp::OnSceneLoaded(Scene* scene)
 	if (scene)
 	{
 		scene->BeginEditor();
-
 		if(m_hierarchyPanel) m_hierarchyPanel->SetCurrentScene(scene);
+		if(m_inspectorPanel) m_inspectorPanel->SetTarget(nullptr);
+
+		if (auto controller = dynamic_cast<EditorController*>(scene->GetController()))
+		{
+			controller->SetSelectionChangedCallback([this](GameObject* newSelection) {
+				if (m_hierarchyPanel) m_hierarchyPanel->SetSelection(newSelection);
+				if (m_inspectorPanel) m_inspectorPanel->SetTarget(newSelection);
+			});
+		}
 	}
-}
-
-void EditorApp::CreateRootSignature()
-{
-	// Define Root Parameter : b0 (CameraBuffer), b1 (ObjectBuffer), b2 (LightBuffer), b3 (TriplanarBuffer) ,t0 (Materials), t1 (EnvMap), t2(TexTable), s0 (LinearSampler)
-	CD3DX12_ROOT_PARAMETER1  rootParams[7];
-	ZeroMemory(rootParams, sizeof(rootParams));
-	rootParams[0].InitAsConstantBufferView(0); // b0
-	rootParams[1].InitAsConstantBufferView(1); // b1
-	rootParams[2].InitAsDescriptorTable(1, &CD3DX12_DESCRIPTOR_RANGE1(D3D12_DESCRIPTOR_RANGE_TYPE_CBV, 1, 2)); // b2
-	rootParams[3].InitAsDescriptorTable(1, &CD3DX12_DESCRIPTOR_RANGE1(D3D12_DESCRIPTOR_RANGE_TYPE_CBV, 1, 3)); // b3
-	rootParams[4].InitAsDescriptorTable(1, &CD3DX12_DESCRIPTOR_RANGE1(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 0)); // t0
-	rootParams[5].InitAsDescriptorTable(1, &CD3DX12_DESCRIPTOR_RANGE1(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 1)); // t1
-	rootParams[6].InitAsDescriptorTable(1, &CD3DX12_DESCRIPTOR_RANGE1(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, (uint32_t)-1, 2, 0u, D3D12_DESCRIPTOR_RANGE_FLAG_DESCRIPTORS_VOLATILE)); // t2
-
-	// Static Sampler 등록 ( 런타임에 바꿔야할 샘플러가 필요할 경우 Descriptor Table에 포함할 것.)
-	CD3DX12_STATIC_SAMPLER_DESC samplerDescs = CD3DX12_STATIC_SAMPLER_DESC(0, D3D12_FILTER_MIN_MAG_MIP_LINEAR); // s0
-
-	CD3DX12_VERSIONED_ROOT_SIGNATURE_DESC rootSignatureDesc{};
-	rootSignatureDesc.Init_1_1(_countof(rootParams), rootParams, 1, &samplerDescs, D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT);
-
-	ComPtr<ID3DBlob> signature;
-	ThrowIfFailed(D3DX12SerializeVersionedRootSignature(&rootSignatureDesc, D3D_ROOT_SIGNATURE_VERSION_1_1, &signature, nullptr));
-	ThrowIfFailed(m_device->CreateRootSignature(0, signature->GetBufferPointer(), signature->GetBufferSize(), IID_PPV_ARGS(m_rootSignature.ReleaseAndGetAddressOf())));
-	NAME_D3D12_OBJECT(m_rootSignature);
 }
 
 void EditorApp::CreateInputElements()
@@ -288,16 +245,6 @@ void EditorApp::CreateInputElements()
 		.Format = DXGI_FORMAT_R32G32_FLOAT,
 		.InputSlot = 0,
 		.AlignedByteOffset = 40,
-		.InputSlotClass = D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA,
-		.InstanceDataStepRate = 0
-	});
-
-	m_inputElements.push_back(D3D12_INPUT_ELEMENT_DESC{
-		.SemanticName = "COLOR",
-		.SemanticIndex = 0,
-		.Format = DXGI_FORMAT_R32G32B32A32_FLOAT,
-		.InputSlot = 0,
-		.AlignedByteOffset = 48,
 		.InputSlotClass = D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA,
 		.InstanceDataStepRate = 0
 	});
@@ -356,14 +303,12 @@ void EditorApp::RenderHierarchyUI(IUIBuilder* ui)
 	if (m_hierarchyPanel && m_currentScene)
 	{
 		m_hierarchyPanel->OnRenderUI(ui);
-		m_selectedObject = m_hierarchyPanel->GetSelectedObject();
-		if (m_inspectorPanel) m_inspectorPanel->SetTarget(m_selectedObject);
 	}
 }
 
 void EditorApp::RenderInspectorUI(IUIBuilder* ui)
 {
-	if (m_inspectorPanel)
+	if (m_inspectorPanel && m_currentScene)
 	{
 		m_inspectorPanel->OnRenderUI(ui);
 	}
@@ -466,7 +411,7 @@ void EditorApp::RenderProfilingUI(IUIBuilder* ui)
 			if (showPromoted)
 			{
 				ui->Separator();
-				ui->Text("Dedicated Allocations (Fallback / Promoted)");
+				ui->Text("Dedicated Allocations Fallback");
 
 				if (ui->BeginTable("DedicatedAllocTable", 5))
 				{
@@ -474,7 +419,6 @@ void EditorApp::RenderProfilingUI(IUIBuilder* ui)
 					ui->EndTable();
 				}
 
-				//if (ImGui::BeginTable("DedicatedAllocTable", 5, ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg | ImGuiTableFlags_Resizable))
 				if (ui->BeginTable("DedicatedAllocTable", 5))
 				{
 					ui->TableSetupColumn("Type");
@@ -513,9 +457,221 @@ void EditorApp::RenderProfilingUI(IUIBuilder* ui)
 					ui->EndTable();
 				}
 			}
-
-			ui->EndPanel();
 		}
+		ui->EndPanel();
+	}
+}
+
+void EditorApp::RenderMainMenuBarUI(IUIBuilder* ui)
+{
+	ui->BeginMainMenuBar();
+	// 파일 로드/세이브
+	if (ui->BeginMenu("File"))
+	{
+		if (ui->MenuItem("Save Scene"))
+		{
+			std::string filepath = FileUtils::FileDialogs::SaveFile("JSON Scene File", "*.json");
+			if (!filepath.empty())
+			{
+				JsonSerializer ar(true);
+				m_currentScene->Serialize(ar);
+				ar.WriteToFile(filepath);
+			}
+		}
+		if (ui->MenuItem("Load Scene"))
+		{
+			std::string filepath = FileUtils::FileDialogs::OpenFile("JSON Scene File", "*.json");
+			if (!filepath.empty()) RequestLoadScene(filepath);
+		}
+		ui->EndMenu();
+	}
+
+	// 입력 키 세팅, 환경설정, 서브시스템 관리 등
+	if (ui->BeginMenu("Edit"))
+	{
+		if (ui->MenuItem("Subsystem Manager"))
+		{
+			// 패널 표시 플래그 토글
+			m_bShowSubsystemManager = true;
+		}
+		ui->EndMenu();
+	}
+
+	// Panel, Editor Tool 등 에디터 작업을 위한 도구
+	if (ui->BeginMenu("Tool"))
+	{
+		bool bHierarchyVisible = m_hierarchyPanel ? m_hierarchyPanel->IsPanelVisible() : false;
+		if (ui->MenuItem("Scene Hierarchy", nullptr, bHierarchyVisible))
+		{
+			if (m_hierarchyPanel) m_hierarchyPanel->SetPanelVisible(!bHierarchyVisible);
+		}
+
+		bool bInspectorVisible = m_inspectorPanel ? m_inspectorPanel->IsPanelVisible() : false;
+		if (ui->MenuItem("Inspector", nullptr, bInspectorVisible))
+		{
+			if (m_inspectorPanel) m_inspectorPanel->SetPanelVisible(!bInspectorVisible);
+		}
+		ui->Separator();
+		
+		// Editor Tools
+		static std::vector<TypeDescriptor*> toolTypes;
+		static bool bToolTypesLoaded = false;
+		if (!bToolTypesLoaded)
+		{
+			toolTypes = ReflectionRegistry::Get().GetTypesDerivedFrom("IEditorTool");
+			bToolTypesLoaded = true;
+		}
+
+		EditorController* editorController = nullptr;
+		if (m_currentScene)
+		{
+			editorController = dynamic_cast<EditorController*>(m_currentScene->GetController());
+		}
+
+		for (int i=0; i<toolTypes.size(); ++i)
+		{
+			TypeDescriptor* desc = toolTypes[i];
+			std::string toolName = desc->GetName();
+			if (toolName == IEditorTool::GetStaticType()->GetName()) continue;
+
+			bool bIsSelected = false;
+			if (editorController)
+			{
+				auto activeTool = editorController->GetActiveTool();
+				if (activeTool && activeTool->GetType()->GetName() == toolName) bIsSelected = true;
+			}
+
+			if (ui->MenuItem(toolName.c_str(), NULL, bIsSelected))
+			{
+				if (!m_currentScene) continue;
+
+				if (editorController)
+				{
+					if (bIsSelected)
+					{
+						editorController->SetTool(nullptr);
+					}
+					else
+					{
+						if (IEditorTool* rawTool = static_cast<IEditorTool*>(desc->CreateInstance()))
+						{
+							std::shared_ptr<IEditorTool> newTool(rawTool);
+							editorController->SetTool(newTool);
+						}
+					}
+				}
+			}
+		}
+		ui->EndMenu();
+	}
+
+	ui->EndMainMenuBar();
+}
+
+void EditorApp::RenderSubsystemManagerUI(IUIBuilder* ui)
+{
+	if (!m_bShowSubsystemManager) return;
+
+	if (ui->BeginPanel("Subsystem Manager", &m_bShowSubsystemManager))
+	{
+		if (m_currentScene)
+		{
+			// 서브시스템 이름 사전 구축
+			static std::vector<std::string> s_subsystemNames;
+			if (s_subsystemNames.empty())
+			{
+				std::vector<TypeDescriptor*> types = ReflectionRegistry::Get().GetTypesDerivedFrom("ISceneSubsystem");
+				for (TypeDescriptor* desc : types)
+				{
+					std::string name = desc->GetName();
+					// 인터페이스는 제외하고 사전에 추가
+					if (name != ISceneSubsystem::GetStaticType()->GetName()) s_subsystemNames.push_back(name);
+				}
+			}
+
+			static std::vector<int> availableItems;
+			static std::vector<int> basketItems;
+			// 씬이 새로 로드되거나 변경되었을 때 1회 동기화 (Scene -> UI)
+			static Scene* lastScene = nullptr;
+			if (lastScene != m_currentScene.get())
+			{
+				availableItems.clear();
+				basketItems.clear();
+
+				// 현재 씬에 등록된 서브시스템 이름들 수집
+				auto& activeSubsystems = m_currentScene->GetSubsystems();
+				std::vector<std::string> activeNames;
+				for (const auto& [type, subsys] : activeSubsystems)
+				{
+					activeNames.push_back(subsys->GetType()->GetName());
+				}
+
+				// 전체 서브시스템을 순회하며 씬 등록 여부에 따라 Available / Basket 분류
+				for (int i = 0; i < s_subsystemNames.size(); ++i)
+				{
+					auto it = std::find(activeNames.begin(), activeNames.end(), s_subsystemNames[i]);
+					if (it != activeNames.end()) basketItems.push_back(i);
+					else availableItems.push_back(i);
+				}
+				lastScene = m_currentScene.get();
+			}
+
+			auto SubsysIdxToName = [](int id) ->std::string {
+				if (id >= 0 && id < s_subsystemNames.size())
+					return s_subsystemNames[id];
+				return "Unknown";
+			};
+
+			if (ui->DualListBox("SubsystemManagerDualList", availableItems, basketItems, SubsysIdxToName))
+			{
+				// 씬에 등록되어 있는 서브시스템 리스트 확인
+				auto& activeSubsystems = m_currentScene->GetSubsystems();
+				std::vector<std::string> activeNames;
+				for (const auto& [type, subsys] : activeSubsystems)
+				{
+					activeNames.push_back(subsys->GetType()->GetName());
+				}
+
+				// 서브시스템 추가
+				for (int id : basketItems)
+				{
+					const std::string& name = s_subsystemNames[id];
+					if (std::find(activeNames.begin(), activeNames.end(), name) == activeNames.end())
+					{
+						m_currentScene->AddSubsystemByName(name);
+					}
+				}
+
+				// 서브시스템 해제
+				std::vector<std::type_index> typesToRemove;
+				for (const auto& [type, subsys] : activeSubsystems)
+				{
+					std::string name = subsys->GetType()->GetName();
+					bool bFoundInBasket = false;
+					for (int id : basketItems)
+					{
+						if (s_subsystemNames[id] == name)
+						{
+							bFoundInBasket = true;
+							break;
+						}
+					}
+
+					if (!bFoundInBasket) typesToRemove.push_back(type);
+				}
+
+				for (const auto& type : typesToRemove)
+				{
+					m_currentScene->RemoveSubsystem(type);
+				}
+			}
+		}
+		else
+		{
+			ui->Text("No active scene loaded.");
+		}
+
+		ui->EndPanel();
 	}
 }
 

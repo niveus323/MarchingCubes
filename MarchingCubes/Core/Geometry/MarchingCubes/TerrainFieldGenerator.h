@@ -1,5 +1,6 @@
 #pragma once
 #include "SdfField.h"
+#include "Core/Math/PhysicsHelper.h"
 
 class TerrainFieldGenerator
 {
@@ -27,13 +28,13 @@ public:
 
                 // 픽셀 값(0~255)을 0.0~1.0으로 정규화 후 높이로 변환
                 float pixelValue = pixelData[iy * imgWidth + ix] / 255.0f;
-                float targetHeight = pixelValue * heightScale * invCellSize;
+                float targetHeight = pixelValue * heightScale * invCellSize; // 셀 단위로 변환
 
                 // y축 순회하며 높이 값과 비교 후 값을 넣는다.
                 for (int y = 0; y < SY; ++y) {
                     // SDF 밀도 계산
                     float dist = targetHeight - (float)y;
-                    gridData->at(x, y, z) = static_cast<float>(std::clamp(dist, -2.0f, 2.0f)); // Narrow-Band : 2셀까지는 법선 계산을 위해 남겨둠
+                    gridData->at(x, y, z) = dist;
                 }
             }
         }
@@ -72,10 +73,10 @@ public:
                     // 거리 계산 (World Unit)
                     float dist = sqrtf(dx * dx + dy * dy + dz * dz);
 
-                    // SDF 값 계산 + 정규화 + (-1,1 클램핑)
+                    // SDF 값 계산 + 정규화
                     float signedDist = radius - dist;
                     float normalizedDist = signedDist * invCellSize; // 이제부터 거리는 '셀 단위'가 된다.
-                    gridData->at(x, y, z) = static_cast<float>(std::clamp(normalizedDist, -2.0f, 2.0f)); // Narrow-Band : 표면으로부터 2셀까지 판단
+                    gridData->at(x, y, z) = signedDist;
                 }
             }
         }
@@ -117,7 +118,7 @@ public:
         for (int y = 0; y < SY; ++y)
         {
             float dist = height - static_cast<float>(y) * desc.cellsize + FLT_EPSILON;
-            float val = std::clamp(dist * invCellSize, -2.0f, 2.0f);
+            float val = dist * invCellSize;
 
             for (int z = 0; z < SZ; ++z)
                 for (int x = 0; x < SX; ++x)
@@ -127,5 +128,49 @@ public:
         }
 
         return std::shared_ptr<SdfField>(gridData);
+    }
+
+    static std::shared_ptr<SdfField> Resample(const GridDesc& oldDesc, const SdfField* oldData, const GridDesc& newDesc)
+    {
+        int newSX = newDesc.resolution.x + 1;
+        int newSY = newDesc.resolution.y + 1;
+        int newSZ = newDesc.resolution.z + 1;
+        auto newField = std::make_shared<SdfField>(newSX, newSY, newSZ);
+
+        float offsetX = newDesc.origin.x - oldDesc.origin.x;
+        float offsetY = newDesc.origin.y - oldDesc.origin.y;
+        float offsetZ = newDesc.origin.z - oldDesc.origin.z;
+        for (int z = 0; z < newSZ; ++z)
+        {
+            for (int y = 0; y < newSY; ++y)
+            {
+                for (int x = 0; x < newSX; ++x)
+                {
+                    // 현재 새로운 점의 '물리적 위치(Local Pos)' 계산
+                    float worldX = x * newDesc.cellsize;
+                    float worldY = y * newDesc.cellsize;
+                    float worldZ = z * newDesc.cellsize;
+
+                    // 과거 그리드 기준 상대 위치
+                    float u = (worldX + offsetX) / oldDesc.cellsize;
+                    float v = (worldY + offsetY) / oldDesc.cellsize;
+                    float w = (worldZ + offsetZ) / oldDesc.cellsize;
+
+                    // 범위 체크 및 샘플링
+                    if (u < 0 || u > oldDesc.resolution.x ||
+                        v < 0 || v > oldDesc.resolution.y ||
+                        w < 0 || w > oldDesc.resolution.z)
+                    {
+                        // IsoValue보다 충분히 작은 값 (확실한 외부)
+                        newField->at(x, y, z) = newDesc.isoValue - 10.0f;
+                    }
+                    else
+                    {
+                        newField->at(x, y, z) = PhysicsUtil::SampleTrilinear(oldData, oldDesc.resolution, { u, v, w });
+                    }
+                }
+            }
+        }
+        return newField;
     }
 };

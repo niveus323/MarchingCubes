@@ -18,20 +18,25 @@ BEGIN_REFLECTION(LightComponent, Component)
     REFLECT_PROPERTY_EXPR_IF(m_spotInnerCos, EPropertyType::Float, inst->m_type == ELightType::Spot)
 END_REFLECTION()
 
-
-LightComponent::LightComponent(GameObject* owner, ELightType type, DirectX::XMFLOAT3 radiance, float range, float spotInnerCos) :
-    Component(owner),
-    m_type(type),
-    m_radiance(radiance),
-    m_range(range),
-    m_spotInnerCos(0.9f)
+void LightComponent::Init()
 {
+    Component::Init();
     if (auto scene = GetScene()) scene->RegisterLight(this);
 }
 
-LightComponent::~LightComponent()
+void LightComponent::Destroy()
 {
     if (auto scene = GetScene()) scene->UnregisterLight(this);
+}
+
+void LightComponent::Serialize(Serializer& ar)
+{
+    Component::Serialize(ar);
+    //int typeValue = static_cast<int>(m_type);
+    //ar.Serialize("LightType", typeValue);
+    ar.Serialize("Radiance", m_radiance);
+    ar.Serialize("Range", m_range);
+    ar.Serialize("SpotInnerCos", m_spotInnerCos);
 }
 
 Light LightComponent::GetLightInfo() const

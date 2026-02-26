@@ -46,7 +46,7 @@ void Profiler::PushHistogram(const std::string& name, double sample)
 	}
 }
 
-void Profiler::SetBufferPools(const std::vector<BufferPoolInfo>& pools)
+void Profiler::SetBufferPools(const std::vector<MemoryInfo>& pools)
 {
 	std::lock_guard<std::mutex> lock(m_writeMutex);
 	m_currentPools = pools;

@@ -7,7 +7,7 @@
 #include <windows.h>
 #endif // _WIN32
 
-
+// TODO : 로그 Verbosity 추가하기
 class Log
 {
 public:

@@ -1,9 +1,12 @@
 #pragma once
+#include "Core/Scene/Class/Entity.h"
 #include "Core/Scene/Object/SceneObject.h"
 #include "Core/DataStructures/ShaderTypes.h"
 #include "Core/Engine/Subsystem/SceneSubsystem.h"
 #include "Core/Engine/EngineCore.h"
+#include "Core/Engine/Reflection.h"
 #include "Core/Utils/StringUtils.h"
+#include "Core/DataStructures/Data.h"
 #include <unordered_map>
 #include <typeindex>
 
@@ -25,7 +28,7 @@ class Controller;
 class Mesh;
 class IUIBuilder;
 
-class Scene
+class Scene : public Entity
 {
 public:
 	Scene();
@@ -37,29 +40,34 @@ public:
 	virtual void BeginEditor();
 	virtual void EndPlay();
 	virtual void EndEditor();
-	virtual void OnExit();
+	virtual void OnExit(IUIRenderer* ui);
 	virtual void OnResize(float x, float y, float width, float height);
 	virtual void Update(float deltaTime);
 	virtual void Render();
+	virtual void Serialize(Serializer& ar) override;
 
-	template<std::derived_from<GameObject> T = GameObject, typename... Args>
-	T* CreateObject(Args&&... args)
+	template<std::derived_from<GameObject> T = GameObject>
+	T* CreateObject(std::string_view name, EObjectFlags flags = EObjectFlags::None)
 	{
-		auto newObj = std::make_unique<T>(this, std::forward<Args>(args)...);
-		T* ptr = newObj.get();
-
-		std::string className = GetCleanClassName(typeid(T).name());
-		ptr->SetName(className);
-
-		if constexpr (std::derived_from<T, SceneObject>)
+		auto newObj = std::make_shared<T>();
+		newObj->SetFlags(flags);
+		newObj->SetScene(std::static_pointer_cast<Scene>(this->shared_from_this()));
+		if (name.empty())
 		{
-			m_sceneObjectsCache.push_back(ptr);
+			std::string className = StringUtils::GetCleanClassName(typeid(T).name());
+			newObj->SetName(className);
 		}
+		else
+		{
+			newObj->SetName(std::string(name));
+		}
+
+		T* ptr = newObj.get();
 		m_objects.push_back(std::move(newObj));
 		ptr->Init();
 		return ptr;
 	}
-	void AddObject(std::unique_ptr<GameObject> obj);
+	void AddObject(std::shared_ptr<GameObject> obj);
 
 	template<std::derived_from<GameObject> T = GameObject>
 	T* FindObject()
@@ -71,6 +79,21 @@ public:
 		}
 		return nullptr;
 	}
+
+	template<std::derived_from<GameObject> T = GameObject>
+	std::vector<T*> FindAllObjects()
+	{
+		std::vector<T*> result;
+		for (auto& object : m_objects)
+		{
+			if (T* typed = dynamic_cast<T*>(object.get()))
+			{
+				result.push_back(typed);
+			}
+		}
+		return std::move(result);
+	}
+	GameObject* FindObject(uint64_t uuid);
 
 	void RegisterLight(LightComponent* light) { m_lightCache.push_back(light); }
 	void UnregisterLight(LightComponent* light) { if (!m_lightCache.empty())  std::erase(m_lightCache, light); }
@@ -84,8 +107,9 @@ public:
 	CameraConstants GetCameraConstants();
 	LightBlobView GetLightBlob();
 
-	template <std::derived_from<ISceneSubsystem> T, typename... Args>
-	T* AddSubsystem(Args&&... args)
+	//--- Subsystem ---
+	template <std::derived_from<ISceneSubsystem> T>
+	T* AddSubsystem()
 	{
 		auto it = m_sceneSubsystems.find(typeid(T));
 		if (it != m_sceneSubsystems.end())
@@ -93,7 +117,7 @@ public:
 			return static_cast<T*>(it->second.get());
 		}
 
-		auto newSystem = std::make_unique<T>(std::forward<Args>(args)...);
+		auto newSystem = std::make_unique<T>();
 		T* rawPtr = newSystem.get();
 
 		EngineCore::RegisterSubsystem<T>(rawPtr);
@@ -102,6 +126,8 @@ public:
 
 		return rawPtr;
 	}
+	ISceneSubsystem* AddSubsystemByName(const std::string& className);
+	void RemoveSubsystem(std::type_index typeIndex);
 
 	template <std::derived_from<ISceneSubsystem> T>
 	T* GetSubsystem()
@@ -111,8 +137,10 @@ public:
 			return static_cast<T*>(it->second.get());
 		return nullptr;
 	}
+	const std::unordered_map<std::type_index, std::shared_ptr<ISceneSubsystem>>& GetSubsystems() const { return m_sceneSubsystems; }
+	// --- Object Getter ---
 	CameraComponent* GetMainCamera() { return m_mainCamera; }
-
+	Controller* GetController() { return m_currentController; }
 	const auto& GetObjects() const { return m_objects; }
 protected:
 	void ClearSubsystems()
@@ -133,10 +161,11 @@ protected:
 private:
 	friend class RendererComponent;
 	void RegisterRenderable(RendererComponent* rendererComp) { m_rendererCache.push_back(rendererComp); }
-	void UnregisterRenderable(RendererComponent* rendererComp) { std::erase_if(m_rendererCache, [rendererComp](const RendererComponent* target) { return target == rendererComp; }); }
+	void UnregisterRenderable(RendererComponent* rendererComp) { 
+		std::erase_if(m_rendererCache, [rendererComp](const RendererComponent* target) { return target == rendererComp; }); 
+	}
 
 	void RenderSceneGizmoUI(IUIBuilder* ui);
-
 protected:
 	CameraComponent* m_mainCamera = nullptr;
 
@@ -148,22 +177,24 @@ protected:
 	float m_viewportX = 0.0f;
 	float m_viewportY = 0.0f;
 
-	std::vector<std::unique_ptr<Mesh>> m_editorMeshes;
-
+	bool m_bLoadedFromFile = false; // TODO : 씬 관리는 Data-Driven으로 변경(씬 클래스 상속 불가로)
 private:
 	bool m_isPlaying = false;
 
-	std::vector<std::unique_ptr<GameObject>> m_objects;
+	std::unordered_map<uint64_t, GameObject*> m_uuidMap;
+	std::vector<std::shared_ptr<GameObject>> m_objects; //소유용
 
+	//TODO : 씬 HierarchyPanel에 보여질것과 아닐 것을 구분해야함(preview, debug 등) -> 에디터 Only 같은 플래그를 추가
+	
 	// Cache
-	std::vector<SceneObject*> m_sceneObjectsCache;
 	std::vector<RendererComponent*> m_rendererCache;
 	std::vector<LightComponent*> m_lightCache;
 	std::vector<uint8_t> m_lightUploadBuffer;
 	GameMode* m_gameMode = nullptr;
 	Controller* m_currentController = nullptr;
 
-	std::unordered_map<std::type_index, std::unique_ptr<ISceneSubsystem>> m_sceneSubsystems;
+	std::unordered_map<std::type_index, std::shared_ptr<ISceneSubsystem>> m_sceneSubsystems;
 
+	std::vector<size_t> m_uiTokens;
 };
 

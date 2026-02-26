@@ -30,6 +30,12 @@ public:
     void TickAndUpdate();
     void ParseCommandLineArgs(_In_reads_(argc) WCHAR* argv[], int argc);
     void OnPlatformEvent(uint32_t msg, WPARAM wParam, LPARAM lParam);
+    void RequestLoadScene(const std::string& path)
+    {
+        m_pendingLoadPath = path;
+        m_bLoadRequested = true;
+    }
+
     // Accessors.
     uint32_t GetWidth() const { return m_width; }
     uint32_t GetHeight() const { return m_height; }
@@ -47,15 +53,14 @@ protected:
     virtual void OnAfterChainSwaped();
     virtual void OnSceneLoaded(Scene* scene) {}
 
-    virtual void CreateRootSignature() = 0;
     virtual void CreateInputElements() = 0;
-    virtual std::unique_ptr<Scene> CreateDefaultScene() = 0;
+    virtual std::shared_ptr<Scene> CreateDefaultScene() = 0;
     virtual std::vector<std::wstring> GetPSOFiles() const = 0;
 
     std::wstring GetAssetFullPath(LPCWSTR assetName) { return GetFullPath(AssetType::Default, assetName); }
 	void GetHawrdwardAdapter(_In_ IDXGIFactory1* pFactory, _Outptr_result_maybenull_ IDXGIAdapter1** ppAdapter, bool requestHightPerformanceAdapter = false);
 	void SetCustomWindowText(LPCWSTR text) const;
-
+    
     Timer& GetTimer() { return m_timer; }
     const Timer& GetTimer() const { return m_timer; }
     ID3D12Device* GetDevice() { return m_device.Get(); }
@@ -64,7 +69,6 @@ protected:
     UINT64 GetSwapChainFenceValue() { return m_swapChainFence->GetCompletedValue(); }
     GpuAllocator* GetGpuAllocator() { return m_gpuAllocator.get(); }
     UploadContext* GetUploadContext() { return m_uploadContext.get(); }
-    StaticBufferRegistry* GetStaticBufferRegistry() { return m_staticBufferRegistry.get(); }
     DescriptorAllocator* GetDescriptorAllocator() { return m_descriptorAllocator.get(); }
     ResourceManager* GetResourceManager() { return m_resourceManager.get(); }
 
@@ -75,7 +79,7 @@ private:
     void CreateCommandObjects();
     void InitPipeline();
     void InitializeScene();
-    void LoadScene(std::unique_ptr<Scene> newScene);
+    void LoadScene(std::shared_ptr<Scene> newScene);
     void CreateBackbuffersAndDefaultDSV(uint32_t width, uint32_t height);
     void DestroyBackbuffersAndDefaultDSV();
     void CreateFenceAndEvent();
@@ -118,7 +122,6 @@ protected:
     // Pipeline
     ComPtr<ID3D12Resource> m_renderTargets[kFrameCount];
     ComPtr<ID3D12Resource> m_depthStencil;
-    ComPtr<ID3D12RootSignature> m_rootSignature;
     std::vector<D3D12_INPUT_ELEMENT_DESC> m_inputElements;
     DXGI_FORMAT m_backbufferFormat = DXGI_FORMAT_R8G8B8A8_UNORM;
     DXGI_FORMAT m_depthFormat = DXGI_FORMAT_D32_FLOAT;
@@ -135,7 +138,6 @@ protected:
     // Memory
     std::unique_ptr<GpuAllocator> m_gpuAllocator;
     std::unique_ptr<UploadContext> m_uploadContext;
-    std::unique_ptr<StaticBufferRegistry> m_staticBufferRegistry;
     std::unique_ptr<DescriptorAllocator> m_descriptorAllocator;
 
     // Subsystems
@@ -145,11 +147,13 @@ protected:
     std::unique_ptr<IUIRenderer> m_uiRenderer;
 
     // Scene
-    std::unique_ptr<Scene> m_currentScene;
+    std::shared_ptr<Scene> m_currentScene;
+    std::string m_pendingLoadPath;
+    bool m_bLoadRequested = false;
 
     // GPU Timestamp Query
     ComPtr<ID3D12QueryHeap> m_tsQueryHeap;
-    ComPtr<ID3D12Resource> m_tsReadback;     // READBACK buffer (uint64_t * 2 * kFrameCount)
+    ComPtr<ID3D12Resource> m_tsReadback;     // READBACK owner (uint64_t * 2 * kFrameCount)
     uint64_t* m_tsMapped = nullptr;
     uint64_t m_tsFreq = 0;     // ticks per second
 

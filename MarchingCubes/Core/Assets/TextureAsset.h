@@ -36,25 +36,25 @@ namespace TexImporter
 	static bool IsBCFormat(DXGI_FORMAT fmt);
 };
 
+/* [TextureAsset]
+* - LifeTime : Asset Load -> Asset UnLoad
+* - OwnerShip : ResourceManager
+* - Access : ResourceManager::LoadTextureAsset
+*/
 class TextureAsset
 {
 public:
 	explicit TextureAsset(const std::filesystem::path& sourcePath, const std::filesystem::path& cacheRoot = std::filesystem::path(L"Contents/Textures"));
-
-	static TextureAsset FromFile(const std::filesystem::path& sourcePath, const std::filesystem::path& cacheRoot = std::filesystem::path(L"Contents/Textures"))
-	{
-		return TextureAsset(sourcePath, cacheRoot);
-	}
-
+	
+	void ReleasePixelData();
 	const std::filesystem::path& GetSourcePath() const { return m_sourcePath; };
+	const DirectX::TexMetadata& GetMetadata() const { return m_metadata; }
 	const DirectX::ScratchImage* GetImage() const { return m_image.get(); }
-	DirectX::ScratchImage* GetImage() { return m_image.get(); }
-	const DirectX::TexMetadata& GetMetadata() const { return m_image->GetMetadata(); }
-	std::unique_ptr<DirectX::ScratchImage> ExtractImage() { return std::move(m_image); }
 
 private:
 	std::filesystem::path m_sourcePath;
 	std::filesystem::path m_cacheRoot;
+	DirectX::TexMetadata m_metadata{};
 	std::unique_ptr<DirectX::ScratchImage> m_image;
 };
 

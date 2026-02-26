@@ -6,7 +6,6 @@
 #include "App/Editor/Panel/InspectorPanel.h"
 using DebugViewModeHandle = int;
 
-// Forward Declaration
 class EditorApp : public DXAppBase
 {
 public:
@@ -23,9 +22,8 @@ protected:
 	virtual void InitUI(ID3D12GraphicsCommandList* cmd) override;
 	virtual void OnUpdateUI(float deltaTime) override;
 	virtual void OnSceneLoaded(Scene* scene) override;
-	virtual void CreateRootSignature() override;
 	virtual void CreateInputElements() override;
-	virtual std::unique_ptr<Scene> CreateDefaultScene() override { return std::make_unique<Scene_Terraform>(); }
+	virtual std::shared_ptr<Scene> CreateDefaultScene() override { return std::make_shared<Scene_Terraform>(); }
 	virtual std::vector<std::wstring> GetPSOFiles() const override { return { L"EditorCommon.json" }; }
 
 	// Debug View Mode
@@ -39,8 +37,33 @@ private:
 	void RenderHierarchyUI(IUIBuilder* ui);
 	void RenderInspectorUI(IUIBuilder* ui);
 	void RenderProfilingUI(IUIBuilder* ui);
+	void RenderMainMenuBarUI(IUIBuilder* ui);
+	void RenderSubsystemManagerUI(IUIBuilder* ui);
 	void OnPlayButtonClicked();
 	void OnCloseButtonClicked();
+	
+	template<std::derived_from<IEditorPanel> T, typename... Args>
+	T* AddPanel(Args&&...args)
+	{
+		T* ptr = GetPanel<T>();
+		if (ptr) return ptr; //이미 생성해둔게 있을 경우 Return
+
+		auto newPanel = std::make_unique<T>(this, std::forward<Args>(args)...);
+		ptr = newPanel.get();
+		m_editorPanels.push_back(std::move(newPanel));
+		return ptr;
+	}
+
+	template<std::derived_from<IEditorPanel> T>
+	T* GetPanel()
+	{
+		for (auto& panel : m_editorPanels)
+		{
+			if (T* typed = dynamic_cast<T*>(panel.get()))
+				return typed;
+		}
+		return nullptr;
+	}
 
 protected:
 	// Debug
@@ -55,13 +78,16 @@ private:
 	std::vector<std::pair<std::string, std::function<void(RenderSystem*)>>> m_debugViewModes;
 	int m_currentDebugViewMode = 0;
 
-	// TODO : 에디터에 여러 Panel을 관리할 수 있도록 컨테이너로 관리 + Add Panel 같은 함수 추가로 엔진 상단 옵션 탭에서 View 옵션에 선택으로 옵션 제공.
-	std::unique_ptr<SceneHierarchyPanel> m_hierarchyPanel;
+	SceneHierarchyPanel* m_hierarchyPanel = nullptr;
 	UI::FrameCallbackToken m_uiToken_Hierarchy = 0;
 
-	std::unique_ptr<InspectorPanel> m_inspectorPanel;
+	InspectorPanel* m_inspectorPanel = nullptr;
 	UI::FrameCallbackToken m_uiToken_Inspector = 0;
+	
+	UI::FrameCallbackToken m_uiToken_MainMenuBar = 0;
+	bool m_bShowSubsystemManager = false;
+	UI::FrameCallbackToken m_uiToken_SubsystemManager = 0;
 
-	GameObject* m_selectedObject = nullptr;
+	std::vector<std::unique_ptr<IEditorPanel>> m_editorPanels;
 };
 

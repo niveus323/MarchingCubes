@@ -11,6 +11,7 @@ struct BufferHandle
 	uint64_t retireFence = 0;
 	D3D12_GPU_VIRTUAL_ADDRESS gpuVA = 0; // For CB
 	uint8_t* cpuPtr = nullptr; // For CB & Staging
+	uint32_t allocID = 0;
 };
 
 struct BufferBlock
@@ -19,10 +20,10 @@ struct BufferBlock
 	uint64_t size = 0;
 	std::string owner = "";
 
-	BufferBlock(uint64_t off, uint64_t sz, std::string_view o = "") : offset(off), size(sz), owner(o) {}
+	BufferBlock(uint64_t off, uint64_t sz, std::string_view o = "") : offset(off), size(sz), owner(std::string(o)) {}
 };
 
-struct BufferPoolInfo
+struct MemoryInfo
 {
 	std::string name;
 	uint64_t capacity = 0;

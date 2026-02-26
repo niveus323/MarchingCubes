@@ -1,5 +1,6 @@
 #pragma once
 #include "App/Editor/Interface/EditorPanel.h"
+#include <functional>
 
 // Forward Declaration
 class Scene;
@@ -8,9 +9,13 @@ class GameObject;
 class SceneHierarchyPanel : public IEditorPanel
 {
 public:
+	SceneHierarchyPanel(EditorApp* app) : IEditorPanel(app) {}
 	virtual void OnRenderUI(IUIBuilder* ui) override;
-	void SetCurrentScene(Scene* scene) { m_currentScene = scene; }
+	void SetCurrentScene(Scene* scene) { m_currentScene = scene; m_selectedObject = nullptr; m_filterText = ""; }
 	GameObject* GetSelectedObject() { return m_selectedObject; }
+
+	void SetOnSelectionChanged(std::function<void(GameObject*)> callback) { m_onSelectionChanged = callback; }
+	void SetSelection(GameObject* selected);
 
 private:
 	void DrawNode(IUIBuilder* ui, GameObject* node, const std::string& filterText);
@@ -28,5 +33,8 @@ private:
 
 	// °Ë»ö
 	std::string m_filterText;
+
+	// Callback
+	std::function<void(GameObject*)> m_onSelectionChanged;
 };
 

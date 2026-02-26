@@ -7,39 +7,54 @@
 
 void SceneHierarchyPanel::OnRenderUI(IUIBuilder* ui)
 {
-    ui->BeginPanel("Scene Hierarchy");
+    if (!m_bShowPanel) return;
 
-    if (m_currentScene)
+    if (ui->BeginPanel("Scene Hierarchy", &m_bShowPanel))
     {
-        ui->SearchBar("Search objects...", m_filterText);
-        ui->Separator();
-
-        if (ui->BeginTable("HierarchyTable", 1))
+        if (m_currentScene)
         {
-            const auto& objects = m_currentScene->GetObjects();
-            for (const auto& obj : objects)
+            // TODO : 오브젝트 추가 버튼 
+            //if(ui->Button("Add Object", { 100, 50 }))
+
+            ui->SearchBar("Search objects...", m_filterText);
+            ui->Separator();
+
+            if (ui->BeginTable("HierarchyTable", 1))
             {
-                if (!m_filterText.empty())
+                const auto& objects = m_currentScene->GetObjects();
+                for (const auto& obj : objects)
                 {
-                    if (!ContainsIgnoreCase(obj->GetName(), m_filterText)) continue;
+                    if (obj->HasAnyFlags(EObjectFlags::Invisible)) continue;
+                    if (!m_filterText.empty())
+                    {
+                        if (!ContainsIgnoreCase(obj->GetName(), m_filterText)) continue;
+                    }
+
+                    DrawNode(ui, obj.get(), m_filterText);
                 }
-
-                DrawNode(ui, obj.get(), m_filterText);
+                ui->EndTable();
             }
-            ui->EndTable();
-        }
 
-        if (ui->IsItemClicked() && ui->IsAnyItemHovered())
-        {
-            m_selectedObject = nullptr;
-            m_renamingObject = nullptr;
+            if (ui->IsItemClicked() && ui->IsAnyItemHovered())
+            {
+                m_selectedObject = nullptr;
+                m_renamingObject = nullptr;
+            }
         }
-    }    
+    }
     ui->EndPanel();
+}
+
+void SceneHierarchyPanel::SetSelection(GameObject* selected)
+{
+    m_selectedObject = selected;
+    m_onSelectionChanged(m_selectedObject);
 }
 
 void SceneHierarchyPanel::DrawNode(IUIBuilder* ui, GameObject* node, const std::string& filterText)
 {
+    // Flag 체크 (굳이 Panel에 보여줄 필요 없는 디버깅 목적 등의 객체는 패스)
+    if (node->HasAnyFlags(EObjectFlags::Invisible)) return;
     // 검색어가 있고 이름에 포함 안 되면 스킵
     // (실제로는 자식이 포함되면 부모도 보여줘야 하므로 로직이 더 복잡할 수 있음)
     if (!filterText.empty() && !ContainsIgnoreCase(node->GetName(), filterText)) return;
@@ -73,8 +88,7 @@ void SceneHierarchyPanel::DrawNode(IUIBuilder* ui, GameObject* node, const std::
 
         if (ui->IsItemClicked())
         {
-            m_selectedObject = node;
-            // EditorApp에 알림이 필요하다면 여기서 처리
+            SetSelection(node);
         }
 
         if (isSelected && ui->IsWindowFocused() && ui->IsKeyPressed_F12())

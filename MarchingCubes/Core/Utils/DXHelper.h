@@ -35,14 +35,6 @@ inline std::string UTF16ToUTF8(const wchar_t* wstr)
     return result;
 }
 
-inline std::wstring ToLowerCopy(const std::wstring& s)
-{
-    std::wstring r = s;
-    std::transform(r.begin(), r.end(), r.begin(),
-        [](wchar_t c) { return static_cast<wchar_t>(std::towlower(c)); });
-    return r;
-}
-
 namespace MathHelper
 {
     static inline uint32_t SafeSub(uint32_t a, uint32_t b)
@@ -149,7 +141,7 @@ inline void SetNameAlias(ID3D12Object*, LPCWSTR, LPCWSTR)
 
 inline uint32_t CalculateConstantBufferByteSize(uint32_t byteSize)
 {
-    // Constant buffer size is required to be aligned.
+    // Constant owner size is required to be aligned.
     return (byteSize + (D3D12_CONSTANT_BUFFER_DATA_PLACEMENT_ALIGNMENT - 1)) & ~(D3D12_CONSTANT_BUFFER_DATA_PLACEMENT_ALIGNMENT - 1);
 }
 

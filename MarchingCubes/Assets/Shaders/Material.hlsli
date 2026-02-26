@@ -6,6 +6,8 @@
 #define MATERIAL_HLSLI
 #include "Texture.hlsli"
 
+static const uint INVALID_MATERIAL_INDEX = 0xFFFFFFFF;
+
 struct EShadingModel
 {
     static const uint DEFAULT_LIT = 0;
@@ -46,8 +48,8 @@ struct MaterialBuffer
     float ambientOcclusion; // [0,1]
     float IOR; // Dielectric Àü¿ë
     
-    uint shadingModel; //0 - Default, 1 - Dielectric, 2 - Translucent    
     float opacity; // [0,1], Default - 1
+    uint shadingModel; //0 - Default, 1 - Dielectric, 2 - Translucent    
     uint2 _padding0;
     
     TextureParams baseTextures;

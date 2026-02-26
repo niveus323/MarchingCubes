@@ -1,99 +1,143 @@
 #include "pch.h"
 #include "CPUTerrainBackend.h"
-#include <algorithm>
+#include <MC33_c/marching_cubes_33.h>
 #include <cmath>
+#include <chrono>
 
-CPUTerrainBackend::CPUTerrainBackend(ID3D12Device* device, const GridDesc& desc):
-    m_gridDesc(desc)
+CPUTerrainBackend::CPUTerrainBackend(ID3D12Device* device)
 {
 }
 
-void CPUTerrainBackend::setGridDesc(const GridDesc& desc)
+CPUTerrainBackend::~CPUTerrainBackend()
 {
-	m_gridDesc = desc;
 }
 
-void CPUTerrainBackend::setFieldPtr(std::shared_ptr<SdfField> grid)
+void CPUTerrainBackend::PushRequest(BuildRequest&& request)
 {
-	m_grd = std::move(grid);
-}
+    CleanupFinishedTasks();
 
-void CPUTerrainBackend::RequestBrush(const BrushRequest& r)
-{
-    std::set<ChunkKey> chunkset;
-    
-    const XMUINT3 resolution = m_gridDesc.resolution;
-    const XMFLOAT3 origin = m_gridDesc.origin;
-    const float cellsize = m_gridDesc.cellsize;
-
-    const float deltaTime = r.deltaTime;
-    const XMFLOAT3 center = r.center;
-    const float weight = r.weight;
-    const float radius = r.radius;
-
-    const int SX = int(m_gridDesc.resolution.x);
-    const int SY = int(m_gridDesc.resolution.y);
-    const int SZ = int(m_gridDesc.resolution.z);
-
-    const float kBase = std::clamp(m_brushDelta * deltaTime * std::abs(weight), 0.0f, 1.0f);
-
-    // 영향 범위 (Field 인덱스 공간으로 변환)
-    auto sample = [cellsize](float p, float o) { return (p - o) / cellsize; };
-    int minX = std::max(0, int(std::floor(sample(center.x - radius, origin.x))));
-    int maxX = std::min(SX - 1, int(std::ceil(sample(center.x + radius, origin.x))));
-    int minY = std::max(0, int(std::floor(sample(center.y - radius, origin.y))));
-    int maxY = std::min(SY - 1, int(std::ceil(sample(center.y + radius, origin.y))));
-    int minZ = std::max(0, int(std::floor(sample(center.z - radius, origin.z))));
-    int maxZ = std::min(SZ - 1, int(std::ceil(sample(center.z + radius, origin.z))));
-
-    for (int z = minZ; z <= maxZ; ++z)
-    {
-        const float pz = origin.z + z * cellsize;
-        const float dz = pz - center.z;
-
-        for (int y = minY; y <= maxY; ++y)
+    m_runningTasks.push_back(std::async(std::launch::async, [this, req = std::move(request)]() mutable {
+        BuildResult result{
+            .key = req.key,
+            .ptr = req.ptr
+        };
+        if (!req.ptr.expired())
         {
-            const float py = origin.y + y * cellsize;
-            const float dy = py - center.y;
+            ProcessMarchingCubes(req, result);
+        }
 
-            for (int x = minX; x <= maxX; ++x)
-            {
-                const float px = origin.x + x * cellsize;
-                const float dx = px - center.x;
+        {
+            std::lock_guard<std::mutex> lock(m_resultMutex);
+            m_results.emplace_back(std::move(result));
+        }
+    }));
+}
 
-                const float dist = std::sqrt(dx * dx + dy * dy + dz * dz);
-                if (dist > radius) continue; // 반경 밖은 영향 없음(빠른 스킵)
+bool CPUTerrainBackend::TryFetch(std::vector<BuildResult>& OutResults)
+{
+    CleanupFinishedTasks();
 
-                // Brush 중심과의 거리에 따라 가중치 부여
-                const float sphere = radius - dist;
+    std::lock_guard<std::mutex> lock(m_resultMutex);
+    if (m_results.empty()) return false;
 
-                float& F = m_grd->at(x, y, z);
-                float desired = (weight < 0) ? std::min(F, -sphere) : std::max(F, sphere);
-                const float falloff = std::clamp(sphere / radius, 0.0f, 1.0f);
-                const float k = kBase * falloff;
+    OutResults.reserve(OutResults.size() + m_results.size());
+    std::move(m_results.begin(), m_results.end(), std::back_inserter(OutResults));
 
-                F = F + (desired - F) * k;
+    m_results.clear();
+    return true;
+}
 
-                chunkset.insert(ChunkKey{ x / m_gridDesc.chunkSize, y / m_gridDesc.chunkSize,  z / m_gridDesc.chunkSize });
-            }
+bool CPUTerrainBackend::HasRequests() const
+{
+    std::lock_guard<std::mutex> lock(m_resultMutex);
+    return !m_runningTasks.empty() || !m_results.empty();
+}
+
+void CPUTerrainBackend::ProcessMarchingCubes(BuildRequest& request, BuildResult& result)
+{
+    if (!request.fieldData) return;
+
+    auto& desc = request.setting;
+    auto& chunkKey = request.key;
+
+    _GRD localGrd{};
+    int cellsPerChunk = desc.cellsPerChunk;
+    const int baseX = chunkKey.x * cellsPerChunk;
+    const int baseY = chunkKey.y * cellsPerChunk;
+    const int baseZ = chunkKey.z * cellsPerChunk;
+
+    localGrd.N[0] = cellsPerChunk;
+    localGrd.N[1] = cellsPerChunk;
+    localGrd.N[2] = cellsPerChunk;
+
+    localGrd.d[0] = static_cast<double>(desc.cellsize);
+    localGrd.d[1] = static_cast<double>(desc.cellsize);
+    localGrd.d[2] = static_cast<double>(desc.cellsize);
+
+    localGrd.r0[0] = static_cast<double>(desc.origin.x + static_cast<float>(baseX) * desc.cellsize);
+    localGrd.r0[1] = static_cast<double>(desc.origin.y + static_cast<float>(baseY) * desc.cellsize);
+    localGrd.r0[2] = static_cast<double>(desc.origin.z + static_cast<float>(baseZ) * desc.cellsize);
+
+    localGrd.nonortho = 0;
+    localGrd.periodic = 0;
+
+    SdfField chunk(cellsPerChunk + 1, cellsPerChunk + 1, cellsPerChunk + 1);
+    for (int z = 0; z <= cellsPerChunk; ++z)
+    {
+        for (int y = 0; y <= cellsPerChunk; ++y)
+        {
+            // 읽기는 Thread-Safe (m_grd가 const라면)
+            const float* srcRow = request.fieldData->rowPtr(baseY + y, baseZ + z) + baseX;
+            float* dstRow = chunk.rowPtr(y, z);
+            std::memcpy(dstRow, srcRow, static_cast<size_t>(cellsPerChunk + 1) * sizeof(float));
         }
     }
+    localGrd.F = reinterpret_cast<GRD_data_type***>(static_cast<float***>(chunk));
 
-    RequestRemesh(chunkset);
+    MC33* M = create_MC33(&localGrd);
+    surface* S = calculate_isosurface(M, desc.isoValue);
+
+    // 현재 nV, nT 안나옴.
+    result.vertices.reserve(S->nV);
+    for (unsigned i = 0; i < S->nV; ++i)
+    {
+        float* p = S->V[i];
+        float* n = S->N[i];
+
+        XMVECTOR N = XMVector3Normalize(XMVectorSet(n[0], n[1], n[2], 0.0f));
+
+        // N과 너무 평행하지 않은 기준 축 선택
+        float ny = XMVectorGetY(N);
+        XMVECTOR up = (fabsf(ny) > 0.999f) ? XMVectorSet(1.0f, 0.0f, 0.0f, 0.0f) : XMVectorSet(0.0f, 1.0f, 0.0f, 0.0f);
+
+        // T = up × N (정규화)
+        XMVECTOR T = XMVector3Normalize(XMVector3Cross(up, N));
+
+        XMFLOAT3 t3;
+        XMStoreFloat3(&t3, T);
+
+        result.vertices.push_back(Vertex{
+            .pos = { p[0], p[1], p[2] },
+            .normal = { n[0], n[1], n[2] },
+            .tangent = { t3.x, t3.y, t3.z, 1.0f }
+            });
+    }
+
+    result.indices.reserve(S->nT * 3);
+    for (unsigned t = 0; t < S->nT; ++t)
+    {
+        result.indices.push_back(S->T[t][0]);
+        result.indices.push_back(S->T[t][1]);
+        result.indices.push_back(S->T[t][2]);
+    }
+
+    free_surface_memory(S);
+    free_MC33(M);
 }
 
-bool CPUTerrainBackend::tryFetch(std::vector<ChunkUpdate>& OutChunkUpdates)
+void CPUTerrainBackend::CleanupFinishedTasks()
 {
-	OutChunkUpdates.clear();
-    for (auto& [key, data] : m_chunkData)
-    {
-        ChunkUpdate up;
-        up.empty = data.indices.empty();
-        up.key = key;
-        up.md = std::move(data);
-        OutChunkUpdates.push_back(up);
-    }
-    m_chunkData.clear();
-
-    return !OutChunkUpdates.empty();
+    std::erase_if(m_runningTasks, [](const std::future<void>& f) {
+        return f.wait_for(std::chrono::seconds(0)) == std::future_status::ready;
+    });
 }

@@ -7,44 +7,36 @@
 #include <d3d12.h>
 #include <cstdint>
 #include <vector>
+#include "Core/DataStructures/Data.h"
 
 class GpuAllocator;
-class StaticBufferRegistry;
+class Entity;
 
 class UploadContext
 {
 public:
-	UploadContext(ID3D12Device* device, GpuAllocator* allocator, StaticBufferRegistry* staticBufferRegistry, DescriptorAllocator* descriptorAllocator);
-	~UploadContext() = default;
-
 	void Execute(ID3D12GraphicsCommandList* cmdList);
 	void TrackPendingAllocations(uint64_t submitFenceValue);
 	void Reclaim(uint64_t completedFenceValue);
-	void UploadObjectConstants(uint32_t frameIndex, GeometryBuffer* buf, const ObjectConstants& cb);
 	void UploadStructuredBuffer(ID3D12GraphicsCommandList* cmd, const void* srcData, uint64_t byteSize, ID3D12Resource* buffer, uint64_t dstOffset, std::string_view debugName = "");
-	void UploadContstants(uint32_t frameIndex, const void* srcData, uint32_t size, BufferHandle& outHandle);
+	void UploadConstants(const void* srcData, uint32_t size, BufferHandle& outHandle);
+	void UploadDynamicConstants(const void* srcData, uint32_t size, BufferHandle& outHandle, Entity* owner);
 	void UploadTexture(ID3D12GraphicsCommandList* cmd, ID3D12Resource* pDestinationResource, const std::vector<D3D12_SUBRESOURCE_DATA>& subResources, D3D12_RESOURCE_STATES before, D3D12_RESOURCE_STATES after, std::string_view debugName = "");
 	void ResetCounterUAV(ID3D12GraphicsCommandList* cmd, ID3D12Resource* counter, D3D12_RESOURCE_STATES before, D3D12_RESOURCE_STATES after, std::string_view debugName = "CounterReset");
 
 	void UploadGeometry(GeometryBuffer* buffer, const GeometryData& cpuData, std::string_view debugName);
 	void FreeGeometryBuffer(GeometryBuffer& buffer); 
+	void FreeBufferHandle(BufferHandle& handle);
 private:
-	void EnsureDefaultVB(GeometryBuffer* buf, uint64_t neededSize, std::string_view debugName = nullptr);
-	void EnsureDefaultIB(GeometryBuffer* buf, uint64_t neededSize, std::string_view debugName = nullptr);
-	void FreeBufferHandle(const BufferHandle& handle);
 	void EnsureZeroUintUpload();
+	void PushOrUpdateUpload(const BufferHandle& dst, const BufferHandle& src, uint64_t size, void* owner, D3D12_RESOURCE_STATES afterState = D3D12_RESOURCE_STATE_COMMON);
 
 private:
-	ID3D12Device* m_device = nullptr;
-	GpuAllocator* m_allocator = nullptr;
-	StaticBufferRegistry* m_staticBufferRegistry = nullptr;
-	DescriptorAllocator* m_descriptorAllocator = nullptr;
 	ComPtr<ID3D12Resource> m_zeroUintUpload;
 
 	struct PendingUpload {
-		BufferHandle stagingHandle;
-		BufferHandle vbHandle;
-		BufferHandle ibHandle;
+		BufferHandle srcHandle;
+		BufferHandle dstHandle;
 		enum class UploadState : uint8_t {
 			Enqueued,
 			Recorded,
@@ -53,11 +45,10 @@ private:
 			Failed
 		} state = UploadState::Enqueued;
 
-		uint64_t vbSize = 0;
-		uint64_t ibSize = 0;
-		uint64_t vbAligned = 0;
+		uint64_t size = 0;
 		uint64_t fenceValue = 0;
-		GeometryBuffer* buffer = nullptr;
+		void* owner = nullptr;
+		D3D12_RESOURCE_STATES afterState = D3D12_RESOURCE_STATE_COMMON;
 	};
 	std::vector<PendingUpload> m_pendingUploads;
 

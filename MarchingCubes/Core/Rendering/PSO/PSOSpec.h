@@ -13,6 +13,7 @@ struct PSOSpecRaw {
     std::string id;
     std::optional<int> order;
     std::optional<std::string> inherits;
+    std::optional<std::string> rootsignature;
 
     PSOShaderPathsRaw shaders;
     PSORTRaw          rt;
@@ -33,6 +34,8 @@ struct PSOSpec {
     int         schemaVersion = 1;
     std::string id;
     int         order = 0;
+    std::string rootSignature;
+
     PSOShaderPaths shaders;
     PSORT          rt;
     PSORaster      raster;
@@ -41,5 +44,58 @@ struct PSOSpec {
     std::string    topology = "triangle";
 };
 
-// JSON 로드 + 상속 해석까지 완료된 리스트를 반환
-std::vector<PSOSpec> LoadPSOJsonResolved(LPCWSTR path, int* outSchema = nullptr);
+/*
+* RootSignature
+*/
+// Root Parameter 타입
+enum class ERootParamType 
+{ 
+    Unknown,
+    Constants, 
+    CBV,
+    SRV,
+    UAV,
+    Table 
+};
+
+// Descriptor Range
+struct DescriptorRangeSpec 
+{
+    ERootParamType type = ERootParamType::Table;
+    uint32_t baseRegister = 0;
+    uint32_t registerSpace = 0;
+    int32_t count = 1;          // -1이면 Unbounded
+    std::string flags = "None"; // "Volatile", "Static" ...
+};
+
+// Root Parameter
+struct RootParamSpec 
+{
+    ERootParamType type = ERootParamType::Table;
+    uint32_t baseRegister = 0;
+    uint32_t registerSpace = 0;
+    uint32_t numConstants = 0; // Constants용
+    std::vector<DescriptorRangeSpec> ranges; // Table용
+    std::string flags = "None";
+};
+
+struct RootSignatureSpecRaw {
+    std::string id;
+    std::optional<std::string> inherits;
+    std::vector<RootParamSpec> params;
+};
+
+struct RootSignatureSpec 
+{
+    std::string id;
+    std::vector<RootParamSpec> params;
+};
+
+struct PipelineBundle 
+{
+    int schemaVersion = 1;
+    std::vector<RootSignatureSpec> rsSpecs;
+    std::vector<PSOSpec> psoSpecs;
+};
+
+PipelineBundle LoadPipelineBundle(LPCWSTR path);

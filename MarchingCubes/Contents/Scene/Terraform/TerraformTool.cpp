@@ -6,82 +6,47 @@
 #include "Core/Scene/Scene.h"
 #include "Core/Scene/Object/SceneObject.h"
 #include "Core/Scene/Component/CameraComponent.h"
-#include "Core/Scene/Component/MeshComponent.h"
-#include "Core/Geometry/MarchingCubes/TerrainSystem.h"
-#include "Core/Geometry/Mesh/MeshChunkRenderer.h"
-#include "Core/Geometry/MeshGenerator.h"
-#include "Core/Geometry/Mesh/Mesh.h"
-#include "Core/Engine/EngineCore.h"
+#include "Core/Geometry/MarchingCubes/Class/TerrainObject.h"
+#include "Core/Geometry/Mesh/Component/StaticMeshComponent.h"
 #include "Core/Geometry/MarchingCubes/TerrainFieldGenerator.h"
 #include "Core/Assets/ResourceManager.h"
 #include "Core/Rendering/RenderSystem.h"
+#include "Core/Assets/TextureRegistry.h"
+#include "Core/Assets/TextureAsset.h"
 #include "Core/Utils/FileUtils.h"
-#include "Core/Utils/Timer.h"
-#include "Core/Geometry/MarchingCubes/TerrainRendererComponent.h"
+#include "Core/Engine/Subsystem/SceneSubsystem/TerrainSystem.h"
 #include <DirectXTex.h>
 #include <filesystem>
 #include <algorithm>
 #include <cctype>
+#include <cstdlib>
 
-TerraformTool::TerraformTool(TerrainSystem* terrainSystem, SceneObject* renderer) :
-	m_terrainSystem(terrainSystem),
-	m_terrainRenderer(renderer)
-{
-}
-
-TerraformTool::~TerraformTool() = default;
+BEGIN_REFLECTION(TerraformTool, IEditorTool)
+END_REFLECTION()
 
 void TerraformTool::OnActivated(EditorController* controller)
 {
 	IEditorTool::OnActivated(controller);
-	if (!m_terrainSystem)
+
+	if (m_scene->GetSubsystem<TerrainSystem>() == nullptr)
 	{
-		Log::Print("TerraformTool", "Invalid TerrainSubSystem!!!!");
-		return;
+		m_scene->AddSubsystem<TerrainSystem>();
 	}
-
-	if (!m_terrainSystem->IsLoaded())
-	{
-		GridDesc gridDesc{};
-		gridDesc.resolution = m_resolution;
-		gridDesc.cellsize = (float)m_cellSize;
-		gridDesc.origin = m_gridOrigin;
-		gridDesc.chunkSize = m_chunkSize;
-		gridDesc.isoValue = m_mcIso;
-
-		auto emptyField = TerrainFieldGenerator::CreateEmpty(gridDesc);
-		m_terrainSystem->LoadTerrain(TerrainMode::CPU_MC33, gridDesc, emptyField, m_mcIso);
-	}
-	m_realDesc = m_terrainSystem->GetGridDesc();
-
-	// Debug Terrain Cell 생성
-	GeometryData debugcellData;
-	m_terrainSystem->MakeDebugCell(debugcellData, false);
-	m_cellMesh = std::make_unique<Mesh>(EngineCore::GetUploadContext(), debugcellData, "TerrainCell");
-	m_debugCell = m_owner->GetScene()->CreateObject<SceneObject>();
-	m_debugCell->AddComponent<MeshComponent>(m_cellMesh.get(), "Line");
-	m_debugCell->SetActive(false);
-
-	// 청크 경계 메쉬 생성
-	GeometryData emptyData;
-	emptyData.topology = D3D_PRIMITIVE_TOPOLOGY_LINELIST;
-	m_chunkBoundMesh = std::make_unique<Mesh>(EngineCore::GetUploadContext(), emptyData, "ChunkBounds");
-
-	m_debugChunkObject = m_owner->GetScene()->CreateObject<SceneObject>();
-	m_debugChunkObject->AddComponent<MeshComponent>(m_chunkBoundMesh.get(), "Line");
-	m_debugChunkObject->SetActive(false);
-
+	
 	// Debug Brush 생성
-	GeometryData debugBrushData = MeshGenerator::CreateSphereMeshData(m_brushRadius, { 1.0f, 0.0f, 0.0f, 0.4f });
-	m_brushMesh = std::make_unique<Mesh>(EngineCore::GetUploadContext(), debugBrushData, "DebugBrush");
-	m_debugBrush = m_owner->GetScene()->CreateObject<SceneObject>();
-	m_debugBrush->AddComponent<MeshComponent>(m_brushMesh.get(), "Wire");
+	m_debugBrush = m_scene->CreateObject<SceneObject>("BrushSphere", EObjectFlags::Transient | EObjectFlags::EditorOnly | EObjectFlags::Invisible);
+	if (auto meshComp = m_debugBrush->AddComponent<StaticMeshComponent>())
+	{
+		meshComp->SetMeshByPath("@WireSphere");
+	}
 	m_debugBrush->SetActive(false);
 }
 
 void TerraformTool::OnDeactivated()
 {
 	IEditorTool::OnDeactivated();
+
+	// 저장하지 않은 지형 오브젝트가 존재할 경우 저장을 유도해주는것이 좋아보임.
 }
 
 void TerraformTool::Update(float deltaTime)
@@ -91,58 +56,33 @@ void TerraformTool::Update(float deltaTime)
 	{
 		m_updateTimer += deltaTime;
 	}
-
-	if (m_terrainSystem)
-	{
-		MeshChunkRenderer* renderer = m_terrainSystem->GetRenderer();
-		if (renderer)
-		{
-			uint64_t currentRev = renderer->GetRevision();
-
-			// 렌더러의 버전이 내 버전보다 높으면 (=새로운 청크가 생성됨)
-			if (currentRev != m_lastRendererRevision)
-			{
-				// 경계 메쉬 재생성
-				UpdateChunkBoundsMesh();
-
-				// 버전 동기화
-				m_lastRendererRevision = currentRev;
-			}
-		}
-	}
 }
 
-void TerraformTool::ProcessInput(const InputState* input, float deltaTime)
+bool TerraformTool::ProcessInput(const InputState* input, float deltaTime)
 {
+	if (!m_selectedTerrain) return false;
+
 	if (input->IsPressed(ActionKey::LeftClick))
 	{
-		auto* camera = m_owner->GetScene()->GetMainCamera();
-
-		MeshChunkRenderer* terrainRenderer = m_terrainSystem->GetRenderer();
-
+		auto* camera = m_controller->GetScene()->GetMainCamera();
 		MousePos mouse = input->GetMousePos();
 		float mouseX = static_cast<float>(mouse.x);
 		float mouseY = static_cast<float>(mouse.y);
+		auto ray = PhysicsUtil::MakeRay(mouseX, mouseY, camera->GetViewportWidth(), camera->GetViewportHeight(), camera->GetViewProjMatrix());
 
-		auto ray = PhysicsUtil::MakeRay(mouseX, mouseY,
-			camera->GetViewportWidth(),
-			camera->GetViewportHeight(),
-			camera->GetViewProjMatrix());
+		XMMATRIX worldMat = m_selectedTerrain->GetWorldMatrix();
+		GridDesc setting = m_selectedTerrain->GetSetting();
+		auto target = PhysicsUtil::RaymarchingTarget{
+			.data = m_selectedTerrain->GetData().get(),
+			.resolution = setting.resolution,
+			.cellSize = setting.cellsize,
+			.isoValue = setting.isoValue,
+			.worldMatrix = worldMat,
+			.userData = m_selectedTerrain
+		};
 
-		std::vector<PhysicsUtil::RaycastTarget> targets;
-		auto& terrainChunks = terrainRenderer->GetChunkSlots();
-		for (const auto& chunk : terrainChunks)
-		{
-			targets.push_back(PhysicsUtil::RaycastTarget{
-				.data = &chunk->meshData,
-				.bounds = chunk->bounds,
-				.worldMatrix = m_terrainRenderer->GetWorldMatrix()
-				});
-		}
-
-		// RayCast로 terrainMesh를 피킹중인지 확인
-		PhysicsUtil::RaycastHitResult result;
-		if (PhysicsUtil::IsHit(targets, ray, result))
+		PhysicsUtil::HitResult result;
+		if (PhysicsUtil::IsHit(target, ray, result))
 		{
 			const auto& hitPos = result.hitPos;
 #ifdef _DEBUG
@@ -150,58 +90,92 @@ void TerraformTool::ProcessInput(const InputState* input, float deltaTime)
 			m_debugBrush->SetPosition(hitPos);
 			m_debugBrush->SetActive(true);
 #endif // DEBUG
-			XMVECTOR vHitposLS = XMVector3TransformCoord(XMLoadFloat3(&hitPos), XMMatrixInverse(nullptr, m_terrainRenderer->GetWorldMatrix()));
+			XMVECTOR vHitposLS = XMVector3TransformCoord(XMLoadFloat3(&hitPos), XMMatrixInverse(nullptr, m_selectedTerrain->GetWorldMatrix()));
 			XMFLOAT3 hitposLS;
 			XMStoreFloat3(&hitposLS, vHitposLS);
 
-			BrushRequest req_brush{
-				.deltaTime = deltaTime,
-				.center = hitposLS,
-				.radius = m_brushRadius,
-				.weight = m_brushStrength * (EngineCore::GetInputState()->IsPressed(ActionKey::Ctrl) ? -1.0f : 1.0f)
-			};
-			m_terrainSystem->RequestBrush(req_brush);
+			float brushDelta = deltaTime * m_brushStrength * (EngineCore::GetInputState()->IsPressed(ActionKey::Ctrl) ? -1.0f : 1.0f);
+			m_selectedTerrain->ApplyBrush(deltaTime * m_brushStrength, hitposLS, m_brushRadius);
+
+			return true;
 		}
 	}
 
+	return false;
 }
 
 void TerraformTool::RenderUI(IUIBuilder* ui)
 {
-	ui->BeginPanel("Terraform Tool");
+	std::string fileName = "No Terrain Selected";
+	bool bHasSelection = (m_selectedTerrain != nullptr);
+	bool bIsDirty = false;
 
-	OptionPanel(ui);
-
-	if (ui->BeginTabBar("Tools"))
+	if (bHasSelection)
 	{
-		if (ui->BeginTabItem("Geometrty"))
-		{
-			GeometryTabUI(ui);
-			ui->EndTabItem();
-		}
+		std::filesystem::path statedPath = m_selectedTerrain->GetAssetPath();
+		fileName = statedPath.filename().string();
+		bIsDirty = m_selectedTerrain->IsDirty();
 
-		if (ui->BeginTabItem("Brush"))
-		{
-			BrushTabUI(ui);
-			ui->EndTabItem();
-		}
-
-		if (ui->BeginTabItem("Noise"))
-		{
-			NoiseTabUI(ui);
-			ui->EndTabItem();
-		}
-
-		if (ui->BeginTabItem("Visualization"))
-		{
-			VisualizationTabUI(ui);
-			ui->EndTabItem();
-		}
-
-		ui->EndTabBar();
+		if (bIsDirty) fileName += " *";
 	}
 
+	bool bIsOpen = true;
+	if (ui->BeginPanel(fileName.c_str(), &bIsOpen))
+	{
+		if (ui->BeginTabBar("Tools"))
+		{
+			if (ui->BeginTabItem("Create"))
+			{
+				ManageTabUI(ui);
+				ui->EndTabItem();
+			}
+
+			ui->BeginDisabled(!m_selectedTerrain);
+			if (ui->BeginTabItem("Edit Chunk"))
+			{
+				if (ui->BeginTabBar("Edit Bar"))
+				{
+					if (ui->BeginTabItem("Edit"))
+					{
+						// TODO : 청크 선택
+
+						// TODO : 청크 추가/삭제/이동
+
+						ui->EndTabItem();
+					}
+
+					if (ui->BeginTabItem("Brush"))
+					{
+						BrushTabUI(ui);
+						ui->EndTabItem();
+					}
+
+					if (ui->BeginTabItem("Noise"))
+					{
+						NoiseTabUI(ui);
+						ui->EndTabItem();
+					}
+					ui->EndTabBar();
+				}
+				ui->EndTabItem();
+			}
+			ui->EndDisabled();
+
+			if (ui->BeginTabItem("Visualization"))
+			{
+				VisualizationTabUI(ui);
+				ui->EndTabItem();
+			}
+
+			ui->EndTabBar();
+		}
+	}
 	ui->EndPanel();
+
+	if (!bIsOpen && m_controller)
+	{
+		m_controller->SetTool(nullptr);
+	}
 }
 
 void TerraformTool::SetBrushRadius(float radius)
@@ -209,80 +183,183 @@ void TerraformTool::SetBrushRadius(float radius)
 	m_brushRadius = radius;
 	if (m_debugBrush)
 	{
-		GeometryData newBrushMeshData = MeshGenerator::CreateSphereMeshData(m_brushRadius, { 1.0f, 0.0f, 0.0f, 0.4f });
-		m_brushMesh->UpdateData(EngineCore::GetUploadContext(), newBrushMeshData);
+		m_debugBrush->SetScale(XMFLOAT3{ radius, radius, radius });
 	}
 }
 
-void TerraformTool::OptionPanel(IUIBuilder* ui)
+void TerraformTool::OnSelectionUpdated(GameObject* selected)
 {
-	if (ui->BeginTable("Marching Cubes Options", 2))
+	//기존 선택했던 지형 오브젝트의 show 세팅 변경
+	if (m_selectedTerrain)
 	{
-		ui->Property("Origin", &m_gridOrigin);
-		ui->Property("Num Of Tiles", &m_resolution);
-		unsigned int resolutionMin = std::min(m_resolution.x, std::min(m_resolution.y, m_resolution.z));
-		if (ui->Property("Cell Size", &m_cellSize))
-		{
-			m_cellSize = std::clamp(m_cellSize, 1.0f, static_cast<float>(resolutionMin));
-		}
-		if (ui->Property("ChunkSize", &m_chunkSize))
-		{
-			m_chunkSize = std::clamp<unsigned int>(m_chunkSize, 1u, resolutionMin);
-		}
+		m_selectedTerrain->ShowTerrainBound(false);
+		m_selectedTerrain->ShowChunkBounds(false);
+		m_selectedTerrain->ShowWireframe(false);
+	}
 
-		ui->Separator();
-		if (ui->Button("Apply Options"))
-		{
-			m_terrainSystem->SetGridDesc(GridDesc{
-				.resolution = m_resolution,
-				.cellsize = m_cellSize,
-				.origin = m_gridOrigin,
-				.chunkSize = m_chunkSize
-			});
-			m_terrainSystem->RequestRemesh();
-		}
-		ui->EndTable();
+	if (TerrainObject* selectedTerrain = dynamic_cast<TerrainObject*>(selected))
+	{
+		m_currentImagePath = "";
+		m_isImageLoaded = false;
+		
+		m_selectedTerrain = selectedTerrain;
+		const GridDesc& currentDesc = m_selectedTerrain->GetSetting();
+		m_bDirtyRegion = false;
+		m_updateTimer = 0.0f;
+
+		m_selectedTerrain->ShowTerrainBound(m_bShowGrid);
+		m_selectedTerrain->ShowChunkBounds(m_bShowGrid);
+		m_selectedTerrain->ShowWireframe(m_bWireframe);
+	}
+	else
+	{
+		m_selectedTerrain = nullptr;
 	}
 }
 
-void TerraformTool::GeometryTabUI(IUIBuilder* ui)
+void TerraformTool::ManageTabUI(IUIBuilder* ui)
 {
-	ui->BeginTable("Create Primitives",2);
-
-	// 1. 도형 타입 선택 (ComboBox)
-	static std::vector<std::string> primNames = { "Empty", "Plane", "Sphere" };
-	static std::vector<int> primValues = { (int)EPrimitiveType::Empty, (int)EPrimitiveType::Plane, (int)EPrimitiveType::Sphere };
-
-	int currentType = (int)m_primType;
-	if (ui->PropertyEnum("Type", &currentType, primNames, primValues))
+	// --- Create New 패널 ---
+	if (ui->BeginTabBar("ManageTabBar"))
 	{
-		m_primType = (EPrimitiveType)currentType;
-	}
+		ui->BeginDisabled(m_selectedTerrain);
+		if (ui->BeginTabItem("Create New"))
+		{
+			//(1) 새 지형 생성
+			ui->BeginTable("Create New Terrain", 2);
 
-	ui->Separator();
+			if (ui->Property("World Scale", &m_targetScale))
+			{
+				if (m_targetScale.x <= 0.0f || m_targetScale.y <= 0.0f || m_targetScale.z <= 0.0f)
+				{
+					m_targetScale = XMFLOAT3(1.0f, 1.0f, 1.0f);
+				}
+			}
+			ui->Property("Cells Per Chunk", &m_targetCellsPerChunk);
+			ui->Property("Chunk Counts", &m_targetChunkCount);
+			ui->Property("IsoValue", &m_targetIsoValue);
+			//TODO : LOD 분할 기능 추가 시 주석 해제.
+			//ui->Property("Submeshes Per Chunk", &m_targetSubmeshesPerChunk);
+			ui->EndTable();
 
-	// 2. 타입별 파라미터 UI
-	switch (m_primType)
-	{
-		case EPrimitiveType::Empty:
-			ui->Text("Clears the entire terrain.");
-			break;
+			ui->Separator();
+			std::string info = "--- Estimated Terrain Info ---";
+			ui->AlignNextItem(UI::UI_Alignment::AlignCenter, ui->CalcTextSize(info.c_str()).x);
+			ui->Text(info);
+			XMUINT3 totalResolution = XMUINT3(m_targetChunkCount.x * m_targetCellsPerChunk, m_targetChunkCount.y * m_targetCellsPerChunk, m_targetChunkCount.z * m_targetCellsPerChunk);
+			ui->TextFormatted("Overall Resolution: %lu x %lu x %lu", totalResolution.x, totalResolution.y, totalResolution.z);
+			ui->Separator();
 
-		case EPrimitiveType::Plane:
-			ui->Property("Height (Y)", &m_primHeight, 0.5f);
-			break;
+			ui->BeginTable("Primitives", 2);
+			// 도형 타입 선택 (ComboBox)
+			static std::vector<std::string> primNames = { "Empty", "Plane", "Sphere" };
+			static std::vector<int> primValues = { (int)EPrimitiveType::Empty, (int)EPrimitiveType::Plane, (int)EPrimitiveType::Sphere };
 
-		case EPrimitiveType::Sphere:
-			ui->Property("Radius", &m_primRadius, 0.5f);
-			break;
-	}
-	ui->EndTable();
-	ui->Dummy({ 0, 10 });
+			int currentType = (int)m_primType;
+			if (ui->PropertyEnum("Type", &currentType, primNames, primValues))
+			{
+				m_primType = (EPrimitiveType)currentType;
+			}
+			ui->Separator();
 
-	// 3. 생성 버튼
-	if (ui->Button("Generate Geometry", { -1, 30 }))
-	{
-		CreatePrimitive();
+			// 타입별 파라미터 UI
+			switch (m_primType)
+			{
+				case EPrimitiveType::Empty:
+					ui->Text("Clears the entire terrain.");
+					break;
+
+				case EPrimitiveType::Plane:
+					ui->Property("Height (Y)", &m_primHeight, 0.5f);
+					break;
+
+				case EPrimitiveType::Sphere:
+					ui->Property("Radius", &m_primRadius, 0.5f);
+					break;
+			}
+			ui->EndTable();
+			ui->Dummy({ 0, 10 });
+
+			// 생성 버튼
+			if (ui->Button("Create"))
+			{
+				GridDesc newDesc{
+				.resolution = XMUINT3{
+					m_targetChunkCount.x * m_targetCellsPerChunk,
+					m_targetChunkCount.y * m_targetCellsPerChunk,
+					m_targetChunkCount.z * m_targetCellsPerChunk
+				},
+				.cellsize = 1.0f,
+				.cellsPerChunk = m_targetCellsPerChunk,
+				.isoValue = m_targetIsoValue
+				};
+
+				CreatePrimitive(newDesc);
+			}
+			ui->EndTabItem();
+		}
+
+		if (ui->BeginTabItem("Import From File"))
+		{
+			auto getRelativeDisplayPath = [](const std::string& fullPath) -> std::string {
+				if (fullPath.empty()) return "None Selected";
+
+				std::filesystem::path path(fullPath);
+#ifdef CONTENTS_ROOT
+				std::filesystem::path root(CONTENTS_ROOT);
+				std::error_code ec;
+
+				// root 기준으로 path의 상대 경로 계산
+				std::filesystem::path relPath = std::filesystem::relative(path, root, ec);
+
+				// 에러가 없으며, 계산된 상대 경로가 비어있지 않은 경우 반환
+				if (!ec && !relPath.empty())
+				{
+					std::string relStr = relPath.string();
+
+					// 상대 경로에 ".." 이 포함되어 있지 않다면 순수 하위 경로이므로 상대 경로 반환
+					if (relStr.find("..") == std::string::npos)
+					{
+						return relStr;
+					}
+				}
+#endif
+				return path.string();
+			};
+
+
+			ui->Dummy({ 0, 5.0f });
+			ui->Text("Source Template:");
+			if (ui->Button("Browse...##Source"))
+			{
+				std::string path = FileUtils::FileDialogs::OpenFile("Terrain Template Asset", "*.sdf");
+				if (!path.empty()) m_importSourcePath = path;
+			}
+			ui->SameLine();
+			ui->Text(getRelativeDisplayPath(m_importSourcePath).c_str());
+			ui->Dummy({ 0, 5.0f });
+			
+			ui->Text("Save Destination:");
+			if (ui->Button("Browse...##Dest"))
+			{
+				std::string path = FileUtils::FileDialogs::SaveFile("Save New Terrain Asset", "*.sdf");
+				if (!path.empty()) m_importDestPath = path;
+			}
+			ui->SameLine();
+			ui->Text(getRelativeDisplayPath(m_importDestPath).c_str());
+			ui->Dummy({ 0, 10.0f });
+
+			ui->BeginDisabled(m_importSourcePath.empty() || m_importDestPath.empty());
+			if (ui->Button("Create from Template", { 150.0f, 0.0f }))
+			{
+				LoadTerrain();
+			}
+			ui->EndDisabled();
+			ui->EndTabItem();
+		}
+		ui->EndTabBar();
+
+		ui->EndDisabled();
 	}
 }
 
@@ -310,8 +387,8 @@ void TerraformTool::NoiseTabUI(IUIBuilder* ui)
 	// 로드된 이미지가 있다면 미리보기 출력
 	if (m_isImageLoaded)
 	{
-		D3D12_GPU_DESCRIPTOR_HANDLE gpuHandle = EngineCore::GetResourceManager()->GetTextureGpuHandle(m_heightmapTextureHandle);
-
+		
+		D3D12_GPU_DESCRIPTOR_HANDLE gpuHandle = EngineCore::GetRenderSystem()->GetTextureRegistry()->GetGpuHandle(m_heightmapHandle);
 		float aspect = (float)m_imgHeight / (float)m_imgWidth;
 		float dispW = 300.0f;
 		float dispH = dispW * aspect;
@@ -323,10 +400,10 @@ void TerraformTool::NoiseTabUI(IUIBuilder* ui)
 
 		if (m_bDraggingRegion || m_bResizingRegion)
 		{
-			// 0.05초(20 FPS)마다 한 번씩만 업데이트 & LOD(저해상도) 적용
-			if (m_updateTimer >= 0.05f && m_bDirtyRegion)
+			// 0.1초(60fps 기준 6프레임)마다 한 번씩만 업데이트 & LOD(저해상도) 적용
+			if (m_updateTimer >= 0.1f && m_bDirtyRegion)
 			{
-				ApplyToTerrain(true);
+				ApplyNoiseToTerrain(true);
 				m_updateTimer = 0.0f;
 				m_bDirtyRegion = false;
 			}
@@ -334,7 +411,7 @@ void TerraformTool::NoiseTabUI(IUIBuilder* ui)
 		else if (wasDragging)
 		{
 			// 고 해상도로 한번 더 갱신
-			ApplyToTerrain(false);
+			ApplyNoiseToTerrain(false);
 			m_bDirtyRegion = false;
 		}
 	}
@@ -350,7 +427,7 @@ void TerraformTool::NoiseTabUI(IUIBuilder* ui)
 
 	if (ui->Button("Apply to Terrain"))
 	{
-		ApplyToTerrain(false);
+		ApplyNoiseToTerrain(false);
 	}
 }
 
@@ -359,24 +436,26 @@ void TerraformTool::VisualizationTabUI(IUIBuilder* ui)
 	ui->Text("Debug Visuals");
 	ui->Separator();
 
-	if (ui->Checkbox("Show Terrain Grid", &m_bShowGrid))
+	bool bHasSelection = (m_selectedTerrain != nullptr);
+	ui->BeginDisabled(!bHasSelection);
+
+	if (ui->Checkbox("Show Terrain Grid", &m_bShowGrid) && bHasSelection)
 	{
-		if (m_debugCell) m_debugCell->SetActive(m_bShowGrid);
-		if (m_debugChunkObject) m_debugChunkObject->SetActive(m_bShowGrid);
+		m_selectedTerrain->ShowTerrainBound(m_bShowGrid);
+		m_selectedTerrain->ShowChunkBounds(m_bShowGrid);
 	}
 
-	static bool bWireframe = false;
-	if (ui->Checkbox("Wireframe Mode", &bWireframe))
+	if (ui->Checkbox("Wireframe Mode", &m_bWireframe) && bHasSelection)
 	{
-		if (auto terrainComponent = m_terrainRenderer->GetComponent<TerrainRendererComponent>())
-		{
-			terrainComponent->SetPSO(bWireframe ? "Wire" : "Filled");
-		}
+		m_selectedTerrain->ShowWireframe(m_bWireframe);
 	}
+	ui->EndDisabled();
 }
 
 void TerraformTool::LoadHeightmapImage()
 {
+	static const std::string s_initialFilePath = "";
+
 	std::string pathStr = FileUtils::OpenFileDialog();
 	if (pathStr.empty()) return;
 
@@ -396,16 +475,19 @@ void TerraformTool::LoadHeightmapImage()
 		*m_cpuHeightmapImage = std::move(converted);
 	}
 
-	m_currentFilePath = pathStr;
+	m_currentImagePath = pathStr;
 	const auto* image = m_cpuHeightmapImage->GetImage(0, 0, 0);
 	m_imgWidth = static_cast<int>(image->width);
 	m_imgHeight = static_cast<int>(image->height);
 
 	// 편의상 파일 리로드로 미리보기 텍스쳐 생성.
 	// 최적화 시 ScratchImage -> TextureAsset 생성 함수 구현하여 적용.
-	m_heightmapTextureHandle = EngineCore::GetResourceManager()->LoadTexture(path);
+	if (m_heightmapAsset = EngineCore::GetResourceManager()->LoadTextureAsset(path))
+	{
+		m_heightmapHandle = EngineCore::GetRenderSystem()->GetTextureRegistry()->LoadTexture(m_heightmapAsset);
+		m_isImageLoaded = true;
+	}
 
-	m_isImageLoaded = true;
 }
 
 bool TerraformTool::DrawAndControlRegion(IUIBuilder* ui, void* textureID, float w, float h)
@@ -505,33 +587,19 @@ bool TerraformTool::DrawAndControlRegion(IUIBuilder* ui, void* textureID, float 
 	return isChanged;
 }
 
-void TerraformTool::ApplyToTerrain(bool bUseLOD)
+void TerraformTool::ApplyNoiseToTerrain(bool bUseLOD)
 {
+	// 이미지 -> 지형 데이터 변환은 이제 다음의 Flow로 진행한다.
+	// 1. 지형 선택 (새 지형을 만들어서 적용하고 싶을 경우 새 지형 생성 기능을 이용해서 생성한 후 적용) -> EditorController + Hierarchy/Inspector에서 타겟 체크
+	// 2. 노이즈 이미지 선택 (LoadHeightmapImage)
+	// 3. 적용할 이미지의 영역 선택(ApplyNosieToTerrain)
+	// 4. 이미지 높이 값 추출
+	// 5. 높이 값 -> SDF에 적용
+
 	// 이미지 기반 SDF 데이터 생성
-	if (!m_terrainSystem || !m_cpuHeightmapImage) return;
+	if (!m_selectedTerrain || !m_cpuHeightmapImage) return;
 
-	GridDesc currentDesc = m_terrainSystem->GetGridDesc();
-	if (bUseLOD)
-	{
-		if (!m_bDescRenewed)
-		{
-			// 원본 GridDesc 최신화
-			m_realDesc = m_terrainSystem->GetGridDesc();
-			m_bDescRenewed = true;
-
-			// 실시간 프리뷰 생성은 해상도를 절반으로 만들어(원본의 격자 크기는 유지하기 위해 셀 크기 2배) 연산량을 줄임
-			currentDesc.cellsize *= 2.0f;
-			currentDesc.resolution.x /= 2;
-			currentDesc.resolution.y /= 2;
-			currentDesc.resolution.z /= 2;
-		}
-	}
-	else
-	{
-		currentDesc = m_realDesc;
-		m_bDescRenewed = false;
-	}
-
+	auto data = m_selectedTerrain->GetData();
 	const DirectX::Image* resImg = m_cpuHeightmapImage->GetImage(0, 0, 0);
 
 	// 이미지 좌표 -> 픽셀 좌표 변환
@@ -558,136 +626,67 @@ void TerraformTool::ApplyToTerrain(bool bUseLOD)
 	}
 
 	// 생성
-	auto newField = TerrainFieldGenerator::CreateFromImage(currentDesc, roiData, roiWidth, roiHeight, m_heightScale);
-	if (newField != nullptr)
+	if (bUseLOD)
 	{
-		m_terrainSystem->SetGridDesc(currentDesc);
-		m_terrainSystem->SetField(newField);
-		m_terrainSystem->RequestRemesh();
-	}
-}
-
-void TerraformTool::UpdateChunkBoundsMesh()
-{
-	// 1. 초기화 및 유효성 검사
-	if (!m_terrainSystem || !m_chunkBoundMesh) return;
-
-	// 기능이 꺼져있으면 렌더링 끔
-	if (!m_bShowGrid) return;
-
-	MeshChunkRenderer* renderer = m_terrainSystem->GetRenderer();
-	if (!renderer) return;
-
-	// 2. 데이터 준비
-	auto chunkSlots = renderer->GetChunkSlots();
-	const GridDesc& desc = m_terrainSystem->GetGridDesc();
-
-	GeometryData geom;
-	geom.topology = D3D_PRIMITIVE_TOPOLOGY_LINELIST;
-
-	// 청크의 물리적 크기 계산
-	const float chunkWorldSize = desc.chunkSize * desc.cellsize;
-	const float epsilon = 0.01f; // 부동소수점 오차 허용 범위
-	const float viewBias = 0.05f; // 지형보다 살짝 위에 그리기 위한 오프셋
-
-	// 3. 모든 청크 순회
-	const auto& chunks = renderer->GetChunkMap();
-	for (const auto& [key, slot] : chunks)
-	{
-		const auto& mesh = slot.meshData;
-		if (mesh.indices.empty()) continue;
-
-		float startX = desc.origin.x + key.x * chunkWorldSize;
-		float startZ = desc.origin.z + key.z * chunkWorldSize;
-		float endX = startX + chunkWorldSize;
-		float endZ = startZ + chunkWorldSize;
-
-		auto IsOnBoundaryX = [&](float x) {
-			return (std::abs(x - startX) < epsilon) || (std::abs(x - endX) < epsilon);
-			};
-		auto IsOnBoundaryZ = [&](float z) {
-			return (std::abs(z - startZ) < epsilon) || (std::abs(z - endZ) < epsilon);
-			};
-
-		// 4. 삼각형 엣지 순회 (index 3개씩)
-		for (size_t i = 0; i < mesh.indices.size(); i += 3)
+		// 프리뷰 지형 메쉬에 적용
+		Log::Print("TerraformTool NoiseTab", "bLod = true");
+		m_selectedTerrain->SetActive(false);
+		m_selectedTerrain->ShowTerrainBound(false);
+		m_selectedTerrain->ShowChunkBounds(false);
+		m_selectedTerrain->ShowWireframe(false);
+		if (!m_previewTerrain)
 		{
-			uint32_t i0 = mesh.indices[i];
-			uint32_t i1 = mesh.indices[i + 1];
-			uint32_t i2 = mesh.indices[i + 2];
-
-			const Vertex& v0 = mesh.vertices[i0];
-			const Vertex& v1 = mesh.vertices[i1];
-			const Vertex& v2 = mesh.vertices[i2];
-
-			// 엣지 검사 함수
-			auto CheckAndAddEdge = [&](const Vertex& a, const Vertex& b)
-				{
-					// 두 정점이 모두 X 경계에 있거나, 모두 Z 경계에 있는 경우 -> 경계선 엣지!
-					bool bOnX = IsOnBoundaryX(a.pos.x) && IsOnBoundaryX(b.pos.x);
-					bool bOnZ = IsOnBoundaryZ(a.pos.z) && IsOnBoundaryZ(b.pos.z);
-
-					if (bOnX || bOnZ)
-					{
-						Vertex va = a;
-						Vertex vb = b;
-
-						// [중요] Z-Fighting 방지: Normal 방향으로 살짝 띄움
-						XMVECTOR nA = XMLoadFloat3(&a.normal);
-						XMVECTOR pA = XMLoadFloat3(&a.pos);
-						pA = XMVectorAdd(pA, XMVectorScale(nA, viewBias));
-						XMStoreFloat3(&va.pos, pA);
-
-						XMVECTOR nB = XMLoadFloat3(&b.normal);
-						XMVECTOR pB = XMLoadFloat3(&b.pos);
-						pB = XMVectorAdd(pB, XMVectorScale(nB, viewBias));
-						XMStoreFloat3(&vb.pos, pB);
-
-						// 색상은 튀는 색(밝은 초록 or 마젠타) 설정
-						va.color = { 0.0f, 1.0f, 0.0f, 1.0f };
-						vb.color = { 0.0f, 1.0f, 0.0f, 1.0f };
-
-						uint32_t idx = (uint32_t)geom.vertices.size();
-						geom.vertices.push_back(va);
-						geom.vertices.push_back(vb);
-						geom.indices.push_back(idx);
-						geom.indices.push_back(idx + 1);
-					}
-				};
-
-			// 삼각형의 3개 엣지 각각 검사
-			CheckAndAddEdge(v0, v1);
-			CheckAndAddEdge(v1, v2);
-			CheckAndAddEdge(v2, v0);
+			m_previewTerrain = m_scene->CreateObject<TerrainObject>("PreviewTerrain", EObjectFlags::Transient | EObjectFlags::EditorOnly | EObjectFlags::Invisible);
 		}
-	}
 
-	// 5. GPU 업로드
-	if (!geom.vertices.empty())
-	{
-		m_chunkBoundMesh->UpdateData(EngineCore::GetUploadContext(), geom);
+		m_previewTerrain->SetPosition(m_selectedTerrain->GetPosition());
+		m_previewTerrain->SetRotation(m_selectedTerrain->GetRotation());
+		XMFLOAT3 originalScale = m_selectedTerrain->GetScale();
+		m_previewTerrain->SetScale(originalScale);
+		
+		GridDesc previewDesc = m_selectedTerrain->GetSetting();
+		// 전체 크기는 동일하지만 해상도는 절반이어야한다 -> cellSize 2배, cellsPerChunk 0.5배.
+		previewDesc.resolution.x /= 2;
+		previewDesc.resolution.y /= 2;
+		previewDesc.resolution.z /= 2;
+		previewDesc.cellsize *= 2.0f;
+		previewDesc.cellsPerChunk = std::max(1u, previewDesc.cellsPerChunk / 2);
+
+		if (auto previewField = TerrainFieldGenerator::CreateFromImage(previewDesc, roiData, roiWidth, roiHeight, m_heightScale))
+		{
+			m_previewTerrain->InjectTerrain(previewDesc, previewField);
+			m_previewTerrain->SetActive(true);
+			m_previewTerrain->ShowChunkBounds(m_bShowGrid);
+			m_previewTerrain->ShowTerrainBound(m_bShowGrid);
+			m_previewTerrain->ShowWireframe(m_bWireframe);
+		}
 	}
 	else
 	{
-		// 데이터가 없으면 클리어
-		GeometryData empty;
-		empty.topology = D3D_PRIMITIVE_TOPOLOGY_LINELIST;
-		m_chunkBoundMesh->UpdateData(EngineCore::GetUploadContext(), empty);
+		Log::Print("TerraformTool NoiseTab", "bLod = false");
+		if (m_previewTerrain) 
+		{
+			m_previewTerrain->SetActive(false);
+			m_previewTerrain->ShowChunkBounds(false);
+			m_previewTerrain->ShowTerrainBound(false);
+			m_previewTerrain->ShowWireframe(false);
+		}
+
+		if (auto resultField = TerrainFieldGenerator::CreateFromImage(m_selectedTerrain->GetSetting(), roiData, roiWidth, roiHeight, m_heightScale))
+		{
+			m_selectedTerrain->InjectTerrain(m_selectedTerrain->GetSetting(), resultField);
+			m_selectedTerrain->SetActive(true);
+			m_selectedTerrain->ShowTerrainBound(m_bShowGrid);
+			m_selectedTerrain->ShowChunkBounds(m_bShowGrid);
+			m_selectedTerrain->ShowWireframe(m_bWireframe);
+		}
 	}
 }
 
-void TerraformTool::CreatePrimitive()
+void TerraformTool::CreatePrimitive(const GridDesc& desc)
 {
-	if (!m_terrainSystem) return;
-
-	// 현재 Grid 설정 가져오기
-	GridDesc desc = m_terrainSystem->GetGridDesc();
-
-	// 만약 해상도 설정을 UI에서 바꿨다면 여기서 갱신 적용
-	desc.resolution = m_resolution;
-	desc.cellsize = m_cellSize;
-	desc.origin = m_gridOrigin;
-	desc.chunkSize = m_chunkSize;
+	std::string path = FileUtils::FileDialogs::SaveFile("Terrain Asset", "*.sdf");
+	if (path.empty()) return; // 경로 지정을 취소하면 지형 생성 자체를 중단
 
 	std::shared_ptr<SdfField> newField;
 	switch (m_primType)
@@ -696,14 +695,71 @@ void TerraformTool::CreatePrimitive()
 			newField = TerrainFieldGenerator::CreatePlane(desc, m_primHeight);
 			break;
 		case EPrimitiveType::Sphere:
-			newField = TerrainFieldGenerator::CreateSphere(desc, m_primRadius);
+			newField = TerrainFieldGenerator::CreateSphere(desc, m_primRadius, { 50.0f, 50.0f, 50.0f });
 			break;
 		default:
 			newField = TerrainFieldGenerator::CreateEmpty(desc);
 			break;
 	}
 
-	m_terrainSystem->SetGridDesc(desc);
-	m_terrainSystem->SetField(newField);
-	m_terrainSystem->RequestRemesh(); // 전체 리메쉬 수행
+	if (auto* newObj = m_scene->CreateObject<TerrainObject>("NewTerrain"))
+	{
+		newObj->InjectTerrain(desc, newField);
+		
+		// 생성된 경로를 에셋 경로로 지정하고 디스크에 즉시 기록
+		newObj->SetAssetPath(path);
+		newObj->SaveDataAsset(path);
+
+		// 새로 만든 객체를 선택 상태로 변경
+		m_controller->SelectObject(newObj);
+	}
+}
+
+void TerraformTool::SaveTerrain(std::string_view path)
+{
+	if (path.starts_with("Unsaved"))
+	{
+		SaveTerrainAs();
+		return;
+	}
+
+	if (m_selectedTerrain->SaveDataAsset(path))
+	{
+		Log::Print("Saved terrain to %s", path.data());
+	}
+}
+
+void TerraformTool::SaveTerrainAs()
+{
+	std::string path = FileUtils::FileDialogs::SaveFile("Terrain Asset", "*.sdf");
+	if (path.empty())
+	{
+		return; // 사용자가 파일 탐색기를 열고 취소 버튼을 눌렀을 경우를 고려하여 로그를 작성하지 않았음
+	}
+	m_selectedTerrain->SetAssetPath(path);
+	SaveTerrain(path);
+}
+
+void TerraformTool::LoadTerrain()
+{
+	if (m_importSourcePath.empty() || m_importDestPath.empty()) return;
+	
+	if (!FileUtils::DuplicateFile(m_importSourcePath, m_importDestPath, true)) return;
+
+	if (auto newTerrain = m_scene->CreateObject<TerrainObject>("NewTerrain"))
+	{
+		if (newTerrain->LoadDataAsset(m_importDestPath))
+		{
+			m_controller->SelectObject(newTerrain);
+
+			// 로드 성공 시 다음 작업을 위해 UI 캐싱 상태 초기화
+			m_importSourcePath.clear();
+			m_importDestPath.clear();
+		}
+		else
+		{
+			Log::Print("Failed to load terrain data from %s", m_importDestPath.c_str());
+		}
+		
+	}
 }

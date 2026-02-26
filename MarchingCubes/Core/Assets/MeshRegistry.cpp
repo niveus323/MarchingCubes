@@ -1,42 +1,92 @@
 #include "pch.h"
 #include "MeshRegistry.h"
+#include "Core/Engine/EngineCore.h"
+#include "Core/Rendering/UploadContext.h"
+#include "Core/DataStructures/Drawable.h"
+#include "Core/Rendering/Memory/GpuAllocator.h"
+#include "Core/Geometry/Mesh/Class/StaticMesh.h"
+#include "Core/Geometry/Mesh/Class/DynamicMesh.h"
 
-bool MeshRegistry::HasMesh(std::string_view key) const
+std::shared_ptr<StaticMesh> MeshRegistry::CreateStaticMesh(const std::string& key, const GeometryData& data, const std::vector<MeshSubmesh>& submeshes)
 {
-	return m_assetCache.contains(key.data());
-}
-
-void MeshRegistry::RegisterAsset(std::string_view key, std::unique_ptr<MeshAsset> asset)
-{
-	if (asset)
-	{
-		m_assetCache[key.data()] = std::move(asset);
-	}
-}
-
-std::shared_ptr<Mesh> MeshRegistry::CreateMeshFromAsset(std::string_view key)
-{
-	// 이미 GPU 리소스가 있으면 반환
-	auto resIt = m_resourceCache.find(key.data());
+	auto resIt = m_resourceCache.find(key);
 	if (resIt != m_resourceCache.end()) return resIt->second;
 
-	// Asset 데이터 찾기
-	auto assetIt = m_assetCache.find(key.data());
-	if (assetIt == m_assetCache.end()) return nullptr;
+	auto allocator = EngineCore::GetGpuAllocator();
+	auto uploadContext = EngineCore::GetUploadContext();
+	assert(allocator && uploadContext);
 
-	const MeshAsset* asset = assetIt->second.get();
-	auto mesh = std::make_shared<Mesh>(m_uploadContext, asset->GetGeometry(), asset->GetSubmesh(), std::filesystem::path(key).filename().string());
-	m_resourceCache[key.data()] = mesh;
+	GeometryBuffer geoBuffer;
+	if (allocator)
+	{
+		BufferHandle vbHandle;
+		uint64_t vbSize = data.vertices.size() * sizeof(Vertex);
+		if (vbSize > 0)
+		{
+			allocator->Alloc(AllocDesc::Static(vbSize, key + "_VB"), vbHandle);
+			geoBuffer.SwapVBHandle(vbHandle);
+		}
 
+		BufferHandle ibHandle;
+		uint64_t ibSize = data.indices.size() * sizeof(uint32_t);
+		if (ibSize > 0)
+		{
+			allocator->Alloc(AllocDesc::Static(ibSize, key + "_IB"), ibHandle);
+			geoBuffer.SwapIBHandle(ibHandle);
+		}
+		uploadContext->UploadGeometry(&geoBuffer, data, key);
+	}
+
+	auto mesh = std::make_shared<StaticMesh>(key);
+	mesh->Initialize(geoBuffer, data, submeshes);
+
+	m_resourceCache[key] = mesh;
 	return mesh;
 }
 
-const MeshAsset* MeshRegistry::GetAsset(const std::filesystem::path& path) const
+std::shared_ptr<DynamicMesh> MeshRegistry::CreateDynamicMesh(const GeometryData& data, const std::vector<MeshSubmesh>& submeshes, const std::string& debugName)
 {
-	auto it = m_assetCache.find(path.string());
-	if (it != m_assetCache.end())
+	auto mesh = std::make_shared<DynamicMesh>(debugName);
+	UpdateDynamicMesh(mesh, data, submeshes);
+	return mesh;
+}
+
+void MeshRegistry::UpdateDynamicMesh(std::shared_ptr<DynamicMesh> mesh, const GeometryData& newData, const std::vector<MeshSubmesh>& submeshes)
+{
+	auto uploadContext = EngineCore::GetUploadContext();
+	assert(uploadContext);
+
+	if (!mesh) return;
+
+	GeometryBuffer& oldBuffer = *mesh->GetGPUBuffer();
+	if (oldBuffer.GetVBHandle().res != nullptr || oldBuffer.GetIBHandle().res != nullptr)
 	{
-		return it->second.get();
+		uploadContext->FreeGeometryBuffer(oldBuffer);
 	}
-	return nullptr;
+	
+	auto allocator = EngineCore::GetGpuAllocator();
+	std::string meshName = std::string(mesh->GetDebugName());
+	GeometryBuffer newGeoBuffer;
+	uint64_t vbSize = newData.vertices.size() * sizeof(Vertex);
+	if (vbSize > 0)
+	{
+		BufferHandle vbHandle{};
+		allocator->Alloc(AllocDesc::Dynamic(vbSize, meshName + "_VB"), vbHandle);
+		newGeoBuffer.SwapVBHandle(vbHandle);
+	}
+
+	uint64_t ibSize = newData.indices.size() * sizeof(uint32_t);
+	if (ibSize > 0)
+	{
+		BufferHandle ibHandle{};
+		allocator->Alloc(AllocDesc::Dynamic(ibSize, meshName + "_IB"), ibHandle);
+		newGeoBuffer.SwapIBHandle(ibHandle);
+	}
+
+	DXGI_FORMAT ibFormat = (sizeof(uint32_t) == 4) ? DXGI_FORMAT_R32_UINT : DXGI_FORMAT_R16_UINT;
+	newGeoBuffer.SetLayout(sizeof(Vertex), ibFormat);
+
+	uploadContext->UploadGeometry(&newGeoBuffer, newData, mesh->GetDebugName());
+
+	mesh->SwapBuffer(newGeoBuffer, newData, submeshes);
 }

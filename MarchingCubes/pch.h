@@ -18,8 +18,13 @@
 
 //DirectX Helper https://github.com/microsoft/DirectX-Headers
 #include "DirectX-Headers/include/directx/d3dx12.h"
+
+// Utility
 #include "Core/Utils/DXHelper.h"
+#include "Core/Utils/StringUtils.h"
 #include "Core/Trace/Log.h"
+#include "Core/Engine/Reflection.h"
+#include "Core/Engine/EngineCore.h"
 
 #define PIX_DEBUGMODE 0
 

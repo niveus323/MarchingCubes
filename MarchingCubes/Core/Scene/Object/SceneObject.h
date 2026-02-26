@@ -16,15 +16,13 @@ class Scene;
 */
 class SceneObject : public GameObject, public GameObjectBase<SceneObject>
 {
+	REFLECT_GENERATED_BODY(SceneObject)
 	friend class GameObjectBase<SceneObject>;
 public:
 	using GameObjectBase<SceneObject>::AddComponent;
 
-	SceneObject(Scene* scene) : GameObject(scene)
-	{
-		m_transformComp = AddComponent<TransformComponent>();
-	}
 	virtual ~SceneObject() = default;
+	virtual void Init() override;
 	virtual void Update(float deltaTime) override
 	{
 		GameObject::Update(deltaTime);
@@ -51,18 +49,20 @@ public:
 		DirectX::XMStoreFloat4x4(&worldMatrix, GetWorldMatrix());
 		return worldMatrix;
 	}
-	XMFLOAT3 GetPosition() const						{ return m_transformComp->GetPosition(); }
-	XMFLOAT3 GetWorldPosition() const					{ return m_transformComp->GetWorldPosition(); }
+	DirectX::XMFLOAT3 GetPosition() const				{ return m_transformComp->GetPosition(); }
+	DirectX::XMFLOAT3 GetWorldPosition() const			{ return m_transformComp->GetWorldPosition(); }
 	void SetPosition(const DirectX::XMFLOAT3& pos)		{ m_transformComp->SetPosition(pos); }
 	void SetPosition(float x, float y, float z)			{ m_transformComp->SetPosition({ x,y,z }); }
 	void SetWorldPosition(const DirectX::XMFLOAT3& pos) { m_transformComp->SetWorldPosition(pos); }
 	void SetWorldPosition(float x, float y, float z)	{ m_transformComp->SetWorldPosition({ x,y,z }); }
-	XMFLOAT3 GetRotation() const						{ return m_transformComp->GetRotation(); }
+	DirectX::XMFLOAT3 GetRotation() const				{ return m_transformComp->GetRotation(); }
+	DirectX::XMFLOAT3 GetWorldRotation() const			{ return m_transformComp->GetWorldRotation(); }
 	void SetRotation(const DirectX::XMFLOAT3& rot)		{ m_transformComp->SetRotation(rot); }
 	void SetRotation(const DirectX::XMVECTOR& quat)		{ m_transformComp->SetRotation(quat); }
 	void SetWorldRotation(const DirectX::XMFLOAT3& rot) { m_transformComp->SetWorldRotation(rot); }
 	void SetWorldRotation(const DirectX::XMVECTOR& quat){ m_transformComp->SetWorldRotation(quat); }
-	XMFLOAT3 GetScale() const							{ return m_transformComp->GetScale(); }
+	DirectX::XMFLOAT3 GetScale() const					{ return m_transformComp->GetScale(); }
+	DirectX::XMFLOAT3 GetWorldScale() const				{ return m_transformComp->GetWorldScale(); }
 	void SetScale(const DirectX::XMFLOAT3& scale)		{ m_transformComp->SetScale(scale); }
 	DirectX::XMVECTOR GetForwardVector() const			{ return m_transformComp->GetForwardVec(); }
 	DirectX::XMVECTOR GetRightVector() const			{ return m_transformComp->GetRightVec(); }
@@ -70,5 +70,5 @@ public:
 	void SetTransform(const DirectX::XMFLOAT3& pos, const DirectX::XMFLOAT3& rot, const DirectX::XMFLOAT3& scale) { m_transformComp->SetTransform(pos, rot, scale); }
 
 private:
-	TransformComponent* m_transformComp;	
+	TransformComponent* m_transformComp = nullptr;	
 };

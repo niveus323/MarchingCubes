@@ -1,9 +1,9 @@
 #pragma once
-#include "Core/DataStructures/Drawable.h"
+#include "Core/DataStructures/Data.h"
+#include "Core/Assets/Material/MaterialAsset.h"
 
 struct ImportedMaterialDesc
 {
-    uint32_t internalMaterialIndex = 0;     // 에셋 파일 내부 material index
     std::string name;                  // material 이름
 
     // 텍스쳐 파일 경로들 (FBX에서 가져온 원본 경로 또는 리맵된 경로)
@@ -19,27 +19,37 @@ struct ImportedMaterialDesc
     float metallic = 0.0f;
 };
 
+struct MeshImportOptions
+{
+    bool  bUnitConversion = true;
+    float uniformScale = 1.0f; // ex) 0.01f: cm → m
+};
+
+/* [MeshAsset]
+* - LifeTime : Asset Load -> Asset UnLoad
+* - OwnerShip : ResourceManager
+* - Access : ResourceManager::LoadMeshAsset
+*/
 class MeshAsset
 {
 public:
-    explicit MeshAsset(const std::filesystem::path& path, GeometryData&& geometry, std::vector<MeshSubmesh>&& submeshes, std::vector<ImportedMaterialDesc>&& materialDescs) : 
+    MeshAsset(const std::filesystem::path& path, GeometryData&& geometry, std::vector<MeshSubmesh>&& submeshes, std::vector<std::shared_ptr<MaterialAsset>>&& materialAssets) :
         m_sourcePath(path),
         m_data(std::move(geometry)),
         m_subMeshes(std::move(submeshes)),
-        m_materialDescs(std::move(materialDescs))
+        m_materialAssets(std::move(materialAssets))
     { }
 
     const GeometryData& GetGeometry() const { return m_data; }
     const std::vector<MeshSubmesh>& GetSubmesh() const { return m_subMeshes; }
     std::vector<MeshSubmesh>& GetSubmesh() { return m_subMeshes; }
     const auto& GetSourcePath() const { return m_sourcePath; }
-    const auto& GetImportedMaterialDescs() const { return m_materialDescs; }
+    const auto& GetMaterialAssets() const { return m_materialAssets; }
 
 private:
     std::filesystem::path m_sourcePath;
-    //std::filesystem::path m_cachePath;   //TODO : 에디터용 DDC(Derived Data Cache) 사용 시 활성화
     GeometryData m_data;
     std::vector<MeshSubmesh> m_subMeshes; // Material Slot 등 사전 정의된 추가 정보들
-    std::vector<ImportedMaterialDesc> m_materialDescs;
+    std::vector<std::shared_ptr<MaterialAsset>> m_materialAssets;
 };
 

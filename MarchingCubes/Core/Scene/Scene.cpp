@@ -8,9 +8,10 @@
 #include "Core/Scene/Object/Controller/PlayerController.h"
 #include "Core/Scene/Object/Controller/EditorController.h"
 #include "Core/Scene/Object/SpectatorPawn.h"
-#include "Core/Geometry/Mesh/Mesh.h"
+#include "Core/Geometry/Mesh/Class/Mesh.h"
 #include "Core/UI/UIRenderer.h"
 #include "Core/UI/Builder/UIBuilder.h"
+#include <typeindex>
 
 Scene::Scene()
 {
@@ -30,14 +31,15 @@ void Scene::InitUI(IUIRenderer* ui)
     if (!m_isPlaying)
     {
 #ifdef _DEBUG
-        ui->AddFrameRenderCallbackToken(std::bind(&Scene::RenderSceneGizmoUI, this, std::placeholders::_1), UI::UICallbackOptions{
+        auto uiToken_Gizmo = ui->AddFrameRenderCallbackToken(std::bind(&Scene::RenderSceneGizmoUI, this, std::placeholders::_1), UI::UICallbackOptions{
             .layer = UI::EUILayer::Editor_Background,
             .rateHz = 0,
             .enabled = true,
             .id = "SceneGizmo"
             });
+        m_uiTokens.push_back(uiToken_Gizmo);
 #endif // _DEBUG
-        ui->AddFrameRenderCallbackToken( [this](IUIBuilder* builder) {
+        auto uiToken_Controller = ui->AddFrameRenderCallbackToken( [this](IUIBuilder* builder) {
                 if (auto editorPC = dynamic_cast<EditorController*>(this->m_currentController))
                 {
                     editorPC->RenderUI(builder);
@@ -49,6 +51,7 @@ void Scene::InitUI(IUIRenderer* ui)
                 .id = "EditorControllerUI"
             }
         );
+        m_uiTokens.push_back(uiToken_Controller);
     }
 }
 
@@ -56,7 +59,7 @@ void Scene::BeginPlay()
 {
     m_isPlaying = true;
     // 디폴트로 GameMode 생성
-    m_gameMode = CreateObject<GameMode>(); 
+    m_gameMode = CreateObject<GameMode>("GameMode");
     m_currentController = m_gameMode->GetController<PlayerController>();
 
     // 게임용 메인 카메라 찾기
@@ -69,12 +72,13 @@ void Scene::BeginPlay()
 
 void Scene::BeginEditor()
 {
-    auto editorPC = CreateObject<EditorController>();
-    auto spectator = CreateObject<SpectatorPawn>();
+    auto editorPC = CreateObject<EditorController>("EditorController");
+    auto spectator = CreateObject<SpectatorPawn>("SpectatorPawn");
     editorPC->Possess(spectator);
     SetMainCamera(spectator->GetComponent<CameraComponent>());
     m_currentController = editorPC;
-
+    Pawn* pawn = m_currentController->GetPawn();
+    pawn->SetPosition({ 0.0f, 0.0f, -120.0f });
 }
 
 void Scene::EndPlay()
@@ -90,14 +94,22 @@ void Scene::EndEditor()
     //m_editorMeshes.clear();
 }
 
-void Scene::OnExit()
+void Scene::OnExit(IUIRenderer* ui)
 {
+    if (ui)
+    {
+        for (auto& token : m_uiTokens)
+        {
+            ui->RemoveFrameRenderCallback(token);
+        }
+        m_uiTokens.clear();
+    }
+
     if (m_isPlaying) EndPlay();
     else EndEditor();
 
     ClearSubsystems();
 
-    m_sceneObjectsCache.clear();
     m_rendererCache.clear();
     m_lightCache.clear();
     m_objects.clear();
@@ -149,10 +161,122 @@ void Scene::Render()
 	}
 }
 
-void Scene::AddObject(std::unique_ptr<GameObject> obj)
+void Scene::Serialize(Serializer& ar)
 {
-	obj->SetScene(this);
+    Entity::Serialize(ar);
+ 
+    // SceneSubsystem 우선 직렬화
+    size_t subsysCount = m_sceneSubsystems.size();
+    ar.BeginArray("Subsystem", subsysCount);
+    if (ar.IsSaving())
+    {
+        for (auto& [key, subsys] : m_sceneSubsystems)
+        {
+            ar.BeginObject("SceneSubsystem");
+            std::string typeName = subsys->GetType()->GetName();
+            ar.Serialize("Type", typeName);
+            ar.EndObject();
+        }
+    }
+    else
+    {
+        for (size_t i = 0; i < subsysCount; ++i)
+        {
+            ar.BeginObject("SceneSubsystem");
+            std::string className;
+            ar.Serialize("Type", className);
+            if (TypeDescriptor* typeDesc = ReflectionRegistry::Get().GetType(className))
+            {
+                if (ISceneSubsystem* subsysPtr = static_cast<ISceneSubsystem*>(typeDesc->CreateInstance()))
+                {
+                    std::unique_ptr<ISceneSubsystem> newSubsys(subsysPtr);
+                    EngineCore::RegisterSubsystem(typeid(*subsysPtr), subsysPtr);
+                    m_sceneSubsystems[std::type_index(typeid(*subsysPtr))] = std::move(newSubsys);
+                }
+                else
+                {
+                    Log::Print("Invalid SceneSubsystem Type : %s", className.c_str());
+                }
+            }
+            else
+            {
+                Log::Print("Unknown SceneSubsystem Type: %s", className.c_str());
+            }
+            ar.EndObject();
+        }
+    }
+
+    ar.EndArray();
+
+    size_t objCount = GetObjects().size();
+    ar.BeginArray("Objects", objCount);
+
+    if (ar.IsSaving())
+    {
+        // 저장 전 처리가 필요한 오브젝트 처리
+        for (const auto& obj : GetObjects())
+        {
+            obj->OnPreSave();
+        }
+
+        for (const auto& obj : GetObjects())
+        {
+            if (obj->IsTransient()) continue; 
+
+            ar.BeginObject("Object");
+            std::string className = obj->GetType()->GetName();
+            ar.Serialize("Type", className);
+            obj->Serialize(ar);
+            ar.EndObject();
+        }
+    }
+    else // Loading
+    {
+        for (size_t i = 0; i < objCount; ++i)
+        {
+            ar.BeginObject("Object");
+            std::string className;
+            ar.Serialize("Type", className);
+            if (TypeDescriptor* typeDesc = ReflectionRegistry::Get().GetType(className))
+            {
+                if (GameObject* newObj = static_cast<GameObject*>(typeDesc->CreateInstance()))
+                {
+                    std::shared_ptr<GameObject> newObject(newObj);
+                    newObject->SetScene(this->GetSharedPtr<Scene>());
+                    newObject->Init();
+                    newObject->Serialize(ar);
+                    AddObject(std::move(newObject));
+                }
+                else
+                {
+                    Log::Print("Invalid GameObject Type : %s", className.c_str());
+                }
+            }
+            else
+            {
+                Log::Print("Unknown Object Type: %s", className.c_str());
+            }
+
+            ar.EndObject();
+        }
+    }
+    ar.EndArray();
+
+    m_bLoadedFromFile = true;
+}
+
+void Scene::AddObject(std::shared_ptr<GameObject> obj)
+{
+	obj->SetScene(this->GetSharedPtr<Scene>());
+    m_uuidMap[obj->GetUUID()] = obj.get();
 	m_objects.push_back(std::move(obj));
+}
+
+GameObject* Scene::FindObject(uint64_t uuid)
+{
+    auto it = m_uuidMap.find(uuid);
+    if (it != m_uuidMap.end()) return it->second;
+    return nullptr;
 }
 
 CameraConstants Scene::GetCameraConstants()
@@ -182,6 +306,41 @@ LightBlobView Scene::GetLightBlob()
         .data = m_lightUploadBuffer.data(),
         .size = (uint32_t)totalBytes
     };
+}
+
+ISceneSubsystem* Scene::AddSubsystemByName(const std::string& className)
+{
+    if (TypeDescriptor* typeDesc = ReflectionRegistry::Get().GetType(className))
+    {
+        if (ISceneSubsystem* subsysPtr = static_cast<ISceneSubsystem*>(typeDesc->CreateInstance()))
+        {
+            std::unique_ptr<ISceneSubsystem> newSubsys(subsysPtr);
+            EngineCore::RegisterSubsystem(typeid(*subsysPtr), subsysPtr);
+
+            // 기존 맵에 추가
+            m_sceneSubsystems[std::type_index(typeid(*subsysPtr))] = std::move(newSubsys);
+            return subsysPtr;
+        }
+        else
+        {
+            Log::Print("Invalid SceneSubsystem Type : %s", className.c_str());
+        }
+    }
+    else
+    {
+        Log::Print("Unknown SceneSubsystem Type: %s", className.c_str());
+    }
+    return nullptr;
+}
+
+void Scene::RemoveSubsystem(std::type_index typeIndex)
+{
+    auto it = m_sceneSubsystems.find(typeIndex);
+    if (it != m_sceneSubsystems.end())
+    {
+        EngineCore::UnregisterSubsystem(typeIndex);
+        m_sceneSubsystems.erase(it);
+    }
 }
 
 void Scene::SetMainCamera(CameraComponent* cameraComp)

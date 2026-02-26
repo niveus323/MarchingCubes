@@ -5,212 +5,102 @@
 
 struct AllocDesc
 {
-	enum class Kind
+public:
+	enum class EMode : uint8_t
 	{
-		DEFAULT = 0,
-		CB,
-		STAGING,
-		READBACK,
-		STRUCTURED_UAV
-	} kind = Kind::STAGING;
-	
-	enum class Usage
-	{
-		GENERIC,
-		VERTEX,
-		INDEX
-	} usage = Usage::GENERIC;
-
-	enum class LifeTime
-	{
-		SHORT = 0,
-		LONG
-	}lifetime = LifeTime::SHORT;
+		STATIC,		// 정적 할당 (거의 해제되지 않음)
+		DYNAMIC,	// 동적 할당 (빈번히 해제됨)
+		RING,		// Ring 할당 (매 프레임 해제됨)
+		DEDICATED	// 직접 생성 (Fallback)
+	} mode = EMode::DEDICATED;
 
 	uint64_t size = 0;
-	uint32_t align = D3D12_CONSTANT_BUFFER_DATA_PLACEMENT_ALIGNMENT;
+	uint64_t align = D3D12_CONSTANT_BUFFER_DATA_PLACEMENT_ALIGNMENT;
 	std::string_view owner = "";
+	D3D12_RESOURCE_STATES initialState = D3D12_RESOURCE_STATE_COMMON; // 초기 상태
+	D3D12_HEAP_TYPE heapType = D3D12_HEAP_TYPE_DEFAULT; // DEDICATED 시 세팅
+	D3D12_RESOURCE_FLAGS flags = D3D12_RESOURCE_FLAG_NONE; // UAV 등 Flag 설정 시 세팅
+
+public:
+	// 동적 할당
+	static AllocDesc Dynamic(uint64_t size, std::string_view name = "", uint64_t align = 4)
+	{
+		return AllocDesc{ 
+			.mode = EMode::DYNAMIC, 
+			.size = size, 
+			.align = align, 
+			.owner = name 
+		};
+	}
+	
+	// 정적 할당
+	static AllocDesc Static(uint64_t size, std::string_view name = "", uint64_t align = 4)
+	{
+		return AllocDesc{ 
+			.mode = EMode::STATIC, 
+			.size = size, 
+			.align = align, 
+			.owner = name 
+		};
+	}
+
+	// Ring 할당 (Staging 목적)
+	static AllocDesc Ring(uint64_t size, uint64_t align = D3D12_CONSTANT_BUFFER_DATA_PLACEMENT_ALIGNMENT)
+	{
+		return AllocDesc{ 
+			.mode = EMode::RING, 
+			.size = size, 
+			.align = align,
+			.heapType = D3D12_HEAP_TYPE_UPLOAD
+		};
+	}
+
+	// 추가 버퍼 할당
+	static AllocDesc Dedicated(uint64_t size, D3D12_RESOURCE_FLAGS flags = D3D12_RESOURCE_FLAG_NONE, std::string_view name = "")
+	{
+		return AllocDesc{ 
+			.mode = EMode::DEDICATED, 
+			.size = size, 
+			.owner = name,
+			.flags = flags
+		};
+	}
 };
 
-namespace GPUAllocDesc
-{
-	static inline AllocDesc MakeVertexBufferDesc(uint64_t size, AllocDesc::LifeTime lifetime = AllocDesc::LifeTime::LONG, std::string_view ownerName = "")
-	{
-		return AllocDesc{
-			.kind = AllocDesc::Kind::DEFAULT,
-			.usage = AllocDesc::Usage::VERTEX,
-			.lifetime = lifetime,
-			.size = size,
-			.owner = ownerName
-		};
-	}
-
-	static inline AllocDesc MakeIndexBufferDesc(uint64_t size, AllocDesc::LifeTime lifetime = AllocDesc::LifeTime::LONG, std::string_view ownerName = "")
-	{
-		return AllocDesc{
-			.kind = AllocDesc::Kind::DEFAULT,
-			.usage = AllocDesc::Usage::INDEX,
-			.lifetime = lifetime,
-			.size = size,
-			.owner = ownerName
-		};
-	}
-
-	static inline AllocDesc MakeGenericBufferDesc(uint64_t size, AllocDesc::LifeTime lifetime = AllocDesc::LifeTime::LONG, std::string_view ownerName = "")
-	{
-		return AllocDesc{
-			.kind = AllocDesc::Kind::DEFAULT,
-			.usage = AllocDesc::Usage::GENERIC,
-			.lifetime = lifetime,
-			.size = size,
-			.owner = ownerName
-		};
-	}
-
-	static inline AllocDesc MakeConstantBufferDesc(uint64_t size, AllocDesc::LifeTime lifetime = AllocDesc::LifeTime::SHORT, std::string_view ownerName = "")
-	{
-		return AllocDesc{
-			.kind = AllocDesc::Kind::CB,
-			.lifetime = lifetime,
-			.size = size,
-			.align = D3D12_CONSTANT_BUFFER_DATA_PLACEMENT_ALIGNMENT,
-			.owner = ownerName
-		};
-	}
-
-	static inline AllocDesc MakeStagingBufferDesc(uint64_t size, uint32_t align,AllocDesc::LifeTime lifetime = AllocDesc::LifeTime::SHORT, std::string_view ownerName = "")
-	{
-		return AllocDesc{
-			.kind = AllocDesc::Kind::STAGING,
-			.lifetime = lifetime,
-			.size = size,
-			.align = align,
-			.owner = ownerName
-		};
-	}
-
-	static inline AllocDesc MakeReadbackBufferDesc(uint64_t size, uint32_t align, AllocDesc::LifeTime lifetime = AllocDesc::LifeTime::SHORT, std::string_view ownerName = "")
-	{
-		return AllocDesc{
-			.kind = AllocDesc::Kind::READBACK,
-			.lifetime = lifetime,
-			.size = size,
-			.align = align,
-			.owner = ownerName
-		};
-	}
-
-	static inline AllocDesc MakeStructuredUAVDesc(uint64_t size, uint32_t align, AllocDesc::LifeTime lifetime = AllocDesc::LifeTime::LONG, std::string_view ownerName = "")
-	{
-		return AllocDesc{
-			.kind = AllocDesc::Kind::STRUCTURED_UAV,
-			.lifetime = lifetime,
-			.size = size,
-			.align = align,
-			.owner = ownerName
-		};
-	}
-}
-
-struct GpuAllocatorInitInfo
-{
-	uint64_t cbRingBytes = 2ull << 20;
-	uint64_t stagingRingBytes = 64ull << 20;
-	uint64_t readbackRingBytes = 64ull << 20;
-	uint64_t uavRingBytes = 64ull << 20;
-	uint64_t vbPoolBytes = 32ull << 20;
-	uint64_t ibPoolBytes = 16ull << 20;
-	uint64_t genericPoolBytes = 32ull << 20;
-};
-
+/* [GpuAllocator]
+* - LifeTime : Engine Load -> Engine UnLoad
+* - OwnerShip : Engine
+* - Access : EngineCore::GetGpuAllocator()
+* - Responsibility :
+*	- Buffer Allocation : GPU 메모리(VRAM)의 생명주기와 할당 방식을 관리
+*	- Resource & Heap Management : 리소스 객체/힙을 생성하고 적절한 힙 위치를 결정
+*/
 class GpuAllocator
 {
 public:
-	explicit GpuAllocator(ID3D12Device* device, GpuAllocatorInitInfo info);
-	GpuAllocator(ID3D12Device* device, uint64_t cbRingBytes = 2ull << 20, uint64_t stagingRingBytes = 32ull << 20, uint64_t vbPoolBytes = 32ull << 20, uint64_t ibPoolBytes = 16ull << 20);
+	GpuAllocator(uint64_t ringBytes = 64ull << 20, uint64_t staticPoolBytes = 128ull << 20, uint64_t dynamicPoolBytes = 128ull << 20);
 	~GpuAllocator() = default;
 
-	void Alloc(ID3D12Device* device, const AllocDesc & desc, BufferHandle& outHandle);
+	bool Alloc(const AllocDesc& desc, BufferHandle& outHandle);
 	void FreeLater(BufferHandle& handle, uint64_t fence);
 	void TagFence(uint64_t fenceValue);
 	void Reclaim(uint64_t completedFenceValue);
 
 #ifdef _DEBUG
-	struct PoolInfo {
-		GPUBufferPool* pool;
-		std::string name;
-	};
-	std::vector<PoolInfo> GetDebugPools() const { 
-		return { 
-			PoolInfo{m_vbPool.get(), "VBPool_Small"}, 
-			PoolInfo{m_vbPool_Large.get(), "VBPool_Large"}, 
-			PoolInfo{m_ibPool.get(), "IBPool_Small"}, 
-			PoolInfo{m_ibPool_Large.get(), "IBPool_Large"}}; 
-	}
-	std::vector<DedicatedBufferInfo> GetDebugDedicatedBuffers() const
-	{
-		std::vector<DedicatedBufferInfo> infos;
-		infos.reserve(m_fallbackUploads.size() + m_promotedResources.size());
-
-		// 1. Fallback Resources
-		for (const auto& fb : m_fallbackUploads)
-		{
-			std::string usageStr = "UNKNOWN";
-			switch (fb.desc.usage) {
-				case AllocDesc::Usage::GENERIC: usageStr = "GENERIC"; break;
-				case AllocDesc::Usage::VERTEX:  usageStr = "VERTEX"; break;
-				case AllocDesc::Usage::INDEX:   usageStr = "INDEX"; break;
-			}
-
-			std::string kindStr = "Default";
-			switch (fb.desc.kind) {
-				case AllocDesc::Kind::STAGING: kindStr = "Staging"; break;
-				case AllocDesc::Kind::CB: kindStr = "CB"; break;
-				case AllocDesc::Kind::READBACK: kindStr = "Readback"; break;
-				case AllocDesc::Kind::STRUCTURED_UAV: kindStr = "UAV"; break;
-			}
-
-			infos.push_back(DedicatedBufferInfo{
-				.type = "Fallback (" + kindStr + ")",
-				.owner = std::string(fb.owner), // string_view -> string
-				.usage = usageStr,
-				.size = fb.desc.size, // 혹은 fb.res->GetDesc().Width
-				.fenceValue = fb.fenceValue,
-				.isLive = (fb.refCount > 0)
-				});
-		}
-
-		for (const auto& pr : m_promotedResources)
-		{
-			infos.push_back(DedicatedBufferInfo{
-				.type = "Promoted",
-				.owner = pr.owner,
-				.usage = "DEFAULT",
-				.size = pr.size,
-				.fenceValue = pr.fenceValue,
-				.isLive = (pr.refCount > 0)
-				});
-		}
-		// TODO : PromotedResource에 owner 추가
-
-		return infos;
-	}
+	std::vector<MemoryInfo> GetMemoryInfos() const;
+	std::vector<DedicatedBufferInfo> GetDebugDedicatedBuffers() const;
 #endif // _DEBUG
 
 
 private:
-	void AllocFromFallback(ID3D12Device* device, const AllocDesc& desc, BufferHandle& outHandle);
-
+	bool AllocFromPool(ID3D12Device* device, const AllocDesc& desc, BufferHandle& outHandle);
+	bool AllocFromRing(ID3D12Device* device, const AllocDesc& desc, BufferHandle& outHandle);
+	bool AllocFromFallback(ID3D12Device* device, const AllocDesc& desc, BufferHandle& outHandle);
 private:
-	std::unique_ptr<UploadRing> m_cbRing;
-	std::unique_ptr<UploadRing> m_stagingRing;
-	std::unique_ptr<GPUBufferPool> m_vbPool;
-	std::unique_ptr<GPUBufferPool> m_vbPool_Large;
-	std::unique_ptr<GPUBufferPool> m_ibPool;
-	std::unique_ptr<GPUBufferPool> m_ibPool_Large;
-	std::unique_ptr<GPUBufferPool> m_genericPool;
-	std::unique_ptr<GPUBufferPool> m_genericPool_Large;
-
+	std::unique_ptr<UploadRing> m_ring;
+	std::unique_ptr<GPUBufferPool> m_staticPool;
+	std::unique_ptr<GPUBufferPool> m_dynamicPool;
+	
 	// Fallback
 	struct Fallback
 	{
@@ -223,16 +113,5 @@ private:
 	};
 	std::vector<Fallback> m_fallbackUploads;
 
-	// Promoted Default Resource
-	struct PromotedResource
-	{
-		ComPtr<ID3D12Resource> res;
-		uint64_t offset = 0;
-		uint64_t size = 0;
-		uint64_t fenceValue = 0;
-		uint64_t refCount = 0;
-		std::string owner = "Promoted Default";
-	};
-	std::vector<PromotedResource> m_promotedResources;
 	uint64_t m_lastCompletedFenceValue = 0;
 };

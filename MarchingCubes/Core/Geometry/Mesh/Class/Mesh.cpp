@@ -2,54 +2,24 @@
 #include "Mesh.h"
 #include "Core/Rendering/UploadContext.h"
 #include "Core/DataStructures/Data.h"
+#include "Core/Engine/EngineCore.h"
+#include "Core/Rendering/UploadContext.h"
 
-Mesh::Mesh(UploadContext* uploadcontext, const GeometryData& data, const std::vector<MeshSubmesh>& submeshes, const std::string& name) :
-	m_topology(data.topology),
-	m_submeshes(submeshes),
+Mesh::Mesh(const std::string& name) : 
 	m_debugName(name)
 {
-	if (m_submeshes.empty())
-	{
-		MeshSubmesh sm;
-		sm.indexCount = static_cast<uint32_t>(data.indices.size());
-		sm.indexOffset = 0;
-		sm.baseVertexLocation = 0;
-		sm.materialIndex = 0;
-		m_submeshes.push_back(sm);
-	}
-
-	if (uploadcontext)
-	{
-		if (m_debugName.empty())
-		{
-			//임시 이름 세팅
-			SetDebugName("MeshInstance");
-		}
-		uploadcontext->UploadGeometry(&m_buffer, data, m_debugName);
-	}
-
-	BuildTriBounds(data);
 }
 
-
-Mesh::Mesh(UploadContext* uploadcontext, const GeometryData& data, const std::string& name) : 
-	Mesh(uploadcontext, data, {}, name)
+void Mesh::Initialize(const GeometryBuffer& buffer, const GeometryData& data, const std::vector<MeshSubmesh>& submeshes)
 {
-}
-
-void Mesh::UpdateData(UploadContext* uploadcontext, const GeometryData& data)
-{
+	m_buffer = buffer;
+	m_submeshes = submeshes;
 	m_topology = data.topology;
-	if (m_submeshes.size() == 1)
-	{
-		m_submeshes[0].indexCount = static_cast<uint32_t>(data.indices.size());
-	}
+	BuildTriBounds(data); // TODO : 이것도 GeometryData 측에 두는게 좋아보임.
+#ifdef _DEBUG
+	m_cpuData = data;
+#endif // _DEBUG
 
-	if (uploadcontext)
-	{
-		uploadcontext->UploadGeometry(&m_buffer, data, m_debugName);
-	}
-	BuildTriBounds(data);
 }
 
 void Mesh::BuildTriBounds(const GeometryData& data)

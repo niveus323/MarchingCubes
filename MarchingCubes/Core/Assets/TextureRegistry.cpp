@@ -1,31 +1,32 @@
 #include "pch.h"
 #include "TextureRegistry.h"
 #include "TextureAsset.h"
+#include "Core/Engine/EngineCore.h"
 #include "Core/Rendering/UploadContext.h"
 #include "Core/Rendering/PSO/DescriptorAllocator.h"
 
-TextureRegistry::TextureRegistry(const InitInfo& initInfo) :
-	m_device(initInfo.device),
-	m_uploadContext(initInfo.upload),
-	m_descriptorAllocator(initInfo.descriptorAllocator),
-	m_rootSlot(initInfo.rootSlot),
-	m_descriptorBaseSlot(UINT32_MAX)
+TextureRegistry::TextureRegistry(uint32_t rootSlot) :
+	m_rootSlot(rootSlot)
 {
+	auto descriptorAllocator = EngineCore::GetDescriptorAllocator();
+	assert(descriptorAllocator);
+
+	m_descriptorBaseSlot = descriptorAllocator->AllocateStaticSlot();
 }
 
 TextureRegistry::~TextureRegistry() = default;
 
-void TextureRegistry::syncGpu(ID3D12GraphicsCommandList* cmd)
+void TextureRegistry::SyncGpu(ID3D12GraphicsCommandList* cmd)
 {
 	for (auto& pendingTex : m_pendingTextures)
 	{
-		const auto* img = pendingTex.image->GetImages();
-		size_t imgCount = pendingTex.image->GetImageCount();
-		const DirectX::TexMetadata& meta = pendingTex.image->GetMetadata();
-
+		const auto* img = pendingTex.asset->GetImage()->GetImages();
+		size_t imgCount = pendingTex.asset->GetImage()->GetImageCount();
+		const DirectX::TexMetadata& meta = pendingTex.asset->GetMetadata();
 		std::vector<D3D12_SUBRESOURCE_DATA> subres;
-		ThrowIfFailed(DirectX::PrepareUpload(m_device, img, imgCount, meta, subres));
-		m_uploadContext->UploadTexture(cmd, pendingTex.dst.Get(), subres, D3D12_RESOURCE_STATE_COMMON, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE, pendingTex.debugName.c_str());
+		ThrowIfFailed(DirectX::PrepareUpload(EngineCore::GetDevice(), img, imgCount, meta, subres));
+		EngineCore::GetUploadContext()->UploadTexture(cmd, pendingTex.dst.Get(), subres, D3D12_RESOURCE_STATE_COMMON, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE, pendingTex.debugName.c_str());
+		pendingTex.asset->ReleasePixelData(); //로드하여 GPU에 올렸으니 ScratchImage 객체 해제
 	}
 
 	m_pendingTextures.clear();
@@ -35,26 +36,38 @@ void TextureRegistry::BindDescriptorTable(ID3D12GraphicsCommandList* cmd)
 {
 	if (m_descriptorBaseSlot == UINT32_MAX) return;
 
-	cmd->SetGraphicsRootDescriptorTable(m_rootSlot, m_descriptorAllocator->GetStaticGpu(m_descriptorBaseSlot));
+	cmd->SetGraphicsRootDescriptorTable(m_rootSlot, EngineCore::GetDescriptorAllocator()->GetStaticGpu(m_descriptorBaseSlot));
 }
 
-uint32_t TextureRegistry::LoadTexture(const std::filesystem::path& logicalPath)
+uint32_t TextureRegistry::GetTextureHandle(const std::string& path)
 {
-	// 이미 로드되어 있는지 확인
-	for (uint32_t i = 0; i < static_cast<uint32_t>(m_textures.size()); ++i)
+	auto iter = m_pathCache.find(path);
+	if (iter != m_pathCache.end())
 	{
-		if (m_textures[i].path == logicalPath) return i;
+		return iter->second;
 	}
-	TextureAsset asset(logicalPath);
 
-	const auto& img = asset.GetImage();
-	const auto& meta = asset.GetMetadata();
+	return UINT32_MAX;
+}
+
+uint32_t TextureRegistry::LoadTexture(const std::shared_ptr<TextureAsset>& texAsset)
+{
+	ID3D12Device* device = EngineCore::GetDevice();
+	DescriptorAllocator* descriptorAllocator = EngineCore::GetDescriptorAllocator();
+	assert(device && descriptorAllocator);
+
+	// 이 에셋이 이미 GPU에 업로드되어있는지 체크
+	std::string key = texAsset->GetSourcePath().string();
+	if (m_pathCache.contains(key)) return m_pathCache[key];
+
+	const auto& img = texAsset->GetImage();
+	const auto& meta = texAsset->GetMetadata();
 
 	// GPU 리소스 생성
 	ComPtr<ID3D12Resource> res;
-	ThrowIfFailed(DirectX::CreateTexture(m_device, meta, &res));
+	ThrowIfFailed(DirectX::CreateTexture(device, meta, &res));
 
-	uint32_t bindlessSlot = m_descriptorAllocator->AllocateStaticSlot();
+	uint32_t bindlessSlot = descriptorAllocator->AllocateStaticSlot();
 	if (m_descriptorBaseSlot == UINT32_MAX) m_descriptorBaseSlot = bindlessSlot;
 
 	D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc{};
@@ -68,27 +81,27 @@ uint32_t TextureRegistry::LoadTexture(const std::filesystem::path& logicalPath)
 	}
 	else
 	{
-		// TODO: 1D/3D/Array 대응 필요 시 여기 확장
+		// TODO: 3D/Array 대응 필요 시 여기 확장
 	}
 
-	auto cpuHandle = m_descriptorAllocator->GetStaticCpu(bindlessSlot);
-	m_device->CreateShaderResourceView(res.Get(), &srvDesc, cpuHandle);
+	auto cpuHandle = descriptorAllocator->GetStaticCpu(bindlessSlot);
+	device->CreateShaderResourceView(res.Get(), &srvDesc, cpuHandle);
 
 	// Lazy-Upload Queueing
 	m_pendingTextures.push_back(PendingTextures{
 		.dst = res.Get(),
-		.image = asset.ExtractImage(),
-		.debugName = UTF16ToUTF8(logicalPath.c_str())
-		});
+		.asset = texAsset,
+		.debugName = texAsset->GetSourcePath().string()
+	});
 
+	m_pathCache.insert_or_assign(key, m_textures.size()); // NOTE: Lazy-Upload 시 실패하는 케이스 존재 시, 실제 업로드 타이밍에 캐시 등록하도록 처리하고 중복 예약을 회피할 것
 	TextureResource result{
-		.path = logicalPath,
+		.path = texAsset->GetSourcePath(),
 		.meta = FinalizeMeta(res->GetDesc()),
 		.res = std::move(res),
 		.bindlessSlot = bindlessSlot
 	};
 	m_textures.push_back(std::move(result));
-
 	return static_cast<uint32_t>(m_textures.size() - 1);
 }
 
@@ -107,7 +120,7 @@ D3D12_GPU_DESCRIPTOR_HANDLE TextureRegistry::GetGpuHandle(uint32_t handle) const
 
 	// 할당받은 bindless 슬롯 번호를 이용해 DescriptorAllocator에서 실제 GPU 주소를 가져옴
 	uint32_t slot = m_textures[handle].bindlessSlot;
-	return m_descriptorAllocator->GetStaticGpu(slot);
+	return EngineCore::GetDescriptorAllocator()->GetStaticGpu(slot);
 }
 
 TextureMeta TextureRegistry::FinalizeMeta(const D3D12_RESOURCE_DESC& desc)

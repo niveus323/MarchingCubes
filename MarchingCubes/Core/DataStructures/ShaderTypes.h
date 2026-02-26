@@ -12,7 +12,7 @@ struct alignas(16) ObjectConstants
 {
 	XMFLOAT4X4 worldMatrix;
 	XMFLOAT4X4 worldInvMatrix;
-	uint32_t materialIndex = 0;
+	uint32_t materialIndex = 0;// TODO : Submesh의 Material 대응을 위해 구조 수정 필요. (Objec와 Submesh는 1:N구조이므로 Object하나에 MaterialIndex는 N개 존재.)
 	bool bUseTriplanar = false;
 };
 
@@ -54,16 +54,16 @@ struct alignas(16) TextureParams
 
 struct alignas(16) MaterialConstants
 {
-	XMFLOAT3 albedo;    // albedo 색상 (RGB)
-	float metallic;				 // [0,1]
+	XMFLOAT3 albedo{ 1.0f, 1.0f, 1.0f };    // albedo 색상 (RGB)
+	float metallic = 0.0f;					// [0,1]
 
-	float specularStrength;		 // 비금속 반사 강도 [0,0.08]
-	float roughness;			 // [0,1]
-	float ao;					 // AmbientOcclusion
-	float ior;					 // Dielectric 모델 전용 굴절률
+	float specularStrength = 0.0f;			// 비금속 반사 강도 [0,0.08]
+	float roughness = 0.0f;					// [0,1]
+	float ao = 1.0f;						// AmbientOcclusion
+	float ior = 0.0f;						// Dielectric 모델 전용 굴절률
 
-	EShadingModel shadingModel = EShadingModel::DefaultLit;	 // 반사 모델링 타입
 	float opacity = 1.0f;
+	EShadingModel shadingModel = EShadingModel::DefaultLit;	 // 반사 모델링 타입
 	uint32_t _padding[2];
 
 	TextureParams baseTextures;

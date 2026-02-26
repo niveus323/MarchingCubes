@@ -2,10 +2,8 @@
 #include "PlayerController.h"
 #include "Core/Engine/EngineCore.h"
 
-PlayerController::PlayerController(Scene* scene): 
-    Controller(scene)
-{
-}
+BEGIN_REFLECTION(PlayerController, Controller)
+END_REFLECTION()
 
 void PlayerController::ProcessInput(float deltaTime)
 {

@@ -1,25 +1,26 @@
 #pragma once
 #include "MeshAsset.h"
-#include "Core/Geometry/Mesh/Mesh.h"
 #include <unordered_map>
 
 // Forward Declaration
-class UploadContext;
+class StaticMesh;
+class DynamicMesh;
 
+/* [MeshRegistry]
+* - LifeTime : RenderSystem Load -> RenderSystem UnLoad
+* - OwnerShip : RenderSystem
+* - Access : ResourceManager::GetMeshRegistry
+* - Responsibility :
+*   - Mesh Data Upload : GeometryData -> Buffer 업로드 및 Mesh 객체 관리
+*/
 class MeshRegistry
 {
 public:
-    explicit MeshRegistry(UploadContext* uploadContext) : m_uploadContext(uploadContext)
-    {}
-
-    bool HasMesh(std::string_view key) const;
-    void RegisterAsset(std::string_view key, std::unique_ptr<MeshAsset> asset);
-    std::shared_ptr<Mesh> CreateMeshFromAsset(std::string_view key);
-    const MeshAsset* GetAsset(const std::filesystem::path& path) const;
+    std::shared_ptr<StaticMesh> CreateStaticMesh(const std::string& key, const GeometryData& data, const std::vector<MeshSubmesh>& submeshes);
+    std::shared_ptr<DynamicMesh> CreateDynamicMesh(const GeometryData& data, const std::vector<MeshSubmesh>& submeshes, const std::string& debugName = "");
+    void UpdateDynamicMesh(std::shared_ptr<DynamicMesh> mesh, const GeometryData& newData, const std::vector<MeshSubmesh>& submeshes);
 
 private:
-    UploadContext* m_uploadContext;
-    std::unordered_map<std::string, std::unique_ptr<MeshAsset>> m_assetCache;
-    std::unordered_map<std::string, std::shared_ptr<Mesh>> m_resourceCache;
+    std::unordered_map<std::string, std::shared_ptr<StaticMesh>> m_resourceCache;
 };
 

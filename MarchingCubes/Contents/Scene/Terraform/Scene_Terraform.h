@@ -1,8 +1,7 @@
 #pragma once
 #include "Core/Scene/Scene.h"
-#include "Core/Geometry/MarchingCubes/TerrainSystem.h"
+#include "Core/Engine/Subsystem/SceneSubsystem/TerrainSystem.h"
 #include "Core/UI/UIRenderer.h"
-#include <array>
 
 // Forward Declaration
 class TerraformTool;
@@ -24,14 +23,10 @@ private:
 private:
     // Marching Cubes
     TerrainSystem* m_terrainSystem = nullptr;
-    SceneObject* m_terrainRenderer = nullptr;
     
     // Light
     SceneObject* m_directionalLight = nullptr;
 
-    // UI
-    UI::FrameCallbackToken cameraUIToken = 0;
-    
     // Tool
     std::shared_ptr<TerraformTool> m_terraformTool;
 };

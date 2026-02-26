@@ -17,6 +17,7 @@ cbuffer ObjectBuffer : register(b1)
     matrix gWorld;
     matrix gWorldInv;
     uint gMaterialIndex;
+    uint3 _padding_Object0;
 };
 
 struct ELightType

@@ -15,12 +15,6 @@ namespace fbxsdk {
 	class FbxSurfaceMaterial;
 }
 
-struct MeshImportOptions
-{
-	float uniformScale = 1.0f;    // ex) 0.01f: cm ¡æ m
-	bool  applyUnitConversion = true;
-};
-
 class FBXImporter
 {
 public:

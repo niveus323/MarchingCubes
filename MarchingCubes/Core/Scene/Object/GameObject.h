@@ -1,5 +1,6 @@
 #pragma once
 #include "Core/Scene/Component/Component.h"
+#include "Core/Scene/Class/Entity.h"
 
 // Forward Declaration
 class Scene;
@@ -18,12 +19,17 @@ template<typename Derived>
 class GameObjectBase
 {
 public:
-	template<std::derived_from<Component> T, typename... Args>
-	T* AddComponent(Args&&...args)
+	template<std::derived_from<Component> T = Component>
+	T* AddComponent(EObjectFlags flags = EObjectFlags::None)
 	{
 		static_assert(std::derived_from<Derived, GameObjectBase<Derived>>, "CRTP Violation: Derived class must inherit from GameObjectBase<Derived>");
 		Derived* derivedThis = static_cast<Derived*>(this);
-		auto newComponent = std::make_unique<T>(derivedThis, std::forward<Args>(args)...);
+		auto newComponent = std::make_shared<T>();
+		
+		std::shared_ptr<Derived> sharedDerived = std::static_pointer_cast<Derived>(derivedThis->shared_from_this());
+		newComponent->SetOwner(sharedDerived);
+		newComponent->AddFlags(flags);
+
 		T* ptr = newComponent.get();
 		derivedThis->RegisterComponent(std::move(newComponent));
 		ptr->Init();
@@ -31,17 +37,15 @@ public:
 	}
 };
 
-class GameObject : public GameObjectBase<GameObject>
+class GameObject : public Entity, public GameObjectBase<GameObject>
 {
-	REFLECT_GENERATED_BODY()
-public:
+	REFLECT_GENERATED_BODY(GameObject)
 	friend class GameObjectBase<GameObject>;
-
-	GameObject(Scene* scene) : m_scene(scene) {};
-	virtual ~GameObject() = default;
-
+public:
 	virtual void Init() {}
 	virtual void Destroy() {}
+	virtual void BeginPlay() {}
+	virtual void EndPlay() {}
 	virtual void Update(float deltatime)
 	{
 		for (auto& comp : m_components)
@@ -51,6 +55,8 @@ public:
 		}
 	}
 	virtual void Render() {}
+	virtual void OnPreSave() {}
+	virtual void Serialize(Serializer& ar) override;
 
 	template<std::derived_from<Component> T = Component>
 	std::vector<T*> GetComponents()
@@ -81,30 +87,37 @@ public:
 		return nullptr;
 	}
 
-	template<std::derived_from<GameObject> T = GameObject, typename... Args>
-	T* CreateChild(Args&&... args)
+	template<std::derived_from<GameObject> T = GameObject>
+	T* CreateChild(std::string_view name, EObjectFlags flags = EObjectFlags::None)
 	{
-		auto newChild = std::make_unique<T>(std::forward<Args>(args)...);
-		newChild->m_owner = this;
+		auto newChild = std::make_shared<T>();
+		newChild->SetName(std::string(name));
+		newChild->m_owner = GetSharedPtr<GameObject>();
 		newChild->m_scene = m_scene;
+		newChild->SetFlags(flags);
+		newChild->Init();
 		T* ptr = newChild.get();
 		m_children.push_back(std::move(newChild));
 
 		return ptr;
 	}
 
-	void AddChild(std::unique_ptr<GameObject> child)
+	void AddChild(std::shared_ptr<GameObject> child);
+
+	void RemoveChild(std::shared_ptr<GameObject> child)
 	{
-		if (child)
-		{
-			child->m_owner = this;
-			child->m_scene = m_scene;
-			m_children.push_back(std::move(child));
-		}
+		if (!child) return;
+		std::shared_ptr<GameObject> childsOwner = child->GetOwner();
+		if (childsOwner.get() != this) return;
+
+		child->m_owner.reset();
+
+		std::erase_if(m_children, [&](const std::shared_ptr<GameObject>& ptr) { return ptr == child; });
 	}
 
 	void SetActive(bool bActive)
 	{
+		m_bActive = bActive;
 		for (auto& comp : m_components)
 		{
 			comp->SetActive(bActive);
@@ -115,28 +128,53 @@ public:
 			child->SetActive(bActive);
 		}
 	}
+	bool IsActive() const { return m_bActive; }
 
-
-	GameObject* GetOwner() { return m_owner; }
-	Scene* GetScene() { return m_scene; }
-	void SetScene(Scene* scene) { m_scene = scene; }
-	const std::string& GetName() const { return m_name; }
-	void SetName(const std::string& name) { m_name = name; }
+	std::shared_ptr<GameObject> GetOwner() { return m_owner.lock(); }
+	std::shared_ptr<Scene> GetScene() { return m_scene.lock(); }
+	void SetScene(std::shared_ptr<Scene> scene) { m_scene = scene; }
 	auto& GetComponents() const { return m_components; }
 	auto& GetChildren() const { return m_children; }
 
 protected:
-	void RegisterComponent(std::unique_ptr<Component>&& comp)
+	void RegisterComponent(std::shared_ptr<Component>&& comp)
 	{
+		TypeDescriptor* typeDesc = comp->GetType();
+		std::string typeName = typeDesc->GetName();
+
+		int sameTypeCount = 0;
+		for (const auto& existing : m_components)
+		{
+			if (existing->GetType() != typeDesc) continue;
+			sameTypeCount++;
+		}
+		std::string candidateName;
+		candidateName = typeName + std::to_string(sameTypeCount);
+		comp->SetName(candidateName);
+
 		m_components.push_back(std::move(comp));
 	}
 
+	void UnregisterComponent(uint64_t uuid)
+	{
+		for (auto iter = m_components.begin(); iter != m_components.end();)
+		{
+			if ((*iter)->GetUUID() == uuid)
+			{
+				(*iter)->Destroy();
+				iter = m_components.erase(iter);
+			}
+			else
+			{
+				++iter;
+			}
+		}
+	}
 protected:
-	Scene* m_scene = nullptr;
-	GameObject* m_owner = nullptr;
-	std::string m_name = "GameObject";
-	std::vector<std::unique_ptr<Component>> m_components;
-	std::vector<std::unique_ptr<GameObject>> m_children;
-
+	std::weak_ptr<Scene> m_scene;
+	std::weak_ptr<GameObject> m_owner;
+	std::vector<std::shared_ptr<Component>> m_components;
+	std::vector<std::shared_ptr<GameObject>> m_children;
+	bool m_bActive = true;
 };
 

@@ -6,9 +6,8 @@ class CameraComponent;
 
 class SpectatorPawn : public Pawn
 {
+    REFLECT_GENERATED_BODY(SpectatorPawn)
 public:
-    SpectatorPawn(Scene* scene);
-
     virtual void Init() override;
 
 private:

@@ -1,0 +1,87 @@
+#include "pch.h"
+#include "StaticMeshComponent.h"
+#include "Core/Engine/EngineCore.h"
+#include "Core/Assets/ResourceManager.h"
+#include "Core/Rendering/RenderSystem.h"
+#include "Core/Assets/MeshRegistry.h"
+#include "Core/Assets/Material/MaterialRegistry.h"
+#include "Core/Geometry/Mesh/Class/Mesh.h"
+#include "Core/Assets/MeshAsset.h"
+#include "Core/Assets/Material/MaterialAsset.h"
+
+// TODO : Path 기반 메쉬 교체 기능 InsepctorPanel에 구현
+BEGIN_REFLECTION(StaticMeshComponent, MeshComponent)
+	REFLECT_PROPERTY(m_path, EPropertyType::String)
+END_REFLECTION()
+
+void StaticMeshComponent::Serialize(Serializer& ar)
+{
+	MeshComponent::Serialize(ar);
+	ar.Serialize("MeshPath", m_path);
+	if (!ar.IsSaving())
+	{
+		if (!m_path.empty()) SetMeshByPath(m_path);
+	}
+
+	size_t matCount = m_materialInstnaces.size();
+	ar.BeginArray("Materials", matCount);
+	if (ar.IsSaving())
+	{
+		for (const auto& materialAsset : m_materialInstnaces)
+		{
+			std::string tempPath = materialAsset.material->GetPath().data();
+			ar.BeginObject("MaterialSlot");
+			ar.Serialize("Path", tempPath);
+			ar.EndObject();
+		}
+	}
+	else
+	{
+		m_materialInstnaces.resize(matCount);
+		for (int i = 0; i < matCount; ++i)
+		{
+			ar.BeginObject("MaterialSlot");
+			std::string path;
+			ar.Serialize("Path", path);
+			SetMaterialByPath(i, path);
+			ar.EndObject();
+		}
+	}
+	ar.EndArray();
+}
+
+void StaticMeshComponent::SetMeshByPath(const std::string& path)
+{
+	if (m_meshAsset && path == m_meshAsset->GetSourcePath()) return;
+	
+	m_path = path;
+	if (m_path.empty())
+	{
+		m_meshAsset.reset();
+		m_mesh.reset();
+		m_materialInstnaces.clear();
+		return;
+	}
+
+	auto resourceManager = EngineCore::GetResourceManager();
+	if (m_meshAsset = resourceManager->LoadMeshAsset(m_path, MeshImportOptions{}))
+	{
+		MeshRegistry* meshReg = EngineCore::GetRenderSystem()->GetMeshRegistry();
+		MaterialRegistry* matReg = EngineCore::GetRenderSystem()->GetMaterialRegistry();
+
+		m_mesh = meshReg->CreateStaticMesh(m_path, m_meshAsset->GetGeometry(), m_meshAsset->GetSubmesh());
+		const auto& matAssets = m_meshAsset->GetMaterialAssets();
+		m_materialInstnaces.resize(matAssets.size());
+		for (int i=0; i< matAssets.size(); ++i)
+		{
+			m_materialInstnaces[i] = MaterialInstance{
+				.material = matAssets[i]
+			};
+		}
+		SyncMaterialSlots();
+	}
+	else
+	{
+		Log::Print("StaticMeshComponent", "Failed to load mesh: %s", path.c_str());
+	}
+}

@@ -30,8 +30,8 @@ int Win32Application::Run(DXAppBase* pAppBase, HINSTANCE hInstance, int nCmdShow
         windowClass.lpszClassName,
         pAppBase->GetTitle(),
         WS_OVERLAPPEDWINDOW,
-        CW_USEDEFAULT,
-        CW_USEDEFAULT,
+        10,
+        10,
         windowRect.right - windowRect.left,
         windowRect.bottom - windowRect.top,
         nullptr,        // We have no parent window.

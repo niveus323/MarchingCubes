@@ -1,17 +1,18 @@
 #include "pch.h"
 #include "BundleRecorder.h"
 
-BundleRecorder::BundleRecorder(ID3D12Device* device, ID3D12RootSignature* rootSignature, const PSOList* psoList, size_t contextsPerPSO) :
+BundleRecorder::BundleRecorder(ID3D12Device* device, const PSOList* psoList, size_t contextsPerPSO) :
 	m_device(device), 
-    m_rootSignature(rootSignature), 
     m_contextsPerPSO(contextsPerPSO),
     m_psoList(psoList)
 {
-	for (int i = 0; i < m_psoList->Count(); ++i)
+	for (int i = 0; i < m_psoList->GetCounts(); ++i)
 	{
 		ContextPool pool;
 		pool.nextIndex = 0;
-		pool.pso = m_psoList->Get(i);
+        auto pipelineEntry = m_psoList->Get(i);
+		pool.pso = pipelineEntry.pso;
+        pool.rs = pipelineEntry.rs;
 		pool.contexts.resize(m_contextsPerPSO);
 
 		for (Context& context : pool.contexts)
@@ -29,33 +30,34 @@ BundleRecorder::BundleRecorder(ID3D12Device* device, ID3D12RootSignature* rootSi
 // 핫 리로드된 PSOList에 맞춰서 Pool 재구성
 bool BundleRecorder::SyncWithPSOList(const PSOList* psoList)
 {
-    if (!m_device || !m_rootSignature)
+    if (!m_device)
     {
         return false;
     }
 
-    const int newCount = psoList->Count();
+    const int newCount = psoList->GetCounts();
     m_pools.resize(newCount);
 
     for (int i = 0; i < newCount; ++i)
     {
         ContextPool& pool = m_pools[i];
-        ID3D12PipelineState* newPSO = psoList->Get(i);
+        auto pipelineEntry = psoList->Get(i);
 
         bool needRebuildPool = false;
 
-        if (pool.pso == nullptr)
+        if (pool.pso == nullptr || pool.rs == nullptr)
         {
             needRebuildPool = true;
         }
-        else if (pool.pso.Get() != newPSO)
+        else if (pool.pso.Get() != pipelineEntry.pso || pool.rs.Get() != pipelineEntry.rs)
         {
             needRebuildPool = true;
         }
 
         if (needRebuildPool)
         {
-            pool.pso = newPSO;
+            pool.pso = pipelineEntry.pso;
+            pool.rs = pipelineEntry.rs;
             pool.contexts.clear();
             pool.nextIndex = 0;
             pool.contexts.reserve(m_contextsPerPSO);
@@ -76,7 +78,7 @@ bool BundleRecorder::SyncWithPSOList(const PSOList* psoList)
 
 ID3D12GraphicsCommandList* BundleRecorder::RecordBundle(std::vector<ID3D12DescriptorHeap*>& heaps, const std::vector<DrawBindingInfo>& bindings, int psoIndex)
 {
-    ID3D12PipelineState* pso = m_psoList->Get(psoIndex);
+    auto pipeline = m_psoList->Get(psoIndex);
     ContextPool& pool = m_pools[size_t(psoIndex)];
 
     size_t& idx = pool.nextIndex;
@@ -86,9 +88,9 @@ ID3D12GraphicsCommandList* BundleRecorder::RecordBundle(std::vector<ID3D12Descri
     context.allocator->Reset();
 
     ID3D12GraphicsCommandList* cmd = context.bundle.Get();
-    cmd->Reset(context.allocator.Get(), pso);
-    cmd->SetGraphicsRootSignature(m_rootSignature);
-    cmd->SetPipelineState(pso);
+    cmd->Reset(context.allocator.Get(), pipeline.pso);
+    cmd->SetGraphicsRootSignature(pipeline.rs);
+    cmd->SetPipelineState(pipeline.pso);
 
     for (auto& bi : bindings)
     {
