@@ -73,7 +73,11 @@ std::shared_ptr<MeshAsset> ResourceManager::LoadMeshAsset(const std::filesystem:
 	for (auto& importedMats : importData.materials)
 	{
 		std::string matKey = importedMats.name;
-		if (m_materialAssetCache.contains(matKey)) continue;
+		if (m_materialAssetCache.contains(matKey))
+		{
+			materialAssets.push_back(m_materialAssetCache[matKey]);
+			continue;
+		}
 
 		std::shared_ptr<MaterialAsset> newMatAsset = std::make_shared<MaterialAsset>();
 		newMatAsset->m_assetPath = importedMats.name;
@@ -266,7 +270,8 @@ std::shared_ptr<MaterialAsset> ResourceManager::SerializeMaterialAsset(Serialize
 
 	asset->m_diffuse = SerializeTexture("Diffuse");
 	asset->m_normal = SerializeTexture("Normal");
-	asset->m_arm = SerializeTexture("Displacement");
+	asset->m_arm = SerializeTexture("ARM");
+	asset->m_displacement = SerializeTexture("Displacement");
 	asset->m_roughness = SerializeTexture("Roughness");
 	asset->m_emissive = SerializeTexture("Emissive");
 	asset->m_metallic = SerializeTexture("Metallic");

@@ -87,6 +87,9 @@ void MeshComponent::Submit()
         for (auto& pass : m_overlayPasses)
         {
             if (!pass.bActive) continue;
+            item.resourceBindings.reserve(item.resourceBindings.size() + pass.resourceBindings.size());
+            item.resourceBindings.insert(item.resourceBindings.end(), pass.resourceBindings.begin(), pass.resourceBindings.end());
+
             item.debugName = m_name + "_" + pass.name;
             renderSystem->SubmitRenderItem(item, pass.psoName);
         }
