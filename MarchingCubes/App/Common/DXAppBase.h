@@ -19,10 +19,10 @@ public:
     DXAppBase(uint32_t width, uint32_t height, std::wstring name);
     virtual ~DXAppBase();
 
-    void OnInit();
-    virtual void OnDestroy();
-    virtual void OnUpdate(float deltaTime) = 0;
-    virtual void OnUpdateUI(float deltaTime) {}
+    void Init();
+    virtual void Destroy();
+    virtual void Update(float deltaTime) = 0;
+    virtual void UpdateUI(float deltaTime) {}
     void Render();
 
     void OnResize(uint32_t width, uint32_t height);
@@ -47,20 +47,23 @@ protected:
     virtual void InitUI(ID3D12GraphicsCommandList* cmd) {}
     virtual void OnUpload(ID3D12GraphicsCommandList* cmd) {}                            // 리소스 버퍼 할당
     virtual void RenderFrame(ID3D12GraphicsCommandList* cmd);
-    virtual void OnAfterSwapchainCreated() {}                                           
+    virtual void OnAfterSwapchainCreated();
     virtual void InitSubsystems();                                                      // 서브 시스템
     virtual void OnBuildInitialScene(ID3D12GraphicsCommandList* initCommand) {}         // 초기 씬 구성
     virtual void OnAfterChainSwaped();
     virtual void OnSceneLoaded(Scene* scene) {}
+    virtual void UpdateInputCaptureState();
 
-    virtual void CreateInputElements() = 0;
+    virtual void CreateInputElements() = 0; // TODO : PSO 파일에 정의
     virtual std::shared_ptr<Scene> CreateDefaultScene() = 0;
     virtual std::vector<std::wstring> GetPSOFiles() const = 0;
 
     std::wstring GetAssetFullPath(LPCWSTR assetName) { return GetFullPath(AssetType::Default, assetName); }
 	void GetHawrdwardAdapter(_In_ IDXGIFactory1* pFactory, _Outptr_result_maybenull_ IDXGIAdapter1** ppAdapter, bool requestHightPerformanceAdapter = false);
 	void SetCustomWindowText(LPCWSTR text) const;
-    
+    void RenderScene(ID3D12GraphicsCommandList* cmd);
+    void WaitForGpu();
+
     Timer& GetTimer() { return m_timer; }
     const Timer& GetTimer() const { return m_timer; }
     ID3D12Device* GetDevice() { return m_device.Get(); }
@@ -86,7 +89,6 @@ private:
     void DestroyFenceAndEvent();
     void PrepareRender();
     void MoveToNextFrame();
-    void WaitForGpu();
 
     void InitGpuTimeStampResources();
     void DestroyGpuTimeStampResources();
@@ -106,6 +108,8 @@ protected:
 	float m_aspectRatio;
 	bool m_userWarpDevice = false;
     BOOL m_tearingSupported = FALSE;
+    bool m_bIsMinimized = false;
+    bool m_bIsResizing = false;
 
     // DirectX12 Common
     ComPtr<ID3D12Device> m_device;
@@ -114,10 +118,15 @@ protected:
     ComPtr<ID3D12CommandAllocator> m_commandAllocators[kFrameCount];
     ComPtr<ID3D12CommandQueue> m_commandQueue;
     ComPtr<ID3D12GraphicsCommandList> m_commandList;
-    ComPtr<ID3D12DescriptorHeap> m_rtvHeap;
-    ComPtr<ID3D12DescriptorHeap> m_dsvHeap;
-    uint32_t m_rtvDescriptorSize = 0;
-    uint32_t m_dsvDescriptorSize = 0;
+    //ComPtr<ID3D12DescriptorHeap> m_rtvHeap;
+    //ComPtr<ID3D12DescriptorHeap> m_dsvHeap;
+    //uint32_t m_rtvDescriptorSize = 0;
+    //uint32_t m_dsvDescriptorSize = 0;
+    //D3D12_CPU_DESCRIPTOR_HANDLE m_rtvHandles[kFrameCount]{};
+    //D3D12_CPU_DESCRIPTOR_HANDLE m_dsvHandle{};
+    uint32_t m_rtvHandles[kFrameCount]{ UINT32_MAX, UINT32_MAX };
+    uint32_t m_dsvHandle = UINT32_MAX;
+    bool m_bMainHandlesAllocated = false;
 
     // Pipeline
     ComPtr<ID3D12Resource> m_renderTargets[kFrameCount];

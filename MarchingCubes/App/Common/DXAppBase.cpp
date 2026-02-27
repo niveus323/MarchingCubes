@@ -22,7 +22,7 @@ static inline bool IsTearingSupported(IDXGIFactory6* factory) {
 
 DXAppBase::DXAppBase(uint32_t width, uint32_t height, std::wstring name) : 
 	m_width(width),
-	m_height(height),
+	m_height(height+24u),
 	m_aspectRatio(static_cast<float>(width) / static_cast<float>(height)),
 	m_userWarpDevice(false),
 	m_viewport(0.0f, 0.0f, static_cast<float>(width), static_cast<float>(height)),
@@ -34,23 +34,23 @@ DXAppBase::DXAppBase(uint32_t width, uint32_t height, std::wstring name) :
 
 DXAppBase::~DXAppBase() = default;
 
-void DXAppBase::OnInit()
+void DXAppBase::Init()
 {
 	CreateDevice();
 	CreateCommandQueue();
 	CreateSwapChain(Win32Application::GetHwnd(), GetPresentQueue());
-	CreateBackbuffersAndDefaultDSV(m_width, m_height);  
 	CreateFenceAndEvent();
 	CreateCommandObjects();
 	InitGpuTimeStampResources();
 	InitPipeline();
 	InitSubsystems();
+	CreateBackbuffersAndDefaultDSV(m_width, m_height);  
 	OnAfterSwapchainCreated();                      
 	InitUI(m_commandList.Get());
 	InitializeScene();
 }
 
-void DXAppBase::OnDestroy()
+void DXAppBase::Destroy()
 {
 	if (m_commandQueue && m_swapChainFence)
 	{
@@ -73,14 +73,13 @@ void DXAppBase::OnDestroy()
 
 void DXAppBase::Render()
 {
+	// 최소화 상태에서는 렌더를 수행할 필요가 없음.
+	if (m_bIsMinimized) return;
 	ThrowIfFailed(m_commandAllocators[m_frameIndex]->Reset());
 	ThrowIfFailed(m_commandList->Reset(m_commandAllocators[m_frameIndex].Get(), nullptr));
 	PrepareRender();
 	RenderFrame(m_commandList.Get());
-	if (m_uiRenderer)
-	{
-		m_uiRenderer->RenderFrame(m_commandList.Get());
-	}
+	if (m_uiRenderer) m_uiRenderer->RenderFrame(m_commandList.Get());
 	GpuTimestampEndAndResolve(m_commandList.Get(), m_frameIndex);
 
 	// 렌더링 끝났음. Present 상태로 전환
@@ -97,7 +96,16 @@ void DXAppBase::Render()
 		syncInterval = 0;
 		flags = DXGI_PRESENT_ALLOW_TEARING;
 	}
-	ThrowIfFailed(m_swapChain->Present(syncInterval, flags));
+	HRESULT hr = m_swapChain->Present(syncInterval, flags);
+	if (hr == DXGI_ERROR_DEVICE_REMOVED || hr == DXGI_ERROR_DEVICE_RESET)
+	{
+		// GPU가 연결 해제되었거나 크래시가 났을 때, 정확한 원인 HRESULT를 던지도록 합니다.
+		ThrowIfFailed(m_device->GetDeviceRemovedReason());
+	}
+	else
+	{
+		ThrowIfFailed(hr);
+	}
 	
 	MoveToNextFrame();
 }
@@ -105,22 +113,26 @@ void DXAppBase::Render()
 void DXAppBase::OnResize(uint32_t width, uint32_t height)
 {
 	if (!m_swapChain) return;
-	if (width == 0 || height == 0) return;
+	if (width == 0 || height == 0)
+	{
+		// 창 최소화
+		m_bIsMinimized = true;
+		return;
+	}
+	m_bIsMinimized = false;
+	
+	WaitForGpu();
 
 	m_width = width;
 	m_height = height;
 
-	if (m_currentScene)
-	{
-		// 지금은 App 화면 전체를 씬 뷰포트로 사용하므로 x,y를 모두 0으로 세팅
-		m_currentScene->OnResize(0.0f, 0.0f, static_cast<float>(m_width), static_cast<float>(m_height));
-	}
+	if (m_currentScene) m_currentScene->OnResize(static_cast<float>(m_width), static_cast<float>(m_height));
 
 	DestroyBackbuffersAndDefaultDSV();
 	ThrowIfFailed(m_swapChain->ResizeBuffers( kFrameCount, width, height, m_backbufferFormat, m_tearingSupported ? DXGI_SWAP_CHAIN_FLAG_ALLOW_TEARING : 0));
 	m_frameIndex = m_swapChain->GetCurrentBackBufferIndex();
 	CreateBackbuffersAndDefaultDSV(width, height);
-	OnAfterSwapchainCreated(); // 파생: 오프스크린 리소스 재생성 등
+	OnAfterSwapchainCreated();
 }
 
 void DXAppBase::StartTimer()
@@ -130,6 +142,12 @@ void DXAppBase::StartTimer()
 
 void DXAppBase::TickAndUpdate()
 {
+	if (m_bIsMinimized)
+	{
+		WaitMessage();
+		return;
+	}
+
 	if (m_bLoadRequested)
 	{
 		JsonSerializer ar(false);
@@ -142,16 +160,10 @@ void DXAppBase::TickAndUpdate()
 	}
 
 	float deltaTime = m_timer.Tick();
-	if (m_uiRenderer)
-	{
-		bool mouseCaptured = m_uiRenderer->IsCapturingMouse();
-		bool kbdCaptured = m_uiRenderer->IsCapturingKeyboard();
-
-		m_inputState->SetInputCaptured(mouseCaptured, kbdCaptured);
-	}
-	OnUpdate(deltaTime);
+	UpdateInputCaptureState();
+	Update(deltaTime);
 	m_inputState->Update();
-	OnUpdateUI(deltaTime);
+	UpdateUI(deltaTime);
 	m_currentScene->Update(deltaTime);
 
 	EngineCore::UpdateSubsystems(deltaTime);
@@ -206,56 +218,23 @@ void DXAppBase::OnPlatformEvent(uint32_t msg, WPARAM wParam, LPARAM lParam)
 			break;
 	}
 }
-
-void DXAppBase::LoadScene(std::shared_ptr<Scene> newScene)
-{
-	// 기존 씬 해제
-	if (m_currentScene)
-	{
-		m_currentScene->OnExit(m_uiRenderer.get());
-		m_currentScene.reset();
-	}
-
-	// 새 씬으로 교체
-	m_currentScene = std::move(newScene);
-	m_currentScene->OnResize(0.0f, 0.0f, static_cast<float>(m_width), static_cast<float>(m_height));
-	m_currentScene->Init();
-	m_currentScene->InitUI(m_uiRenderer.get());
-
-	OnSceneLoaded(m_currentScene.get());
-}
-
 void DXAppBase::RenderFrame(ID3D12GraphicsCommandList* cmd)
 {
-	// 렌더 타겟 생성됨, Back Buffer를 RenderTarget 상태로 전환
+	// Back Buffer를 RenderTarget 상태로 전환
 	const auto rtvBarrier = CD3DX12_RESOURCE_BARRIER::Transition(CurrentBackbuffer(), D3D12_RESOURCE_STATE_PRESENT, D3D12_RESOURCE_STATE_RENDER_TARGET);
 	cmd->ResourceBarrier(1, &rtvBarrier);
 
-	CD3DX12_CPU_DESCRIPTOR_HANDLE dsvHandle(m_dsvHeap->GetCPUDescriptorHandleForHeapStart());
-	CD3DX12_CPU_DESCRIPTOR_HANDLE rtvHandle(m_rtvHeap->GetCPUDescriptorHandleForHeapStart(), m_frameIndex, m_rtvDescriptorSize);
-	cmd->OMSetRenderTargets(1, &rtvHandle, FALSE, &dsvHandle);
+	RenderScene(cmd);
+}
 
-	// RTV Clear 명령 추가.
-	const float clearColor[] = { 0.0f, 0.0f, 0.2f, 1.0f };
-	cmd->ClearRenderTargetView(rtvHandle, clearColor, 0, nullptr);
-	cmd->ClearDepthStencilView(dsvHandle, D3D12_CLEAR_FLAG_DEPTH, 1.0f, 0, 0, nullptr);
+void DXAppBase::OnAfterSwapchainCreated()
+{
+	auto rtvCpu = m_descriptorAllocator->GetRTVCpu(m_rtvHandles[m_frameIndex]);
+	auto dsvCpu = m_descriptorAllocator->GetDSVCpu(m_dsvHandle);
+	m_renderSystem->SetOutputTarget(CurrentBackbuffer(), rtvCpu, dsvCpu);
 
-	if (m_currentScene)
-	{
-		cmd->RSSetViewports(1, &m_currentScene->GetViewport());
-		cmd->RSSetScissorRects(1, &m_currentScene->GetScissorRect());
-
-		CameraConstants sceneViewData = m_currentScene->GetCameraConstants();
-		LightBlobView lightBlob = m_currentScene->GetLightBlob();
-		m_renderSystem->PrepareRender(sceneViewData, lightBlob, m_frameIndex);
-	}
-	else
-	{
-		cmd->RSSetViewports(1, &m_viewport);
-		cmd->RSSetScissorRects(1, &m_scissorRect);
-	}
-
-	m_renderSystem->RenderFrame(cmd);
+	// App 화면 전체를 씬 뷰포트로 사용하므로 x,y를 모두 0으로 세팅
+	m_renderSystem->SetViewport(0.0f, 0.0f, static_cast<float>(m_width), static_cast<float>(m_height));
 }
 
 void DXAppBase::InitSubsystems()
@@ -291,6 +270,14 @@ void DXAppBase::OnAfterChainSwaped()
 	const double gpuMs = ComputeGpuFrameMsAfterCompleted(m_frameIndex);
 	// Timer에 GPU 프레임 시간(ms) 반영 → 평균/즉시 FPS 계산에 사용
 	GetTimer().PushGpuFrameMs(gpuMs);
+}
+
+void DXAppBase::UpdateInputCaptureState()
+{
+	if (m_uiRenderer)
+	{
+		m_inputState->SetInputCaptured(m_uiRenderer->IsCapturingMouse(), m_uiRenderer->IsCapturingKeyboard());
+	}
 }
 
 _Use_decl_annotations_
@@ -347,6 +334,45 @@ void DXAppBase::SetCustomWindowText(LPCWSTR text) const
 {
 	std::wstring windowText = m_title + L": " + text;
 	SetWindowText(Win32Application::GetHwnd(), windowText.c_str());
+}
+
+void DXAppBase::RenderScene(ID3D12GraphicsCommandList* cmd)
+{
+	auto rtvHandle = m_renderSystem->GetOutputRTV();
+	auto dsvHandle = m_renderSystem->GetOutputDSV();
+	cmd->OMSetRenderTargets(1, &rtvHandle, FALSE, &dsvHandle);
+
+	cmd->RSSetViewports(1, &m_renderSystem->GetViewport());
+	cmd->RSSetScissorRects(1, &m_renderSystem->GetScissorRect());
+
+	// RTV Clear 명령 추가.
+	const float clearColor[] = { 0.0f, 0.0f, 0.2f, 1.0f };
+	cmd->ClearRenderTargetView(rtvHandle, clearColor, 0, nullptr);
+	cmd->ClearDepthStencilView(dsvHandle, D3D12_CLEAR_FLAG_DEPTH, 1.0f, 0, 0, nullptr);
+
+	if (m_currentScene)
+	{
+		CameraConstants sceneViewData = m_currentScene->GetCameraConstants();
+		LightBlobView lightBlob = m_currentScene->GetLightBlob();
+		m_renderSystem->PrepareRender(sceneViewData, lightBlob, m_frameIndex);
+	}
+
+	m_renderSystem->RenderFrame(cmd);
+}
+
+void DXAppBase::WaitForGpu()
+{
+	assert(m_swapChainFence);
+	const uint64_t fenceValueToSignal = ++m_nextFenceValue;
+	ThrowIfFailed(m_commandQueue->Signal(m_swapChainFence.Get(), fenceValueToSignal));
+
+	if (m_swapChainFence->GetCompletedValue() < fenceValueToSignal)
+	{
+		ThrowIfFailed(m_swapChainFence->SetEventOnCompletion(fenceValueToSignal, m_fenceEvent));
+		WaitForSingleObjectEx(m_fenceEvent, INFINITE, FALSE);
+	}
+
+	m_fenceValues[m_frameIndex] = fenceValueToSignal;
 }
 
 void DXAppBase::CreateDevice()
@@ -437,42 +463,66 @@ void DXAppBase::InitPipeline()
 	CreateInputElements();
 }
 
-void DXAppBase::CreateBackbuffersAndDefaultDSV(uint32_t width, uint32_t height)
+void DXAppBase::InitializeScene()
 {
-	//Descriptor Heap 생성
-	D3D12_DESCRIPTOR_HEAP_DESC rtvHeapDesc{};
-	rtvHeapDesc.NumDescriptors = kFrameCount;
-	rtvHeapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_RTV;
-	rtvHeapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_NONE;
-	ThrowIfFailed(m_device->CreateDescriptorHeap(&rtvHeapDesc, IID_PPV_ARGS(m_rtvHeap.ReleaseAndGetAddressOf())));
-	NAME_D3D12_OBJECT(m_rtvHeap);
+	// TODO : Scene 초기화에 Resource 초기화가 섞여 있음 -> 좋은 분리 방법 고민 중.
+	ThrowIfFailed(m_commandAllocators[0]->Reset());
+	ThrowIfFailed(m_commandList->Reset(m_commandAllocators[0].Get(), nullptr));
+	OnBuildInitialScene(m_commandList.Get());
+	LoadScene(std::move(CreateDefaultScene()));
 
-	m_rtvDescriptorSize = m_device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_RTV);
-	
-	CD3DX12_CPU_DESCRIPTOR_HANDLE rtvHandle(m_rtvHeap->GetCPUDescriptorHandleForHeapStart());
-	for (uint32_t n = 0; n < kFrameCount; n++)
+	// Close CommandList
+	ThrowIfFailed(m_commandList->Close());
+	ID3D12CommandList* ppCommandLists[] = { m_commandList.Get() };
+	m_commandQueue->ExecuteCommandLists(_countof(ppCommandLists), ppCommandLists);
+
+	WaitForGpu();
+}
+
+void DXAppBase::LoadScene(std::shared_ptr<Scene> newScene)
+{
+	// 기존 씬 해제
+	if (m_currentScene)
 	{
-		ThrowIfFailed(m_swapChain->GetBuffer(n, IID_PPV_ARGS(&m_renderTargets[n])));
-		m_device->CreateRenderTargetView(m_renderTargets[n].Get(), nullptr, rtvHandle);
-		NAME_D3D12_OBJECT_INDEXED(m_renderTargets, n);
-
-		rtvHandle.Offset(1, m_rtvDescriptorSize);
+		m_currentScene->OnExit(m_uiRenderer.get());
+		m_currentScene.reset();
 	}
 
-	D3D12_DESCRIPTOR_HEAP_DESC dsvDesc{};
-	dsvDesc.NumDescriptors = 1;
-	dsvDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_DSV;
-	dsvDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_NONE;
-	ThrowIfFailed(m_device->CreateDescriptorHeap(&dsvDesc, IID_PPV_ARGS(m_dsvHeap.ReleaseAndGetAddressOf())));
-	NAME_D3D12_OBJECT(m_dsvHeap);
-	m_dsvDescriptorSize = m_device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_DSV);
+	// 새 씬으로 교체
+	m_currentScene = std::move(newScene);
+	m_currentScene->OnResize(static_cast<float>(m_width), static_cast<float>(m_height));
+	m_currentScene->Init();
+	m_currentScene->InitUI(m_uiRenderer.get());
 
-	// DSV 생성
-	D3D12_CLEAR_VALUE clear{};
-	clear.Format = m_depthFormat;
-	clear.DepthStencil.Depth = 1.0f;
-	clear.DepthStencil.Stencil = 0;
+	OnSceneLoaded(m_currentScene.get());
+}
 
+void DXAppBase::CreateBackbuffersAndDefaultDSV(uint32_t width, uint32_t height)
+{
+	if (!m_bMainHandlesAllocated)
+	{
+		for (uint32_t n = 0; n < kFrameCount; n++)
+			m_rtvHandles[n] = m_descriptorAllocator->AllocateRTV();
+
+		m_dsvHandle = m_descriptorAllocator->AllocateDSV();
+		m_bMainHandlesAllocated = true;
+	}
+
+	for (uint32_t n = 0; n < kFrameCount; n++)
+	{
+		auto rtvCPU = m_descriptorAllocator->GetRTVCpu(m_rtvHandles[n]);
+		ThrowIfFailed(m_swapChain->GetBuffer(n, IID_PPV_ARGS(&m_renderTargets[n])));
+		m_device->CreateRenderTargetView(m_renderTargets[n].Get(), nullptr, rtvCPU);
+		NAME_D3D12_OBJECT_INDEXED(m_renderTargets, n);
+	}
+
+	D3D12_CLEAR_VALUE clear{
+		.Format = m_depthFormat,
+		.DepthStencil = D3D12_DEPTH_STENCIL_VALUE{
+			.Depth = 1.0f,
+			.Stencil = 0
+		}
+	};
 	CD3DX12_RESOURCE_DESC dsDesc = CD3DX12_RESOURCE_DESC::Tex2D(m_depthFormat, m_width, m_height, 1, 1, 1, 0, D3D12_RESOURCE_FLAG_ALLOW_DEPTH_STENCIL);
 
 	ThrowIfFailed(m_device->CreateCommittedResource(
@@ -485,23 +535,9 @@ void DXAppBase::CreateBackbuffersAndDefaultDSV(uint32_t width, uint32_t height)
 	);
 	NAME_D3D12_OBJECT(m_depthStencil);
 
-	m_device->CreateDepthStencilView(m_depthStencil.Get(), nullptr, m_dsvHeap->GetCPUDescriptorHandleForHeapStart());
-}
+	auto dsvCPU = m_descriptorAllocator->GetDSVCpu(m_dsvHandle);
+	m_device->CreateDepthStencilView(m_depthStencil.Get(), nullptr, dsvCPU);
 
-void DXAppBase::InitializeScene()
-{
-	// TODO : Scene 초기화에 Resource 초기화가 섞여 있음 -> 좋은 분리 방법 고민 중.
-	ThrowIfFailed(m_commandAllocators[0]->Reset());
-	ThrowIfFailed(m_commandList->Reset(m_commandAllocators[0].Get(), nullptr));
-	OnBuildInitialScene(m_commandList.Get());
-	LoadScene(std::move(CreateDefaultScene()));
-	
-	// Close CommandList
-	ThrowIfFailed(m_commandList->Close());
-	ID3D12CommandList* ppCommandLists[] = { m_commandList.Get() };
-	m_commandQueue->ExecuteCommandLists(_countof(ppCommandLists), ppCommandLists);
-
-	WaitForGpu();
 }
 
 void DXAppBase::DestroyBackbuffersAndDefaultDSV()
@@ -511,8 +547,6 @@ void DXAppBase::DestroyBackbuffersAndDefaultDSV()
 		rt.Reset();
 	}
 	m_depthStencil.Reset();
-	m_rtvHeap.Reset();
-	m_dsvHeap.Reset();
 }
 
 void DXAppBase::CreateFenceAndEvent()
@@ -567,30 +601,6 @@ void DXAppBase::MoveToNextFrame()
 	}
 	
 	OnAfterChainSwaped();
-}
-
-void DXAppBase::WaitForGpu()
-{
-	assert(m_swapChainFence);
-	uint64_t lastFenceValue = m_swapChainFence->GetCompletedValue();
-	if (lastFenceValue == 0)
-	{
-		const uint64_t kInitFence = 1;
-		m_nextFenceValue = std::max<uint64_t>(m_nextFenceValue, kInitFence);
-		for (uint32_t i = 0; i < kFrameCount; ++i)
-		{
-			m_fenceValues[i] = std::max<uint64_t>(m_fenceValues[i], kInitFence);
-		}
-		ThrowIfFailed(GetPresentQueue()->Signal(m_swapChainFence.Get(), kInitFence));
-	}
-	else if (m_swapChainFence->GetCompletedValue() < lastFenceValue)
-	{
-		ThrowIfFailed(GetPresentQueue()->Signal(m_swapChainFence.Get(), lastFenceValue));
-		ThrowIfFailed(m_swapChainFence->SetEventOnCompletion(lastFenceValue, m_fenceEvent));
-		WaitForSingleObjectEx(m_fenceEvent, INFINITE, FALSE);
-
-	}
-	m_fenceValues[m_frameIndex] = lastFenceValue + 1;
 }
 
 void DXAppBase::InitGpuTimeStampResources()

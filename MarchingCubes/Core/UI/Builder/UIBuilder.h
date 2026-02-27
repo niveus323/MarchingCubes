@@ -241,6 +241,14 @@ namespace UI
         AlignRight
     };
 
+    enum class UI_Condition : uint32_t
+    {
+        FirstUseEver = 0,   // .ini 캐시가 없을 경우
+        Always,             // 항상
+        Once,               // 실행 후 1회
+        Appearing           // 창이 보여질 때 마다
+    };
+
     enum class UI_PanelOption : uint32_t
     {
         None = 0,
@@ -248,10 +256,22 @@ namespace UI
         NoDocking = 1 << 1,
         NoMove = 1 << 2,
         NoInput = 1 << 3,
-        NoScrollBar = 1 << 4
+        NoScrollBar = 1 << 4,
+        NoTitleBar = 1 << 5,
+        NoCollapse = 1 << 6,
+    };
+
+    enum class UI_DockingOption : uint32_t
+    {
+        None = 0,
+        NoTabBar = 1 << 0,
+        NoUndocking = 1 << 2,
+        NoSplit = 1 << 3,
+        NoResize = 1 << 4,
     };
 }
 ENABLE_BITMASK(UI::UI_PanelOption);
+ENABLE_BITMASK(UI::UI_DockingOption);
 
 /*
 NOTE : UI 빌더 규칙
@@ -267,16 +287,19 @@ public:
     // --- 윈도우/패널 관리 ---
     virtual bool BeginPanel(const char* name, bool* pOpen = nullptr, UI::UI_PanelOption flags = UI::UI_PanelOption::None) = 0;
     virtual void EndPanel() = 0;
-
+    
+    // --- Table ---
     virtual bool BeginTable(const char* id, int columns) = 0;
     virtual void EndTable() = 0;
-    virtual bool BeginCollapsingHeader(const char* label, bool defaultOpen = true) = 0;
+    virtual bool CollapsingHeader(const char* label, bool defaultOpen = true) = 0;
 
+    // --- Tab ---
     virtual bool BeginTabBar(const char* id) = 0;
     virtual void EndTabBar() = 0;
     virtual bool BeginTabItem(const char* id, bool* pOpen = nullptr) = 0;
     virtual void EndTabItem() = 0;
 
+    // --- Menu ---
     virtual void BeginMainMenuBar() = 0;
     virtual void EndMainMenuBar() = 0;
     virtual bool BeginMenuBar() = 0;
@@ -336,6 +359,8 @@ public:
     virtual void Indent(float width = 0) = 0;
     virtual void Unindent(float width = 0) = 0;
     virtual void AlignNextItem(UI::UI_Alignment align, float itemWidth = 0.0f) = 0;
+    virtual void PushStyle_Padding(const UI::Vector<float, 2>& padding) = 0;
+    virtual void PopStyle(int count = 1) = 0;
 
     // --- ID 관리 ---
     virtual void PushID(const char* str_id) = 0;
@@ -392,7 +417,9 @@ public:
     virtual bool BeginOverlay(const char* name, const UI::Vector<float, 2>& pos, const UI::Vector<float, 2>& size) = 0;
     virtual void EndOverlay() = 0;
     virtual UI::Vector<float, 2> GetMainViewportPos() = 0;
-    
+    virtual void DockSpaceOverViewport(const char* id, const void* viewport = nullptr) = 0;
+    virtual void SetNextWindowDocking(const char* dockspaceId, UI::UI_Condition cond = UI::UI_Condition::FirstUseEver, UI::UI_DockingOption option = UI::UI_DockingOption::None) = 0;
+
     // --- Primitive ---
     virtual void DrawLine(const UI::Vector<float, 2>& p1, const UI::Vector<float, 2>& p2, const UI::Color& color, float thickness = 1.0f) = 0;
     virtual void DrawCircleFilled(const UI::Vector<float, 2>& center, float radius, const UI::Color& color) = 0;

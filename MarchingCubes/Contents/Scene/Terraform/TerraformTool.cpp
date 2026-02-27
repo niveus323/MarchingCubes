@@ -629,7 +629,6 @@ void TerraformTool::ApplyNoiseToTerrain(bool bUseLOD)
 	if (bUseLOD)
 	{
 		// 프리뷰 지형 메쉬에 적용
-		Log::Print("TerraformTool NoiseTab", "bLod = true");
 		m_selectedTerrain->SetActive(false);
 		m_selectedTerrain->ShowTerrainBound(false);
 		m_selectedTerrain->ShowChunkBounds(false);
@@ -663,7 +662,6 @@ void TerraformTool::ApplyNoiseToTerrain(bool bUseLOD)
 	}
 	else
 	{
-		Log::Print("TerraformTool NoiseTab", "bLod = false");
 		if (m_previewTerrain) 
 		{
 			m_previewTerrain->SetActive(false);

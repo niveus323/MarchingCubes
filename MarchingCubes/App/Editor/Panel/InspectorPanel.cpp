@@ -51,7 +51,7 @@ void InspectorPanel::OnRenderUI(IUIBuilder* ui)
             ui->Separator();
 
             TypeDescriptor* objectType = m_target->GetType();
-            if (ui->BeginCollapsingHeader("Object Settings", true)) // Ç×»ó ¿­¾îµÒ
+            if (ui->CollapsingHeader("Object Settings", true)) // Ç×»ó ¿­¾îµÒ
             {
                 if (ui->BeginTable("ObjectProps", 2))
                 {
@@ -67,7 +67,7 @@ void InspectorPanel::OnRenderUI(IUIBuilder* ui)
                 if (comp->HasAnyFlags(EObjectFlags::Invisible)) continue;
 
                 ui->PushID(comp);
-                if (ui->BeginCollapsingHeader(comp->GetName().c_str(), true))
+                if (ui->CollapsingHeader(comp->GetName().c_str(), true))
                 {
                     if (ui->BeginTable("ComponentProps", 2))
                     {
@@ -117,7 +117,7 @@ void InspectorPanel::DrawTypeProperties(IUIBuilder* ui, void* componentPtr, Type
         if (prop.isArray)
         {
             size_t count = prop.getArraySize(componentPtr);
-            if (ui->BeginCollapsingHeader(prop.name.c_str()))
+            if (ui->CollapsingHeader(prop.name.c_str()))
             {
                 ui->Indent();
                 for (size_t i = 0; i < count; ++i)

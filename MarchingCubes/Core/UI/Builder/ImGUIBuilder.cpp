@@ -46,7 +46,8 @@ bool ImGUIBuilder::BeginPanel(const char* name, bool* pOpen, UI::UI_PanelOption 
 	if (HasFlag(flags, UI::UI_PanelOption::NoInput)) windowFlag |= ImGuiWindowFlags_NoInputs;
 	if (HasFlag(flags, UI::UI_PanelOption::NoMove)) windowFlag |= ImGuiWindowFlags_NoMove;
 	if (HasFlag(flags, UI::UI_PanelOption::NoScrollBar)) windowFlag |= ImGuiWindowFlags_NoScrollbar;
-
+	if (HasFlag(flags, UI::UI_PanelOption::NoTitleBar)) windowFlag |= ImGuiWindowFlags_NoTitleBar;
+	if (HasFlag(flags, UI::UI_PanelOption::NoCollapse)) windowFlag |= ImGuiWindowFlags_NoCollapse;
 	return ImGui::Begin(name, pOpen, windowFlag);
 }
 
@@ -65,7 +66,7 @@ void ImGUIBuilder::EndTable()
 	ImGui::EndTable();
 }
 
-bool ImGUIBuilder::BeginCollapsingHeader(const char* label, bool defaultOpen)
+bool ImGUIBuilder::CollapsingHeader(const char* label, bool defaultOpen)
 {
 	ImGuiTreeNodeFlags flags = ImGuiTreeNodeFlags_Framed | ImGuiTreeNodeFlags_FramePadding | ImGuiTreeNodeFlags_AllowItemOverlap;
 	if (defaultOpen) flags |= ImGuiTreeNodeFlags_DefaultOpen;
@@ -314,6 +315,16 @@ void ImGUIBuilder::AlignNextItem(UI::UI_Alignment align, float itemWidth)
 			return;
 	}
 	ImGui::SetCursorPosX(nextItemPos);
+}
+
+void ImGUIBuilder::PushStyle_Padding(const UI::Vector<float, 2>& padding)
+{
+	ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(padding.x, padding.y));
+}
+
+void ImGUIBuilder::PopStyle(int count)
+{
+	ImGui::PopStyleVar(count);
 }
 
 void ImGUIBuilder::PushID(const char* str_id)
@@ -678,6 +689,46 @@ UI::Vector<float, 2> ImGUIBuilder::GetMainViewportPos()
 {
 	ImVec2 pos = ImGui::GetMainViewport()->Pos;
 	return { pos.x, pos.y };
+}
+
+void ImGUIBuilder::DockSpaceOverViewport(const char* dockSpaceId, const void* viewport)
+{
+	const ImGuiViewport* targetViewport = viewport ? static_cast<const ImGuiViewport*>(viewport) : ImGui::GetMainViewport();
+
+	ImGuiID id = (dockSpaceId)? ImGui::GetID(dockSpaceId) : 0;
+	ImGui::DockSpaceOverViewport(id, ImGui::GetMainViewport(), ImGuiDockNodeFlags_None);
+}
+
+void ImGUIBuilder::SetNextWindowDocking(const char* dockspaceId, UI::UI_Condition cond, UI::UI_DockingOption option)
+{
+	ImGuiCond imguiCond = ImGuiCond_None;
+	switch (cond)
+	{
+		case UI::UI_Condition::FirstUseEver: 
+			imguiCond = ImGuiCond_FirstUseEver; break;
+		case UI::UI_Condition::Always:       
+			imguiCond = ImGuiCond_Always; break;
+		case UI::UI_Condition::Once:         
+			imguiCond = ImGuiCond_Once; break;
+		case UI::UI_Condition::Appearing:    
+		default:
+			imguiCond = ImGuiCond_Appearing; break;
+	}
+	ImGui::SetNextWindowDockID(ImGui::GetID(dockspaceId), imguiCond);
+
+	if (option != UI::UI_DockingOption::None)
+	{
+		// NOTE : 단일 렌더링 스레드 가정
+		static ImGuiWindowClass custom_class;
+		custom_class.ClassId = ImGui::GetID("CustomDockClass");
+		custom_class.DockNodeFlagsOverrideSet = 0;
+		if (HasFlag(option, UI::UI_DockingOption::NoTabBar))	custom_class.DockNodeFlagsOverrideSet |= ImGuiDockNodeFlags_AutoHideTabBar;
+		if (HasFlag(option, UI::UI_DockingOption::NoUndocking)) custom_class.DockNodeFlagsOverrideSet |= ImGuiDockNodeFlags_NoUndocking;
+		if (HasFlag(option, UI::UI_DockingOption::NoSplit))		custom_class.DockNodeFlagsOverrideSet |= ImGuiDockNodeFlags_NoSplit;
+		if (HasFlag(option, UI::UI_DockingOption::NoResize))	custom_class.DockNodeFlagsOverrideSet |= ImGuiDockNodeFlags_NoResize;
+		
+		ImGui::SetNextWindowClass(&custom_class);
+	}
 }
 
 void ImGUIBuilder::DrawLine(const UI::Vector<float, 2>& p1, const UI::Vector<float, 2>& p2, const UI::Color& color, float thickness)

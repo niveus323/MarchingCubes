@@ -2,6 +2,7 @@
 #include "SpectatorPawn.h"
 #include "Core/Scene/Component/CameraComponent.h"
 #include "Core/Scene/Scene.h"
+#include "Core/Rendering/RenderSystem.h"
 
 BEGIN_REFLECTION(SpectatorPawn, Pawn)
 END_REFLECTION()
@@ -9,7 +10,8 @@ END_REFLECTION()
 void SpectatorPawn::Init()
 {
     Pawn::Init();
-    auto viewport = m_scene.lock()->GetViewport();
+    
+    auto viewport = EngineCore::GetRenderSystem()->GetViewport();
     m_cameraComp = AddComponent<CameraComponent>();
     m_cameraComp->SetViewport(viewport.Width, viewport.Height);
 

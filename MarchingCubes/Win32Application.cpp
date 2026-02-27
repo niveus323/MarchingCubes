@@ -2,6 +2,9 @@
 #include "Win32Application.h"
 #include "Core/UI/UIRenderer.h"
 HWND Win32Application::m_hwnd = nullptr;
+bool Win32Application::s_bIsResizing = false;
+uint32_t Win32Application::s_windowWidth = 0;
+uint32_t Win32Application::s_windowHeight = 0;
 
 int Win32Application::Run(DXAppBase* pAppBase, HINSTANCE hInstance, int nCmdShow)
 {
@@ -39,8 +42,8 @@ int Win32Application::Run(DXAppBase* pAppBase, HINSTANCE hInstance, int nCmdShow
         hInstance,
         pAppBase);
 
-    // CreateUploadBuffer the sample. OnInit is defined in each child-implementation of DXSample.
-    pAppBase->OnInit();
+    // CreateUploadBuffer the sample. Init is defined in each child-implementation of DXSample.
+    pAppBase->Init();
     pAppBase->StartTimer();
 
     ShowWindow(m_hwnd, nCmdShow);
@@ -63,7 +66,7 @@ int Win32Application::Run(DXAppBase* pAppBase, HINSTANCE hInstance, int nCmdShow
        
     }
 
-    pAppBase->OnDestroy();
+    pAppBase->Destroy();
 
     // Return this part of the WM_QUIT message to Windows.
     return static_cast<char>(msg.wParam);
@@ -94,6 +97,41 @@ LRESULT Win32Application::WindowProc(HWND hWnd, uint32_t message, WPARAM wParam,
         // 게임용 메시지 처리
         switch (message)
         {
+            case WM_SIZE:
+            {
+                s_windowWidth = LOWORD(lParam);
+                s_windowHeight = HIWORD(lParam);
+
+                if (wParam == SIZE_MINIMIZED)
+                {
+                    pAppBase->OnResize(0, 0); // 최소화 시 창 크기를 0으로 전달하여 DXAppBase가 렌더링을 멈추도록 유도
+                }
+                else if (wParam == SIZE_MAXIMIZED)
+                {
+                    pAppBase->OnResize(s_windowWidth, s_windowHeight);
+                }
+                else if (wParam == SIZE_RESTORED)
+                {
+                    if (!s_bIsResizing)
+                    {
+                        pAppBase->OnResize(s_windowWidth, s_windowHeight);
+                    }
+                }
+                return 0;
+            }
+
+            case WM_ENTERSIZEMOVE:
+            {
+                s_bIsResizing = true;
+                return 0;
+            }
+
+            case WM_EXITSIZEMOVE:
+            {
+                s_bIsResizing = false;
+                pAppBase->OnResize(s_windowWidth, s_windowHeight);
+                return 0;
+            }
             case WM_KEYDOWN:
             case WM_KEYUP:
             case WM_MOUSEMOVE:

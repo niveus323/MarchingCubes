@@ -11,15 +11,23 @@
 #include "Core/Rendering/PSO/DescriptorAllocator.h"
 #include "Core/Engine/Serializer/JsonSerializer.h"
 #include "Core/Utils/FileUtils.h"
+//#include "../Panel/ViewportPanel.h"
 using namespace std::placeholders;
 
-void EditorApp::OnDestroy()
+void EditorApp::Destroy()
 {
-	DXAppBase::OnDestroy();
+	DXAppBase::Destroy();
 }
 
-void EditorApp::OnUpdate(float deltaTime)
+void EditorApp::Update(float deltaTime)
 {
+	if (m_bResizePending)
+	{
+		WaitForGpu();
+		OnResizeViewport(m_pendingViewportSize);
+		m_bResizePending = false;
+	}
+
 	if (m_inputState->IsPressed(ActionKey::Escape))
 	{
 		PostQuitMessage(0);
@@ -47,26 +55,28 @@ void EditorApp::OnUpdate(float deltaTime)
 		SetDebugViewMode(m_hNormalView); // Just Toggle
 	}
 #endif // _DEBUG
-
 }
 
-void EditorApp::OnBuildInitialScene(ID3D12GraphicsCommandList* initCommand)
+void EditorApp::UpdateUI(float deltaTime)
 {
-	// 기본 Debug View Mode 등록
+#ifdef _DEBUG
+	GpuAllocator* gpuAllocator = GetGpuAllocator();
+	if (gpuAllocator)
 	{
-		m_hDefaultView = RegisterDebugViewMode("Default", [](RenderSystem* rs) {
-			rs->ClearPSOOverrides();
-		});
-
-		m_hWireView = RegisterDebugViewMode("Wireframe", [](RenderSystem* rs) {
-			rs->ClearPSOOverrides();
-			rs->SetPSOOverride("Filled", "Wire");
-		});
-
-		m_hNormalView = RegisterDebugViewMode("Visualize Normals", [](RenderSystem* rs) {
-			rs->TogglePSOExtension("Filled", "DrawNormal");
-		});
+		if (auto p = m_profiler.lock())
+		{
+			p->SetBufferPools(gpuAllocator->GetMemoryInfos());
+			p->SetDedicatedBuffers(gpuAllocator->GetDebugDedicatedBuffers());
+			p->UpdateFrame(GetTimer().GetTimeMs());
+		}
 	}
+#endif
+}
+
+D3D12_GPU_DESCRIPTOR_HANDLE EditorApp::GetOffscreenSRVGpuHandle()
+{
+	if (m_offscreenSRVHandle == UINT32_MAX) return { 0 };
+	return m_descriptorAllocator->GetStaticGpu(m_offscreenSRVHandle);
 }
 
 void EditorApp::InitUI(ID3D12GraphicsCommandList* cmd)
@@ -127,6 +137,30 @@ void EditorApp::InitUI(ID3D12GraphicsCommandList* cmd)
 		}
 	);
 
+	// Dockspace
+	m_uiRenderer->AddFrameRenderCallbackToken(
+		[](IUIBuilder* ui) {
+			ui->DockSpaceOverViewport("Main DockSpace");
+		},
+		UI::UICallbackOptions{
+			.layer = UI::EUILayer::Editor_Background,
+			.enabled = true,
+			.id = "MainDockSpace"
+		}
+	);
+
+	// --- Editor Panel ---
+	m_viewportPanel = AddPanel<ViewportPanel>();
+	m_viewportPanel->SetOnViewportChanged(std::bind(&EditorApp::RequestResizeViewport, this, _1));
+	m_uiToken_Viewport = m_uiRenderer->AddFrameRenderCallbackToken(
+		std::bind(&ViewportPanel::OnRenderUI, m_viewportPanel, _1),
+		UI::UICallbackOptions{
+			.layer = UI::EUILayer::Editor_Panel,
+			.enabled = true,
+			.id = "Viewport"
+		}
+	);
+
 	m_hierarchyPanel = AddPanel<SceneHierarchyPanel>();
 	m_hierarchyPanel->SetOnSelectionChanged([&](GameObject* selected){
 		if (m_currentScene)
@@ -173,20 +207,65 @@ void EditorApp::InitUI(ID3D12GraphicsCommandList* cmd)
 	DXAppBase::InitUI(cmd);
 }
 
-void EditorApp::OnUpdateUI(float deltaTime)
+void EditorApp::RenderFrame(ID3D12GraphicsCommandList* cmd)
 {
-#ifdef _DEBUG
-	GpuAllocator* gpuAllocator = GetGpuAllocator();
-	if (gpuAllocator)
+	// 3D 씬 렌더링 (오프스크린 타겟)
+	if (m_offscreenResource)
 	{
-		if (auto p = m_profiler.lock())
-		{
-			p->SetBufferPools(gpuAllocator->GetMemoryInfos());
-			p->SetDedicatedBuffers(gpuAllocator->GetDebugDedicatedBuffers());
-			p->UpdateFrame(GetTimer().GetTimeMs());
-		}
+		const auto offscreenToRT = CD3DX12_RESOURCE_BARRIER::Transition(m_offscreenResource.Get(), D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_RENDER_TARGET);
+		cmd->ResourceBarrier(1, &offscreenToRT);
+
+		DXAppBase::RenderScene(cmd);
+
+		D3D12_RESOURCE_BARRIER afterRenderScene[2] = {
+			CD3DX12_RESOURCE_BARRIER::Transition(m_offscreenResource.Get(), D3D12_RESOURCE_STATE_RENDER_TARGET, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE), // 오프스크린 텍스처를 ImGui가 읽을 수 있도록 SRV 상태로 변경
+			CD3DX12_RESOURCE_BARRIER::Transition(CurrentBackbuffer(), D3D12_RESOURCE_STATE_PRESENT, D3D12_RESOURCE_STATE_RENDER_TARGET) 	// 백 버퍼 준비 (UI 렌더링용)
+		};
+		cmd->ResourceBarrier(2, afterRenderScene);
 	}
-#endif
+	else
+	{
+		const auto backbufferToRT = CD3DX12_RESOURCE_BARRIER::Transition(CurrentBackbuffer(), D3D12_RESOURCE_STATE_PRESENT, D3D12_RESOURCE_STATE_RENDER_TARGET);
+		cmd->ResourceBarrier(1, &backbufferToRT);
+	}
+	
+	auto backBufferRTV = m_descriptorAllocator->GetRTVCpu(m_rtvHandles[m_frameIndex]);
+	cmd->OMSetRenderTargets(1, &backBufferRTV, FALSE, nullptr); // 깊이 버퍼 불필요
+	
+	const float editorBgColor[] = { 0.15f, 0.15f, 0.15f, 1.0f };
+	cmd->ClearRenderTargetView(backBufferRTV, editorBgColor, 0, nullptr);
+}
+
+void EditorApp::OnAfterSwapchainCreated()
+{
+	if (m_bOffscreenHandlesAllocated)
+	{
+		auto rtvCpu = m_descriptorAllocator->GetRTVCpu(m_offscreenRTVHandle);
+		auto dsvCpu = m_descriptorAllocator->GetDSVCpu(m_offscreenDSVHandle);
+		m_renderSystem->SetOutputTarget(m_offscreenResource.Get(), rtvCpu, dsvCpu);
+	}
+	
+	UI::Vector<float, 2> viewportSize = (m_viewportPanel) ? m_viewportPanel->GetViewportSize() : UI::Vector<float,2>{ static_cast<float>(m_width), static_cast<float>(m_height) };
+	m_renderSystem->SetViewport(0.0f, 0.0f, viewportSize.x, viewportSize.y);
+}
+
+void EditorApp::OnBuildInitialScene(ID3D12GraphicsCommandList* initCommand)
+{
+	// 기본 Debug View Mode 등록
+	{
+		m_hDefaultView = RegisterDebugViewMode("Default", [](RenderSystem* rs) {
+			rs->ClearPSOOverrides();
+		});
+
+		m_hWireView = RegisterDebugViewMode("Wireframe", [](RenderSystem* rs) {
+			rs->ClearPSOOverrides();
+			rs->SetPSOOverride("Filled", "Wire");
+		});
+
+		m_hNormalView = RegisterDebugViewMode("Visualize Normals", [](RenderSystem* rs) {
+			rs->TogglePSOExtension("Filled", "DrawNormal");
+		});
+	}
 }
 
 void EditorApp::OnSceneLoaded(Scene* scene)
@@ -199,12 +278,29 @@ void EditorApp::OnSceneLoaded(Scene* scene)
 
 		if (auto controller = dynamic_cast<EditorController*>(scene->GetController()))
 		{
+			if (m_viewportPanel) m_viewportPanel->SetEditorController(controller);
 			controller->SetSelectionChangedCallback([this](GameObject* newSelection) {
 				if (m_hierarchyPanel) m_hierarchyPanel->SetSelection(newSelection);
 				if (m_inspectorPanel) m_inspectorPanel->SetTarget(newSelection);
 			});
 		}
 	}
+}
+
+void EditorApp::UpdateInputCaptureState()
+{
+	bool mouseCaptured = false;
+	bool kbdCaptured = false;
+
+	if (m_uiRenderer)
+	{
+		mouseCaptured = m_uiRenderer->IsCapturingMouse();
+		kbdCaptured = m_uiRenderer->IsCapturingKeyboard();
+	}
+
+	// 마우스가 뷰포트 위에 있다면 ImGui의 캡처를 무시하고 씬으로 전달
+	if (m_viewportPanel && m_viewportPanel->IsViewportHovered()) mouseCaptured = false;
+	m_inputState->SetInputCaptured(mouseCaptured, kbdCaptured);
 }
 
 void EditorApp::CreateInputElements()
@@ -679,8 +775,10 @@ void EditorApp::OnPlayButtonClicked()
 {
 	if (m_currentScene)
 	{
+		bIsPlayMode = true;
 		m_currentScene->EndEditor();
 		m_currentScene->BeginPlay();
+		if (m_viewportPanel) RequestResizeViewport(UI::Vector<float, 2>(1280.0f, 720.0f));
 	}
 }
 
@@ -688,7 +786,107 @@ void EditorApp::OnCloseButtonClicked()
 {
 	if (m_currentScene)
 	{
+		bIsPlayMode = false;
 		m_currentScene->EndPlay();
 		m_currentScene->BeginEditor();
+		if (m_viewportPanel) RequestResizeViewport(m_viewportPanel->GetViewportSize());
 	}
+}
+
+void EditorApp::RequestResizeViewport(UI::Vector<float, 2> viewportSize)
+{
+	m_bResizePending = true;
+	m_pendingViewportSize = viewportSize;
+}
+
+void EditorApp::OnResizeViewport(UI::Vector<float, 2> viewportSize)
+{
+	auto allocator = EngineCore::GetDescriptorAllocator();
+	float renderWidth = viewportSize.x;
+	float renderHeight = viewportSize.y;
+
+	if (!m_bOffscreenHandlesAllocated)
+	{
+		m_offscreenRTVHandle = allocator->AllocateRTV();
+		m_offscreenDSVHandle = allocator->AllocateDSV();
+		m_offscreenSRVHandle = m_descriptorAllocator->AllocateStaticSlot();
+		m_bOffscreenHandlesAllocated = true;
+	}
+	
+	// Offscreen RTV
+	{
+		D3D12_CLEAR_VALUE clear{
+			.Format = m_backbufferFormat,
+			.Color = { 0.0f, 0.0f, 0.2f, 1.0f }
+		};
+		CD3DX12_RESOURCE_DESC desc = CD3DX12_RESOURCE_DESC::Tex2D(
+			m_backbufferFormat,
+			static_cast<UINT64>(renderWidth),
+			static_cast<UINT64>(renderHeight),
+			1, 1, 1, 0,
+			D3D12_RESOURCE_FLAG_ALLOW_RENDER_TARGET
+		);
+		ThrowIfFailed(m_device->CreateCommittedResource(
+			&CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT),
+			D3D12_HEAP_FLAG_NONE,
+			&desc,
+			D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE,
+			&clear,
+			IID_PPV_ARGS(m_offscreenResource.ReleaseAndGetAddressOf()))
+		);
+		NAME_D3D12_OBJECT(m_offscreenResource);
+	}
+
+	// RTV & SRV 생성
+	auto offscreenRTV = m_descriptorAllocator->GetRTVCpu(m_offscreenRTVHandle);
+	m_device->CreateRenderTargetView(m_offscreenResource.Get(), nullptr, offscreenRTV);
+	
+	auto srvCPU = m_descriptorAllocator->GetStaticCpu(m_offscreenSRVHandle);
+	D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc{
+		.Format = m_backbufferFormat,
+		.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D,
+		.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING,
+		.Texture2D = D3D12_TEX2D_SRV{
+			.MostDetailedMip = 0,
+			.MipLevels = 1
+		}
+	};
+	
+	m_device->CreateShaderResourceView(m_offscreenResource.Get(), &srvDesc, srvCPU);
+
+	// Offscreen DSV
+	{
+		D3D12_CLEAR_VALUE clear{
+		.Format = m_depthFormat,
+		.DepthStencil = D3D12_DEPTH_STENCIL_VALUE{
+			.Depth = 1.0f,
+			.Stencil = 0
+		}
+		};
+		CD3DX12_RESOURCE_DESC dsDesc = CD3DX12_RESOURCE_DESC::Tex2D(
+			m_depthFormat,
+			static_cast<UINT64>(renderWidth),
+			static_cast<UINT64>(renderHeight),
+			1, 1, 1, 0,
+			D3D12_RESOURCE_FLAG_ALLOW_DEPTH_STENCIL
+		);
+
+		ThrowIfFailed(m_device->CreateCommittedResource(
+			&CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT),
+			D3D12_HEAP_FLAG_NONE,
+			&dsDesc,
+			D3D12_RESOURCE_STATE_DEPTH_WRITE,
+			&clear,
+			IID_PPV_ARGS(m_offscreenDepth.ReleaseAndGetAddressOf()))
+		);
+		NAME_D3D12_OBJECT(m_offscreenDepth);
+	}
+	auto offscreenDSV = m_descriptorAllocator->GetDSVCpu(m_offscreenDSVHandle);
+	m_device->CreateDepthStencilView(m_offscreenDepth.Get(), nullptr, offscreenDSV);
+
+	// 변경된 타겟을 RenderSystem에 주입
+	m_renderSystem->SetOutputTarget(m_offscreenResource.Get(), offscreenRTV, offscreenDSV);
+	m_renderSystem->SetViewport(0.0f, 0.0f, renderWidth, renderHeight);
+	
+	if (m_currentScene) m_currentScene->OnResize(renderWidth, renderHeight);
 }

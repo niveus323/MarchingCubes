@@ -30,15 +30,6 @@ void Scene::InitUI(IUIRenderer* ui)
 {
     if (!m_isPlaying)
     {
-#ifdef _DEBUG
-        auto uiToken_Gizmo = ui->AddFrameRenderCallbackToken(std::bind(&Scene::RenderSceneGizmoUI, this, std::placeholders::_1), UI::UICallbackOptions{
-            .layer = UI::EUILayer::Editor_Background,
-            .rateHz = 0,
-            .enabled = true,
-            .id = "SceneGizmo"
-            });
-        m_uiTokens.push_back(uiToken_Gizmo);
-#endif // _DEBUG
         auto uiToken_Controller = ui->AddFrameRenderCallbackToken( [this](IUIBuilder* builder) {
                 if (auto editorPC = dynamic_cast<EditorController*>(this->m_currentController))
                 {
@@ -115,25 +106,10 @@ void Scene::OnExit(IUIRenderer* ui)
     m_objects.clear();
 }
 
-void Scene::OnResize(float x, float y, float width, float height)
+void Scene::OnResize(float width, float height)
 {
-    m_viewport.TopLeftX = x;
-    m_viewport.TopLeftY = y;
-    m_viewport.Width = width;
-    m_viewport.Height = height;
-    m_viewport.MinDepth = 0.0f;
-    m_viewport.MaxDepth = 1.0f;
-
-    m_scissorRect.left = static_cast<LONG>(x);
-    m_scissorRect.top = static_cast<LONG>(y);
-    m_scissorRect.right = static_cast<LONG>(x + width);
-    m_scissorRect.bottom = static_cast<LONG>(y + height);
-
-    m_viewportX = x;
-    m_viewportY = y;
     m_viewportWidth = width;
     m_viewportHeight = height;
-
     if (m_mainCamera)
     {
         m_mainCamera->SetViewport(m_viewportWidth, m_viewportHeight);
@@ -348,74 +324,6 @@ void Scene::SetMainCamera(CameraComponent* cameraComp)
     m_mainCamera = cameraComp;
     if (m_mainCamera && m_viewportWidth > 0 && m_viewportHeight > 0)
     {
-        m_mainCamera->SetViewport(static_cast<float>(m_viewportWidth), static_cast<float>(m_viewportHeight));
+        m_mainCamera->SetViewport(m_viewportWidth, m_viewportHeight);
     }
-}
-
-void Scene::RenderSceneGizmoUI(IUIBuilder* ui)
-{
-    // 씬 뷰포트 좌측 하단에 붙어있는 기즈모
-    UI::Vector<float, 2> mainViewportPos = ui->GetMainViewportPos();
-    float windowScreenX = mainViewportPos.x;
-    float windowScreenY = mainViewportPos.y;
-    float gizmoSize = 100.0f;
-    float gizmoX = (windowScreenX + GetViewportX());
-    float gizmoY = (windowScreenY + GetViewportY()) + m_viewportHeight - gizmoSize;
-    if (ui->BeginOverlay("Gizmo", { gizmoX, gizmoY }, { gizmoSize, gizmoSize }))
-    {
-        // 중심점 계산
-        UI::Vector<float, 2> center = ui->GetCursorScreenPos();
-        center.x += 50.0f;
-        center.y += 50.0f;
-        float radius = 40.0f;
-
-        struct Axis {
-            XMVECTOR direction;
-            UI::Color color;
-            const char* label;
-            float zDepth;
-        };
-
-        std::vector<Axis> axes = {
-            { XMVectorSet(1, 0, 0, 0), {1.0f, 0.2f, 0.2f, 1.0f}, "X", 0.0f },
-            { XMVectorSet(0, 1, 0, 0), {0.2f, 1.0f, 0.2f, 1.0f}, "Y", 0.0f },
-            { XMVectorSet(0, 0, 1, 0), {0.2f, 0.2f, 1.0f, 1.0f}, "Z", 0.0f }
-        };
-
-        // 회전 계산
-        if (m_mainCamera)
-        {
-            XMMATRIX viewMat = m_mainCamera->GetViewMatrix();
-            for (auto& axis : axes)
-            {
-                XMVECTOR viewDir = XMVector3TransformNormal(axis.direction, viewMat);
-                axis.direction = viewDir;
-                axis.zDepth = XMVectorGetZ(viewDir);
-            }
-        }
-
-        // Z-Sort (뒤에 있는 축부터 그리기 위해)
-        std::sort(axes.begin(), axes.end(), [](const Axis& a, const Axis& b) {
-            return a.zDepth < b.zDepth;
-        });
-
-        for (const auto& axis : axes)
-        {
-            float x = XMVectorGetX(axis.direction);
-            float y = XMVectorGetY(axis.direction);
-            UI::Vector<float, 2> endPos = { center.x + x * radius, center.y - y * radius };
-            ui->DrawLine(center, endPos, axis.color, 3.0f); // 라인 그리기
-            ui->DrawCircleFilled(endPos, 7.0f, axis.color); // 끝점 원 그리기
-
-            // 텍스트 라벨 그리기 (중앙 정렬)
-            UI::Vector<float, 2> textSize = ui->CalcTextSize(axis.label);
-            UI::Vector<float, 2> textPos = {
-                endPos.x - textSize.x * 0.5f,
-                endPos.y - textSize.y * 0.5f
-            };
-            ui->DrawTextAt(textPos, { 1.0f, 1.0f, 1.0f, 1.0f }, axis.label);
-        }
-        ui->DrawCircleFilled(center, 4.0f, { 1.0f, 1.0f, 1.0f, 1.0f }); // Pivot
-    }
-    ui->EndOverlay(); // 오버레이 종료
 }

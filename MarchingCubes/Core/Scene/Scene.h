@@ -41,7 +41,7 @@ public:
 	virtual void EndPlay();
 	virtual void EndEditor();
 	virtual void OnExit(IUIRenderer* ui);
-	virtual void OnResize(float x, float y, float width, float height);
+	virtual void OnResize(float width, float height);
 	virtual void Update(float deltaTime);
 	virtual void Render();
 	virtual void Serialize(Serializer& ar) override;
@@ -97,12 +97,6 @@ public:
 
 	void RegisterLight(LightComponent* light) { m_lightCache.push_back(light); }
 	void UnregisterLight(LightComponent* light) { if (!m_lightCache.empty())  std::erase(m_lightCache, light); }
-
-	// Viewport
-	D3D12_VIEWPORT GetViewport() const { return m_viewport; }
-	D3D12_RECT GetScissorRect() const { return m_scissorRect; }
-	float GetViewportX() const { return m_viewport.TopLeftX; }
-	float GetViewportY() const { return m_viewport.TopLeftY; }
 
 	CameraConstants GetCameraConstants();
 	LightBlobView GetLightBlob();
@@ -168,14 +162,8 @@ private:
 	void RenderSceneGizmoUI(IUIBuilder* ui);
 protected:
 	CameraComponent* m_mainCamera = nullptr;
-
-	D3D12_VIEWPORT m_viewport{};
-	D3D12_RECT m_scissorRect{};
-
 	float m_viewportWidth = 0.0f;
 	float m_viewportHeight = 0.0f;
-	float m_viewportX = 0.0f;
-	float m_viewportY = 0.0f;
 
 	bool m_bLoadedFromFile = false; // TODO : 씬 관리는 Data-Driven으로 변경(씬 클래스 상속 불가로)
 private:
@@ -184,8 +172,6 @@ private:
 	std::unordered_map<uint64_t, GameObject*> m_uuidMap;
 	std::vector<std::shared_ptr<GameObject>> m_objects; //소유용
 
-	//TODO : 씬 HierarchyPanel에 보여질것과 아닐 것을 구분해야함(preview, debug 등) -> 에디터 Only 같은 플래그를 추가
-	
 	// Cache
 	std::vector<RendererComponent*> m_rendererCache;
 	std::vector<LightComponent*> m_lightCache;

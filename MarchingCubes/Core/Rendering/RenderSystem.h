@@ -55,6 +55,14 @@ public:
 	void ClearPSOOverrides() { m_psoOverrides.clear(); }
 	void ClearPSOExtionstions() { m_psoExtensions.clear(); }
 	void ClearPSORules() { m_psoOverrides.clear(); m_psoExtensions.clear(); }
+	
+	const D3D12_VIEWPORT& GetViewport() const { return m_viewport; }
+	const D3D12_RECT& GetScissorRect() const { return m_scissorRect; }
+	void SetViewport(float x, float y, float width, float height);
+	ID3D12Resource* GetOutputTargetRes() const { return m_currentRenderTarget; }
+	D3D12_CPU_DESCRIPTOR_HANDLE GetOutputDSV() const { return m_currentDSV; }
+	D3D12_CPU_DESCRIPTOR_HANDLE GetOutputRTV() const { return m_currentRTV; }
+	void SetOutputTarget(ID3D12Resource* renderTarget, D3D12_CPU_DESCRIPTOR_HANDLE rtv, D3D12_CPU_DESCRIPTOR_HANDLE dsv);
 
 private:
 	bool SubmitToQueue(std::string_view psoName, const RenderItem& item);
@@ -80,11 +88,18 @@ private:
 
 	BufferHandle m_cameraBuf{};
 	BufferHandle m_lightsBuf{};
-	D3D12_GPU_DESCRIPTOR_HANDLE m_lightsGpu{};
 
 	// Registry
 	std::unique_ptr<TextureRegistry> m_textureRegistry;
 	std::unique_ptr<MaterialRegistry> m_materialRegistry;
 	std::unique_ptr<MeshRegistry> m_meshRegistry;
+
+	// Screen
+	D3D12_VIEWPORT m_viewport{};
+	D3D12_RECT m_scissorRect{};
+
+	ID3D12Resource* m_currentRenderTarget = nullptr;
+	D3D12_CPU_DESCRIPTOR_HANDLE m_currentRTV;
+	D3D12_CPU_DESCRIPTOR_HANDLE m_currentDSV;
 };
 
