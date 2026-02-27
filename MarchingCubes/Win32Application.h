@@ -14,5 +14,8 @@ protected:
 
 private:
 	static HWND m_hwnd;
+	static bool s_bIsResizing;
+	static uint32_t s_windowWidth;
+	static uint32_t s_windowHeight;
 };
 

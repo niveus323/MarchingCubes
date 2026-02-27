@@ -18,6 +18,8 @@ public:
 	GameObject* GetSelectedObject() { return m_selectedObject; }
 	void SelectObject(GameObject* obj);
 	void SetSelectionChangedCallback(std::function<void(GameObject*)> callback) { m_selectionCallback = callback; }
+	void SetViewportActive(bool bHovered, bool bFocused);
+
 protected:
 	virtual void ProcessInput(float deltaTime) override;
 
@@ -33,5 +35,8 @@ private:
 	float m_mouseSensitivity = 0.01f;
 	GameObject* m_selectedObject = nullptr;
 	std::function<void(GameObject*)> m_selectionCallback;
+
+	bool m_bViewportHovered = false;
+	bool m_bViewportFocused = false;
 };
 

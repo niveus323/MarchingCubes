@@ -72,14 +72,6 @@ void RenderSystem::PrepareRender(const CameraConstants& cameraData, const LightB
 	const uint32_t blobSizeToCopy = (lightData.size <= lightCBSize) ? lightData.size : lightCBSize;
 	uploadContext->UploadConstants(lightData.data, blobSizeToCopy, m_lightsBuf);
 
-	uint32_t lightsSlot = descriptorAllocator->AllocateDynamic(frameIndex);
-	D3D12_CPU_DESCRIPTOR_HANDLE lightsCpu = descriptorAllocator->GetDynamicCpu(frameIndex, lightsSlot);
-	D3D12_CONSTANT_BUFFER_VIEW_DESC desc = {};
-	desc.BufferLocation = m_lightsBuf.gpuVA;
-	desc.SizeInBytes = AlignUp(blobSizeToCopy, D3D12_CONSTANT_BUFFER_DATA_PLACEMENT_ALIGNMENT);
-	EngineCore::GetDevice()->CreateConstantBufferView(&desc, lightsCpu);
-	m_lightsGpu = descriptorAllocator->GetDynamicGpu(frameIndex, lightsSlot);
-
 	// 렌더 큐 사전 정렬
 	std::sort(m_renderQueue.begin(), m_renderQueue.end(), [](const auto& a, const auto& b) { return a.sortKey < b.sortKey; });
 }
@@ -88,7 +80,10 @@ void RenderSystem::PrepareRender(const CameraConstants& cameraData, const LightB
 void RenderSystem::RenderFrame(ID3D12GraphicsCommandList* cmd)
 {
 	DescriptorAllocator* descriptorAllocator = EngineCore::GetDescriptorAllocator();
-	ID3D12DescriptorHeap* ppHeaps[] = { descriptorAllocator->GetCbvSrvUavHeap(), descriptorAllocator->GetSamplerHeap(0) };
+	ID3D12DescriptorHeap* ppHeaps[] = { 
+		descriptorAllocator->GetSamplerHeap(), 
+		descriptorAllocator->GetCbvSrvUavHeap()
+	};
 	cmd->SetDescriptorHeaps(_countof(ppHeaps), ppHeaps);
 
 	uint16_t currentRSIndex = 0xFFFF;
@@ -160,6 +155,30 @@ void RenderSystem::RemovePSOExtension(const std::string& from, const std::string
 			break;
 		}
 	}
+}
+
+void RenderSystem::SetViewport(float x, float y, float width, float height)
+{
+	m_viewport.TopLeftX = x;
+	m_viewport.TopLeftY = y;
+	m_viewport.Width = width;
+	m_viewport.Height = height;
+	m_viewport.MinDepth = 0.0f;
+	m_viewport.MaxDepth = 1.0f;
+
+	m_scissorRect.left = static_cast<LONG>(x);
+	m_scissorRect.top = static_cast<LONG>(y);
+	m_scissorRect.right = static_cast<LONG>(x + width);
+	m_scissorRect.bottom = static_cast<LONG>(y + height);
+
+	Log::Print("RenderSystem", "Viewport : %f, %f.    ScissorRect : (%ld, %ld, %ld, %ld)", m_viewport.Width, m_viewport.Height, m_scissorRect.left, m_scissorRect.top, m_scissorRect.right, m_scissorRect.bottom);
+}
+
+void RenderSystem::SetOutputTarget(ID3D12Resource* renderTarget, D3D12_CPU_DESCRIPTOR_HANDLE rtv, D3D12_CPU_DESCRIPTOR_HANDLE dsv)
+{
+	m_currentRenderTarget = renderTarget;
+	m_currentRTV = rtv;
+	m_currentDSV = dsv;
 }
 
 bool RenderSystem::SubmitToQueue(std::string_view psoName, const RenderItem& item)

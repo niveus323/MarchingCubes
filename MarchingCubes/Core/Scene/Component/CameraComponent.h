@@ -25,12 +25,12 @@ public:
 	{
 		m_viewportWidth = width;
 		m_viewportHeight = height;
+		m_aspect = m_viewportWidth / m_viewportHeight;
 	}
 
-	void SetLens(float fov, float aspect, float zNear, float zFar)
+	void SetLens(float fov, float zNear, float zFar)
 	{
 		m_fov = fov;
-		m_aspect = aspect;
 		m_nearZ = zNear;
 		m_farZ = zFar;
 	}

@@ -7,16 +7,19 @@ public:
 	// --- 扩档快/菩澄 包府 ---
 	virtual bool BeginPanel(const char* name, bool* pOpen, UI::UI_PanelOption flags = UI::UI_PanelOption::None) override;
 	virtual void EndPanel() override;
-
+	
+	// --- Table ---
 	virtual bool BeginTable(const char* id, int columns) override;
 	virtual void EndTable() override;
-	virtual bool BeginCollapsingHeader(const char* label, bool defaultOpen = true) override;
+	virtual bool CollapsingHeader(const char* label, bool defaultOpen = true) override;
 
+	// -- Tab ---
 	virtual bool BeginTabBar(const char* id) override;
 	virtual void EndTabBar() override;
 	virtual bool BeginTabItem(const char* id, bool* pOpen = nullptr) override;
 	virtual void EndTabItem() override;
 
+	// --- Menu ---
 	virtual void BeginMainMenuBar() override;
 	virtual void EndMainMenuBar() override;
 	virtual bool BeginMenuBar() override;
@@ -58,7 +61,9 @@ public:
 	virtual void Indent(float width) override;
 	virtual void Unindent(float width) override;
 	virtual void AlignNextItem(UI::UI_Alignment align, float itemWidth = 0.0f) override;
-	
+	virtual void PushStyle_Padding(const UI::Vector<float, 2>& padding) override;
+	virtual void PopStyle(int count = 1) override;
+
 	// --- ID 包府 ---
 	virtual void PushID(const char* str_id) override;
 	virtual void PushID(const void* ptr_id) override;
@@ -114,6 +119,8 @@ public:
 	virtual bool BeginOverlay(const char* name, const UI::Vector<float, 2>& pos, const UI::Vector<float, 2>& size) override;
 	virtual void EndOverlay() override;
 	virtual UI::Vector<float, 2> GetMainViewportPos() override;
+	virtual void DockSpaceOverViewport(const char* id, const void* viewport = nullptr) override;
+	virtual void SetNextWindowDocking(const char* dockspaceId, UI::UI_Condition cond = UI::UI_Condition::FirstUseEver, UI::UI_DockingOption option = UI::UI_DockingOption::None) override;
 
 	// --- Primitive ---
 	virtual void DrawLine(const UI::Vector<float, 2>& p1, const UI::Vector<float, 2>& p2, const UI::Color& color, float thickness = 1.0f) override;

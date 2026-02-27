@@ -4,6 +4,8 @@
 #include "Contents/Scene/Terraform/Scene_Terraform.h"
 #include "App/Editor/Panel/SceneHierarchyPanel.h"
 #include "App/Editor/Panel/InspectorPanel.h"
+#include "../Panel/ViewportPanel.h"
+#include <concepts>
 using DebugViewModeHandle = int;
 
 class EditorApp : public DXAppBase
@@ -14,14 +16,19 @@ public:
 	{ 
 	}
 	virtual ~EditorApp() = default;
-	virtual void OnDestroy() override;
-	virtual void OnUpdate(float deltaTime) override;
-protected:
-	void OnBuildInitialScene(ID3D12GraphicsCommandList* initCommand) override final;
+	virtual void Destroy() override;
+	virtual void Update(float deltaTime) override;
+	virtual void UpdateUI(float deltaTime) override;
 
+	D3D12_GPU_DESCRIPTOR_HANDLE GetOffscreenSRVGpuHandle();
+protected:
 	virtual void InitUI(ID3D12GraphicsCommandList* cmd) override;
-	virtual void OnUpdateUI(float deltaTime) override;
+	virtual void RenderFrame(ID3D12GraphicsCommandList* cmd) override;
+	void OnAfterSwapchainCreated() override;
+	void OnBuildInitialScene(ID3D12GraphicsCommandList* initCommand) override final;
 	virtual void OnSceneLoaded(Scene* scene) override;
+	virtual void UpdateInputCaptureState() override;
+
 	virtual void CreateInputElements() override;
 	virtual std::shared_ptr<Scene> CreateDefaultScene() override { return std::make_shared<Scene_Terraform>(); }
 	virtual std::vector<std::wstring> GetPSOFiles() const override { return { L"EditorCommon.json" }; }
@@ -41,6 +48,8 @@ private:
 	void RenderSubsystemManagerUI(IUIBuilder* ui);
 	void OnPlayButtonClicked();
 	void OnCloseButtonClicked();
+	void RequestResizeViewport(UI::Vector<float, 2> viewportSize);
+	void OnResizeViewport(UI::Vector<float, 2> viewportSize);
 	
 	template<std::derived_from<IEditorPanel> T, typename... Args>
 	T* AddPanel(Args&&...args)
@@ -75,8 +84,24 @@ protected:
 	DebugViewModeHandle m_hNormalView = -1;
 
 private:
+	bool bIsPlayMode = false;
+	// Viewport
+	ComPtr<ID3D12Resource> m_offscreenResource;
+	ComPtr<ID3D12Resource> m_offscreenDepth;
+	uint32_t m_offscreenRTVHandle = UINT32_MAX;
+	uint32_t m_offscreenDSVHandle = UINT32_MAX;
+	uint32_t m_offscreenSRVHandle = UINT32_MAX;
+	bool m_bOffscreenHandlesAllocated = false;
+
+	// DebugMode
 	std::vector<std::pair<std::string, std::function<void(RenderSystem*)>>> m_debugViewModes;
 	int m_currentDebugViewMode = 0;
+
+	//UI
+	ViewportPanel* m_viewportPanel = nullptr;
+	UI::FrameCallbackToken m_uiToken_Viewport = 0;
+	bool m_bResizePending = false;
+	UI::Vector<float, 2> m_pendingViewportSize = { 0.0f, 0.0f };
 
 	SceneHierarchyPanel* m_hierarchyPanel = nullptr;
 	UI::FrameCallbackToken m_uiToken_Hierarchy = 0;

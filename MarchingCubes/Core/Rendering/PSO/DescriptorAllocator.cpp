@@ -2,11 +2,41 @@
 #include "DescriptorAllocator.h"
 #include "Core/Engine/EngineCore.h"
 
-DescriptorAllocator::DescriptorAllocator(uint32_t ringCount, uint32_t samplerCount, uint32_t staticCount, uint32_t descriptorsPerFrame)
+DescriptorAllocator::DescriptorAllocator(uint32_t ringCount, uint32_t rtvCount, uint32_t dsvCount, uint32_t samplerCount, uint32_t staticCount, uint32_t descriptorsPerFrame)
 {
     ID3D12Device* device = EngineCore::GetDevice();
 
-	//Sampler
+    // RTV
+    D3D12_DESCRIPTOR_HEAP_DESC rtvDesc{
+        .Type = D3D12_DESCRIPTOR_HEAP_TYPE_RTV,
+        .NumDescriptors = rtvCount,
+        .Flags = D3D12_DESCRIPTOR_HEAP_FLAG_NONE
+    };
+    ThrowIfFailed(device->CreateDescriptorHeap(&rtvDesc, IID_PPV_ARGS(m_rtvHeap.ReleaseAndGetAddressOf())));
+    NAME_D3D12_OBJECT_ALIAS(m_rtvHeap, L"Main_RTV_Heap");
+
+    m_rtvCpuBase = m_rtvHeap->GetCPUDescriptorHandleForHeapStart();
+    m_rtvGpuBase = m_rtvHeap->GetGPUDescriptorHandleForHeapStart();
+    m_rtvInc = device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_RTV);
+    m_rtvCount = rtvCount;
+    m_nextRtv = 0;
+
+    // DSV
+    D3D12_DESCRIPTOR_HEAP_DESC dsvDesc{
+        .Type = D3D12_DESCRIPTOR_HEAP_TYPE_DSV,
+        .NumDescriptors = dsvCount,
+        .Flags = D3D12_DESCRIPTOR_HEAP_FLAG_NONE
+    };
+    ThrowIfFailed(device->CreateDescriptorHeap(&dsvDesc, IID_PPV_ARGS(m_dsvHeap.ReleaseAndGetAddressOf())));
+    NAME_D3D12_OBJECT_ALIAS(m_dsvHeap, L"Main_DSV_Heap");
+
+    m_dsvCpuBase = m_dsvHeap->GetCPUDescriptorHandleForHeapStart();
+    m_dsvGpuBase = m_dsvHeap->GetGPUDescriptorHandleForHeapStart();
+    m_dsvInc = device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_DSV);
+    m_dsvCount = dsvCount;
+    m_nextDsv = 0;
+
+	// Sampler
 	D3D12_DESCRIPTOR_HEAP_DESC desc{};
 	desc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_SAMPLER;
 	desc.NumDescriptors = samplerCount;
@@ -25,9 +55,15 @@ DescriptorAllocator::DescriptorAllocator(uint32_t ringCount, uint32_t samplerCou
 	m_cursor.resize(ringCount, 0);
 }
 
-uint32_t DescriptorAllocator::AllocateRTV(ID3D12Device* device)
+uint32_t DescriptorAllocator::AllocateRTV()
 {
-	D3D12_DESCRIPTOR_HEAP_DESC desc = {};
+    ID3D12Device* device = EngineCore::GetDevice();
+    assert(device && "Invalid Device");
+    assert(m_nextRtv < m_rtvCount && "RTV Descriptor Heap Capacity Exceeded!");
+
+    return m_nextRtv++;
+
+	/*D3D12_DESCRIPTOR_HEAP_DESC desc = {};
 	desc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_RTV;
 	desc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_NONE;
 	desc.NumDescriptors = 1;
@@ -36,12 +72,17 @@ uint32_t DescriptorAllocator::AllocateRTV(ID3D12Device* device)
 	ComPtr<ID3D12DescriptorHeap> heap;
 	ThrowIfFailed(device->CreateDescriptorHeap(&desc, IID_PPV_ARGS(&heap)));
 	m_rtvHeaps.push_back(heap);
-	return static_cast<uint32_t>(m_rtvHeaps.size() - 1);
+	return static_cast<uint32_t>(m_rtvHeaps.size() - 1);*/
 }
 
-uint32_t DescriptorAllocator::AllocateDSV(ID3D12Device* device)
+uint32_t DescriptorAllocator::AllocateDSV()
 {
-	D3D12_DESCRIPTOR_HEAP_DESC desc = {};
+    ID3D12Device* device = EngineCore::GetDevice();
+    assert(device && "Invalid Device");
+    assert(m_nextDsv < m_dsvCount && "DSV Descriptor Heap Capacity Exceeded!");
+    return m_nextDsv++;
+
+	/*D3D12_DESCRIPTOR_HEAP_DESC desc = {};
 	desc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_DSV;
 	desc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_NONE;
 	desc.NumDescriptors = 1;
@@ -51,7 +92,7 @@ uint32_t DescriptorAllocator::AllocateDSV(ID3D12Device* device)
 	ThrowIfFailed(device->CreateDescriptorHeap(&desc, IID_PPV_ARGS(&heap)));
 	m_dsvHeaps.push_back(heap);
 
-	return static_cast<uint32_t>(m_dsvHeaps.size() - 1);
+	return static_cast<uint32_t>(m_dsvHeaps.size() - 1);*/
 }
 
 uint32_t DescriptorAllocator::AllocateSampler()

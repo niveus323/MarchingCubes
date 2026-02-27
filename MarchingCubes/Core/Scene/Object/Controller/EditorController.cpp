@@ -5,8 +5,8 @@
 #include "Core/Scene/Scene.h"
 #include "Core/Scene/Object/Pawn.h"
 #include "Core/UI/Builder/UIBuilder.h"
+#include "./Win32Application.h"
 #include "Core/Scene/Component/MeshComponent.h"
-#include "Core/Math/PhysicsHelper.h"
 #include "Core/Scene/Component/CameraComponent.h"
 
 BEGIN_REFLECTION(EditorController, Controller)
@@ -46,8 +46,16 @@ void EditorController::SelectObject(GameObject* obj)
     if (m_selectionCallback) m_selectionCallback(m_selectedObject);
 }
 
+void EditorController::SetViewportActive(bool bHovered, bool bFocused)
+{
+    m_bViewportHovered = bHovered;
+    m_bViewportFocused = bFocused;
+}
+
 void EditorController::ProcessInput(float deltaTime)
 {
+    if (!m_bViewportHovered && !m_bViewportFocused) return;
+
     auto input = EngineCore::GetInputState();
 
     bool bInputConsumed = false;
@@ -58,10 +66,39 @@ void EditorController::ProcessInput(float deltaTime)
 
     if (bInputConsumed) return;
 
+    static bool s_bIsCameraMoving = false;
     if (input->IsPressed(ActionKey::RightClick))
     {
+        if (!s_bIsCameraMoving)
+        {
+            // 우클릭 시작: 커서를 숨기고 마우스를 현재 윈도우 영역에 가둠(Clip)
+            HWND hwnd = Win32Application::GetHwnd();
+            SetCapture(hwnd);
+            ShowCursor(FALSE);
+
+            RECT clientRect;
+            GetClientRect(hwnd, &clientRect);
+            ClientToScreen(hwnd, (POINT*)&clientRect.left);
+            ClientToScreen(hwnd, (POINT*)&clientRect.right);
+            ClipCursor(&clientRect);
+
+            s_bIsCameraMoving = true;
+        }
+
         UpdateCameraMovement(deltaTime);
         RotateCamera(deltaTime);
+    }
+    else
+    {
+        if (s_bIsCameraMoving)
+        {
+            // 커서 숨김 해제 및 락(Lock) 풀기
+            ReleaseCapture();
+            ShowCursor(TRUE);
+            ClipCursor(NULL);
+
+            s_bIsCameraMoving = false;
+        }
     }
 }
 

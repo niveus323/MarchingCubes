@@ -238,6 +238,7 @@
     <ClCompile Include="ThirdParty\mc33_impl.cpp" />
     <ClCompile Include="Core\Rendering\Memory\UploadRing.cpp" />
     <ClCompile Include="Core\Scene\Component\TransformComponent.cpp" />
+    <ClCompile Include="App\Editor\Panel\ViewportPanel.cpp" />
     <ClCompile Include="Win32Application.cpp" />
   </ItemGroup>
   <ItemGroup>
@@ -329,6 +330,7 @@
     <ClInclude Include="Core\Assets\TextureAsset.h" />
     <ClInclude Include="Core\Scene\Object\SceneObject.h" />
     <ClInclude Include="Core\Scene\Component\TransformComponent.h" />
+    <ClInclude Include="App\Editor\Panel\ViewportPanel.h" />
     <ClInclude Include="Win32Application.h" />
   </ItemGroup>
   <ItemGroup>
