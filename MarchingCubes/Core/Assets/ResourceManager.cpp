@@ -239,12 +239,12 @@ std::shared_ptr<MaterialAsset> ResourceManager::SerializeMaterialAsset(Serialize
 	// Enum은 직접 직렬화를 지원하지 않으므로 캐스팅하여 처리
 	uint32_t shadingModelVal = static_cast<uint32_t>(consts.shadingModel);
 	ar.Serialize("ShadingModel", shadingModelVal);
-	/*if(!ar.IsSaving())*/ consts.shadingModel = static_cast<EShadingModel>(shadingModelVal);
+	if(!ar.IsSaving()) consts.shadingModel = static_cast<EShadingModel>(shadingModelVal);
 
 	ar.BeginObject("TextureParams");
 	uint32_t mappingVal = static_cast<uint32_t>(consts.baseTextures.mappingType);
 	ar.Serialize("TextureMappingType", mappingVal);
-	/*if (!ar.IsSaving())*/ consts.baseTextures.mappingType = static_cast<ETextureMappingTypes>(mappingVal);
+	if (!ar.IsSaving()) consts.baseTextures.mappingType = static_cast<ETextureMappingTypes>(mappingVal);
 
 	TriplanarParams triParams{};
 	ar.BeginObject("TriplanarParams");

@@ -7,6 +7,7 @@
 #include "Texture.hlsli"
 
 static const uint INVALID_MATERIAL_INDEX = 0xFFFFFFFF;
+static const float ALPHA_CUT_OFF = 0.05f;
 
 struct EShadingModel
 {

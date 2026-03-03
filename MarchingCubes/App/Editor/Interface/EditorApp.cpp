@@ -16,7 +16,6 @@ using namespace std::placeholders;
 EditorApp::EditorApp(uint32_t width, uint32_t height, std::wstring name) :
 	DXAppBase(width, height + kEditorMenuBarHeight, name)
 {
-#define _EDITOR
 }
 
 void EditorApp::Destroy()

@@ -40,7 +40,7 @@ void MeshComponent::Submit()
         uint32_t materialGPUIndex = UINT32_MAX;
         if (!matInst.m_overrides.empty())
         {
-            std::string matInstanceKey = std::format("MatInst_{}[{}]", this->GetName(), i);
+            std::string matInstanceKey = std::format("MatInst_{}[{}]", this->GetUUID(), i);
             if (matInst.m_bDirty)
             {
                 // 수정 발생 시 Registry에 변경 적용

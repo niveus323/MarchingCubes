@@ -45,7 +45,7 @@ void BillboardComponent::Submit()
 	uint32_t materialGPUIndex = UINT32_MAX;
 	if (!m_iconMat.m_overrides.empty())
 	{
-		std::string matInstanceKey = std::format("MatInst_{}", this->GetName());
+		std::string matInstanceKey = std::format("MatInst_{}", this->GetUUID());
 		if (m_iconMat.m_bDirty)
 		{
 			materialGPUIndex = renderSystem->GetMaterialRegistry()->RegisterMaterialInstance(m_iconMat, matInstanceKey);

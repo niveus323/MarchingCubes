@@ -27,7 +27,7 @@ float4 PSMain(PSInput input) : SV_TARGET
     
     EvaluatedMaterial mat = EvaluateMaterial(gMaterials[gMaterialIndex], input.TexCoord, input.WorldPos, input.WorldNormal, input.WorldTangent, input.TangentSign);
      // ≈ı∏Ìµµ CutOut
-    if (mat.opacity < 0.05f) discard;
+    if (mat.opacity < ALPHA_CUT_OFF) discard;
     
     float3 V = normalize(gCameraPos - input.WorldPos);
     float3 N = mat.normal;
