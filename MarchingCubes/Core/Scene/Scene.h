@@ -158,8 +158,6 @@ private:
 	void UnregisterRenderable(RendererComponent* rendererComp) { 
 		std::erase_if(m_rendererCache, [rendererComp](const RendererComponent* target) { return target == rendererComp; }); 
 	}
-
-	void RenderSceneGizmoUI(IUIBuilder* ui);
 protected:
 	CameraComponent* m_mainCamera = nullptr;
 	float m_viewportWidth = 0.0f;
@@ -167,7 +165,7 @@ protected:
 
 	bool m_bLoadedFromFile = false; // TODO : 씬 관리는 Data-Driven으로 변경(씬 클래스 상속 불가로)
 private:
-	bool m_isPlaying = false;
+	bool m_bPlaying = false;
 
 	std::unordered_map<uint64_t, GameObject*> m_uuidMap;
 	std::vector<std::shared_ptr<GameObject>> m_objects; //소유용

@@ -5,6 +5,7 @@
 #include <cstdarg>
 #include <unordered_map>
 #include <algorithm>
+#include "ThirdParty/ImGuizmo/ImGuizmo.h"
 
 namespace UI
 {
@@ -325,6 +326,11 @@ void ImGUIBuilder::PushStyle_Padding(const UI::Vector<float, 2>& padding)
 void ImGUIBuilder::PopStyle(int count)
 {
 	ImGui::PopStyleVar(count);
+}
+
+void ImGUIBuilder::SetNextItemWidth(float width)
+{
+	ImGui::SetNextItemWidth(width);
 }
 
 void ImGUIBuilder::PushID(const char* str_id)
@@ -718,16 +724,20 @@ void ImGUIBuilder::SetNextWindowDocking(const char* dockspaceId, UI::UI_Conditio
 
 	if (option != UI::UI_DockingOption::None)
 	{
-		// NOTE : 단일 렌더링 스레드 가정
-		static ImGuiWindowClass custom_class;
-		custom_class.ClassId = ImGui::GetID("CustomDockClass");
-		custom_class.DockNodeFlagsOverrideSet = 0;
-		if (HasFlag(option, UI::UI_DockingOption::NoTabBar))	custom_class.DockNodeFlagsOverrideSet |= ImGuiDockNodeFlags_AutoHideTabBar;
-		if (HasFlag(option, UI::UI_DockingOption::NoUndocking)) custom_class.DockNodeFlagsOverrideSet |= ImGuiDockNodeFlags_NoUndocking;
-		if (HasFlag(option, UI::UI_DockingOption::NoSplit))		custom_class.DockNodeFlagsOverrideSet |= ImGuiDockNodeFlags_NoSplit;
-		if (HasFlag(option, UI::UI_DockingOption::NoResize))	custom_class.DockNodeFlagsOverrideSet |= ImGuiDockNodeFlags_NoResize;
-		
-		ImGui::SetNextWindowClass(&custom_class);
+		static std::unordered_map<uint32_t, ImGuiWindowClass> s_windowClasses;
+		uint32_t optionKey = static_cast<uint32_t>(option);
+		if (s_windowClasses.find(optionKey) == s_windowClasses.end())
+		{
+			ImGuiWindowClass& custom_class = s_windowClasses[optionKey];
+			custom_class.ClassId = ImGui::GetID("CustomDockClass");
+			custom_class.DockNodeFlagsOverrideSet = 0;
+			if (HasFlag(option, UI::UI_DockingOption::NoTabBar))	custom_class.DockNodeFlagsOverrideSet |= ImGuiDockNodeFlags_AutoHideTabBar;
+			if (HasFlag(option, UI::UI_DockingOption::NoUndocking)) custom_class.DockNodeFlagsOverrideSet |= ImGuiDockNodeFlags_NoUndocking;
+			if (HasFlag(option, UI::UI_DockingOption::NoSplit))		custom_class.DockNodeFlagsOverrideSet |= ImGuiDockNodeFlags_NoSplit;
+			if (HasFlag(option, UI::UI_DockingOption::NoResize))	custom_class.DockNodeFlagsOverrideSet |= ImGuiDockNodeFlags_NoResize;
+
+		}		
+		ImGui::SetNextWindowClass(&s_windowClasses[optionKey]);
 	}
 }
 
@@ -768,6 +778,50 @@ UI::Vector<float, 2> ImGUIBuilder::CalcTextSize(const char* text)
 void ImGUIBuilder::InvisibleButton(const char* str_id, const UI::Vector<float, 2>& size)
 {
 	ImGui::InvisibleButton(str_id, ImVec2(size.x, size.y));
+}
+
+bool ImGUIBuilder::IsGizmoHovered()
+{
+	return ImGuizmo::IsOver();
+}
+_Success_(return)
+bool ImGUIBuilder::DrawTransformGizmo(const DirectX::XMFLOAT4X4& view, const DirectX::XMFLOAT4X4& proj, UI::EGizmoOperation op, UI::EGizmoMode mode, _Inout_ DirectX::XMFLOAT4X4& world, _Out_ DirectX::XMFLOAT3& translation, _Out_ DirectX::XMFLOAT3& rotation, _Out_ DirectX::XMFLOAT3& scale, float gizmoSize)
+{
+	ImGuizmo::SetOrthographic(false);
+	ImGuizmo::SetDrawlist();
+	ImGuizmo::AllowAxisFlip(false);
+	ImGuizmo::SetGizmoSizeClipSpace(gizmoSize);
+
+	// Viewport 영역 확인
+	ImVec2 vPos = ImGui::GetWindowPos();
+	ImVec2 vMin = ImGui::GetWindowContentRegionMin();
+	ImVec2 vMax = ImGui::GetWindowContentRegionMax();
+	ImVec2 contentStartPos = ImVec2(vPos.x + vMin.x, vPos.y + vMin.y);
+	ImVec2 contentSize = ImVec2(vMax.x - vMin.x, vMax.y - vMin.y);
+	ImGuizmo::SetRect(contentStartPos.x, contentStartPos.y, contentSize.x, contentSize.y);
+
+	ImGuizmo::OPERATION gizmoOp = 
+		(op == UI::EGizmoOperation::Translate) ? ImGuizmo::TRANSLATE :
+		(op == UI::EGizmoOperation::Rotate) ? ImGuizmo::ROTATE : 
+		ImGuizmo::SCALE;
+	ImGuizmo::MODE gizmoMode = (mode == UI::EGizmoMode::Local) ? ImGuizmo::LOCAL : ImGuizmo::WORLD;
+
+	float textScaleMulti = 1.25f;
+	ImGui::SetWindowFontScale(textScaleMulti);
+
+	bool bManipulated = ImGuizmo::Manipulate(*view.m, *proj.m, gizmoOp, gizmoMode, *world.m) && ImGuizmo::IsUsing();
+	if (bManipulated)
+	{
+		float t[3], r[3], s[3];
+		ImGuizmo::DecomposeMatrixToComponents(*world.m, t, r, s);
+
+		translation = XMFLOAT3( t[0], t[1], t[2] );
+		rotation = XMFLOAT3( r[0], r[1], r[2] );
+		scale = XMFLOAT3( s[0], s[1], s[2] );
+	}
+
+	ImGui::SetWindowFontScale(1.0f);
+	return bManipulated;
 }
 
 bool ImGUIBuilder::InputInternal(const char* label, UI::UI_DataType type, void* pValue)

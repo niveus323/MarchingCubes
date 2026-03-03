@@ -1,8 +1,7 @@
 ﻿#include "pch.h"
 #include "EditorApp.h"
 #include "Win32Application.h"
-#include "Core/UI/ImGUIRenderer.h"
-#include "Core/UI/UIRenderer.h"
+#include "Core/UI/Renderer/ImGUIRenderer.h"
 #include "Core/Trace/Profiler.h"
 #include "Core/Rendering/Memory/GpuAllocator.h"
 #include "Core/Input/InputState.h"
@@ -11,8 +10,14 @@
 #include "Core/Rendering/PSO/DescriptorAllocator.h"
 #include "Core/Engine/Serializer/JsonSerializer.h"
 #include "Core/Utils/FileUtils.h"
-//#include "../Panel/ViewportPanel.h"
+constexpr uint32_t kEditorMenuBarHeight = 19u;
 using namespace std::placeholders;
+
+EditorApp::EditorApp(uint32_t width, uint32_t height, std::wstring name) :
+	DXAppBase(width, height + kEditorMenuBarHeight, name)
+{
+#define _EDITOR
+}
 
 void EditorApp::Destroy()
 {
@@ -289,20 +294,25 @@ void EditorApp::OnSceneLoaded(Scene* scene)
 
 void EditorApp::UpdateInputCaptureState()
 {
-	bool mouseCaptured = false;
-	bool kbdCaptured = false;
+	bool bMouseCaptured = false;
+	bool bKeyboardCaptured = false;
 
 	if (m_uiRenderer)
 	{
-		mouseCaptured = m_uiRenderer->IsCapturingMouse();
-		kbdCaptured = m_uiRenderer->IsCapturingKeyboard();
+		bMouseCaptured = m_uiRenderer->IsCapturingMouse();
+		bKeyboardCaptured = m_uiRenderer->IsCapturingKeyboard();
+		// NOTE : 뷰포트 UI에 대한 캡쳐였다면 이를 무시
+		if (m_viewportPanel)
+		{
+			if (m_viewportPanel->IsViewportHovered()) bMouseCaptured = false;
+			if (m_viewportPanel->IsViewportFocused()) bKeyboardCaptured = false;
+		}
 	}
-
-	// 마우스가 뷰포트 위에 있다면 ImGui의 캡처를 무시하고 씬으로 전달
-	if (m_viewportPanel && m_viewportPanel->IsViewportHovered()) mouseCaptured = false;
-	m_inputState->SetInputCaptured(mouseCaptured, kbdCaptured);
+	
+	m_inputState->SetInputCaptured(bMouseCaptured, bKeyboardCaptured);
 }
 
+//TODO : PSO파일로 이동
 void EditorApp::CreateInputElements()
 {
 	m_inputElements.push_back(D3D12_INPUT_ELEMENT_DESC{
@@ -561,6 +571,8 @@ void EditorApp::RenderProfilingUI(IUIBuilder* ui)
 void EditorApp::RenderMainMenuBarUI(IUIBuilder* ui)
 {
 	ui->BeginMainMenuBar();
+	ui->BeginDisabled(m_bIsPlayMode);
+
 	// 파일 로드/세이브
 	if (ui->BeginMenu("File"))
 	{
@@ -590,6 +602,21 @@ void EditorApp::RenderMainMenuBarUI(IUIBuilder* ui)
 			// 패널 표시 플래그 토글
 			m_bShowSubsystemManager = true;
 		}
+
+		if (ui->BeginMenu("Viewport Options"))
+		{
+			EditorController* editorController = dynamic_cast<EditorController*>(m_currentScene->GetController());
+			ui->SetNextItemWidth(100.0f);
+			float camSpeed = editorController->GetCameraSpeed();
+			if (ui->Drag("Camera Speed", &camSpeed, 1.0f)) editorController->SetCameraSpeed(camSpeed);
+
+			ui->SetNextItemWidth(100.0f);
+			float gizmoSize = editorController->GetGizmoSize();
+			if (ui->Drag("Gizmo Size", &gizmoSize, 0.01f)) editorController->SetGizmoSize(gizmoSize);
+
+			ui->EndMenu();
+		}
+
 		ui->EndMenu();
 	}
 
@@ -660,7 +687,7 @@ void EditorApp::RenderMainMenuBarUI(IUIBuilder* ui)
 		}
 		ui->EndMenu();
 	}
-
+	ui->EndDisabled();
 	ui->EndMainMenuBar();
 }
 
@@ -775,7 +802,7 @@ void EditorApp::OnPlayButtonClicked()
 {
 	if (m_currentScene)
 	{
-		bIsPlayMode = true;
+		m_bIsPlayMode = true;
 		m_currentScene->EndEditor();
 		m_currentScene->BeginPlay();
 		if (m_viewportPanel) RequestResizeViewport(UI::Vector<float, 2>(1280.0f, 720.0f));
@@ -786,7 +813,7 @@ void EditorApp::OnCloseButtonClicked()
 {
 	if (m_currentScene)
 	{
-		bIsPlayMode = false;
+		m_bIsPlayMode = false;
 		m_currentScene->EndPlay();
 		m_currentScene->BeginEditor();
 		if (m_viewportPanel) RequestResizeViewport(m_viewportPanel->GetViewportSize());

@@ -1,6 +1,7 @@
 #pragma once
 #include "Core/DataStructures/ShaderTypes.h"
 #include "Core/Assets/TextureAsset.h"
+#include <variant>
 
 /* [MaterialAsset]
 * - LifeTime : Material Asset Load -> UnLoad
@@ -37,13 +38,31 @@ private:
     std::shared_ptr<TextureAsset> m_roughness;
     std::shared_ptr<TextureAsset> m_emissive;
     std::shared_ptr<TextureAsset> m_metallic;
-
 };
 
-
+using MaterialParameterValue = std::variant<
+    float,
+    int,
+    DirectX::XMFLOAT3,
+    DirectX::XMFLOAT4,
+    std::shared_ptr<TextureAsset> // 텍스처 오버라이드용
+>;
 struct MaterialInstance
 {
-    std::shared_ptr<MaterialAsset> material;
-    std::string psoName = "";
-    // TODO: 작업자 필요에 따라 Mateiral의 수정가능한 상수를 정의하여 수정할 수 있도록 해야함
+    std::shared_ptr<MaterialAsset> m_material;
+    std::string m_psoName = "";
+    std::unordered_map<std::string, MaterialParameterValue> m_overrides;
+    bool m_bDirty = false;
+
+    template<typename T>
+    void SetParameter(const std::string& name, const T& value)
+    {
+        m_overrides[name] = value;
+        m_bDirty = true;
+    }
+    std::string_view GetPSO()
+    {
+        if (m_psoName.empty()) return m_material->GetPSO();
+        return m_psoName;
+    }
 };

@@ -1,6 +1,6 @@
 #pragma once
 #include "Core/Utils/Timer.h"
-#include "Core/UI/UIRenderer.h"
+#include "Core/UI/Renderer/UIRenderer.h"
 #include "Core/Scene/Scene.h"
 #include "Core/Trace/Profiler.h"
 using Microsoft::WRL::ComPtr;

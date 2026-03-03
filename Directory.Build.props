@@ -8,7 +8,7 @@
     <AssetsRoot>$(ProjectRoot)/Assets</AssetsRoot>
     <ContentsRoot>$(ProjectRoot)/Contents</ContentsRoot>
     <ShadersRoot>$(AssetsRoot)/Shaders</ShadersRoot>
-    <TexturesRoot>$(ContentsRoot)/Textures</TexturesRoot>
+    <TexturesRoot>$(AssetsRoot)/Textures</TexturesRoot>
     <ThirdPartyRoot>$(SolutionRoot)/ThirdParty/</ThirdPartyRoot>
   </PropertyGroup>
   <PropertyGroup>

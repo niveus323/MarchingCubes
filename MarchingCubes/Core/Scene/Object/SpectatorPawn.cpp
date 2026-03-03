@@ -10,9 +10,9 @@ END_REFLECTION()
 void SpectatorPawn::Init()
 {
     Pawn::Init();
-    
+    AddFlags(EObjectFlags::EditorOnly);
     auto viewport = EngineCore::GetRenderSystem()->GetViewport();
-    m_cameraComp = AddComponent<CameraComponent>();
+    m_cameraComp = AddComponent<CameraComponent>(EObjectFlags::EditorOnly);
     m_cameraComp->SetViewport(viewport.Width, viewport.Height);
 
     // Default Position

@@ -71,4 +71,7 @@ public:
 
 private:
 	TransformComponent* m_transformComp = nullptr;	
+
+	// EditorOnly
+
 };

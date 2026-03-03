@@ -1,7 +1,7 @@
 #pragma once
 #include "Core/Scene/Scene.h"
 #include "Core/Engine/Subsystem/SceneSubsystem/TerrainSystem.h"
-#include "Core/UI/UIRenderer.h"
+#include "Core/UI/Renderer/UIRenderer.h"
 
 // Forward Declaration
 class TerraformTool;

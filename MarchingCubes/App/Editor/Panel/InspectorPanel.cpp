@@ -152,32 +152,32 @@ void InspectorPanel::DrawSingleProperty(IUIBuilder* ui, void* instance, const Pr
         case EPropertyType::Bool:
             HandleProperty<bool>(instance, prop, [&](bool* ptr) {
                 return ui->Property(name, ptr);
-                });
+            });
             break;
         case EPropertyType::Int:
             HandleProperty<int>(instance, prop, [&](int* ptr) {
                 return ui->Property(name, ptr);
-                });
+            });
             break;
         case EPropertyType::Float:
             HandleProperty<float>(instance, prop, [&](float* ptr) {
                 return ui->Property(name, ptr);
-                });
+            });
             break;
         case EPropertyType::Vector3:
             HandleProperty<UI::Vector<float, 3>>(instance, prop, [&](auto* ptr) {
                 return ui->Property(name, ptr);
-                });
+            });
             break;
         case EPropertyType::Color:
             HandleProperty<UI::Color>(instance, prop, [&](auto* ptr) {
                 return ui->Property(name, ptr);
-                });
+            });
             break;
         case EPropertyType::String:
             HandleProperty<std::string>(instance, prop, [&](std::string* ptr) {
                 return ui->PropertyInputText(name, *ptr);
-                });
+            });
             break;
         case EPropertyType::Enum:
             // Enum은 HandleProperty를 활용하되 내부에서 메타데이터 검색
@@ -193,7 +193,7 @@ void InspectorPanel::DrawSingleProperty(IUIBuilder* ui, void* instance, const Pr
                     values.push_back(entry.value);
                 }
                 return ui->PropertyEnum(name, ptr, names, values);
-                });
+            });
             break;
     }
 

@@ -29,7 +29,8 @@
               "name" :  "MaterialBuffer",
               "type": "SRV",
               "count": 1,
-              "register": 0
+              "register": 0,
+              "flags" : "Volatile"
             }
           ]
         },
@@ -102,14 +103,14 @@
     },
     {
       "id": "Line",
-      "order": 20,
+      "order": 11,
       "inherits": "Filled",
       "shaders": { "ps": "LinePS_Material.cso" },
       "topology": "line"
     },
     {
       "id": "Wire",
-      "order": 30,
+      "order": 12,
       "inherits": "Filled",
       "shaders": { "ps": "LinePS_Material.cso" },
       "raster": {
@@ -119,7 +120,7 @@
     },
     {
       "id": "DrawNormal",
-      "order": 40,
+      "order": 13,
       "inherits": "Filled",
       "shaders": {
         "gs": "NormalGS.cso",
@@ -128,7 +129,7 @@
     },
     {
       "id": "DrawChunkBoundary",
-      "order": 41,
+      "order": 20,
       "inherits": "Filled",
       "rootSignature": "Overlay",
       "shaders": {
@@ -136,6 +137,5 @@
         "ps": "LinePS_Visualizer.cso"
       }
     }
-
   ]
 }

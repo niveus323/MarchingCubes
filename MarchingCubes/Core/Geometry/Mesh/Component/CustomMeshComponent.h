@@ -17,10 +17,9 @@ class CustomMeshComponent : public MeshComponent
 	REFLECT_GENERATED_BODY(CustomMeshComponent)
 public:
 	virtual void Serialize(Serializer& ar) override;
+	virtual Mesh* GetMesh() const override { return m_mesh.get(); }
 	const GeometryData& GetData() const { return m_data; }
 	void UpdateMesh(GeometryData data, const std::vector<MeshSubmesh>& submeshes);
-protected:
-	virtual Mesh* GetMesh() const override { return m_mesh.get(); }
 
 private:
 	std::shared_ptr<DynamicMesh> m_mesh;

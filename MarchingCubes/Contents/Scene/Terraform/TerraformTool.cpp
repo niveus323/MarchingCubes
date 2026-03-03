@@ -388,7 +388,7 @@ void TerraformTool::NoiseTabUI(IUIBuilder* ui)
 	if (m_isImageLoaded)
 	{
 		
-		D3D12_GPU_DESCRIPTOR_HANDLE gpuHandle = EngineCore::GetRenderSystem()->GetTextureRegistry()->GetGpuHandle(m_heightmapHandle);
+		D3D12_GPU_DESCRIPTOR_HANDLE gpuHandle = EngineCore::GetRenderSystem()->GetTextureRegistry()->GetGpuDescriptorHandle(m_heightmapHandle);
 		float aspect = (float)m_imgHeight / (float)m_imgWidth;
 		float dispW = 300.0f;
 		float dispH = dispW * aspect;
@@ -456,7 +456,7 @@ void TerraformTool::LoadHeightmapImage()
 {
 	static const std::string s_initialFilePath = "";
 
-	std::string pathStr = FileUtils::OpenFileDialog();
+	std::string pathStr = FileUtils::OpenFileDialog("Contents/Textures/Noise");
 	if (pathStr.empty()) return;
 
 	std::filesystem::path path(pathStr);
@@ -482,7 +482,7 @@ void TerraformTool::LoadHeightmapImage()
 
 	// 편의상 파일 리로드로 미리보기 텍스쳐 생성.
 	// 최적화 시 ScratchImage -> TextureAsset 생성 함수 구현하여 적용.
-	if (m_heightmapAsset = EngineCore::GetResourceManager()->LoadTextureAsset(path))
+	if (m_heightmapAsset = EngineCore::GetResourceManager()->LoadTextureAsset(path, ""))
 	{
 		m_heightmapHandle = EngineCore::GetRenderSystem()->GetTextureRegistry()->LoadTexture(m_heightmapAsset);
 		m_isImageLoaded = true;

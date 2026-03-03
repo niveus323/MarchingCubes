@@ -44,7 +44,7 @@ namespace TexImporter
 class TextureAsset
 {
 public:
-	explicit TextureAsset(const std::filesystem::path& sourcePath, const std::filesystem::path& cacheRoot = std::filesystem::path(L"Contents/Textures"));
+	TextureAsset(const std::filesystem::path& sourcePath);
 	
 	void ReleasePixelData();
 	const std::filesystem::path& GetSourcePath() const { return m_sourcePath; };

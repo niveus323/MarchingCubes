@@ -6,11 +6,12 @@
 #include "Core/Rendering/Memory/GpuAllocator.h"
 #include "Core/Geometry/Mesh/Class/StaticMesh.h"
 #include "Core/Geometry/Mesh/Class/DynamicMesh.h"
+#include "Core/Assets/MeshAsset.h"
 
 std::shared_ptr<StaticMesh> MeshRegistry::CreateStaticMesh(const std::string& key, const GeometryData& data, const std::vector<MeshSubmesh>& submeshes)
 {
-	auto resIt = m_resourceCache.find(key);
-	if (resIt != m_resourceCache.end()) return resIt->second;
+	auto resuIt = m_resourceCache.find(key);
+	if (resuIt != m_resourceCache.end()) return resuIt->second;
 
 	auto allocator = EngineCore::GetGpuAllocator();
 	auto uploadContext = EngineCore::GetUploadContext();
@@ -42,6 +43,17 @@ std::shared_ptr<StaticMesh> MeshRegistry::CreateStaticMesh(const std::string& ke
 
 	m_resourceCache[key] = mesh;
 	return mesh;
+}
+
+std::shared_ptr<StaticMesh> MeshRegistry::CreateStaticMesh(const std::shared_ptr<MeshAsset>& asset)
+{
+	if (!asset) return nullptr;
+
+	std::string key = asset->GetSourcePath().string();
+	auto resIt = m_resourceCache.find(key);
+	if (resIt != m_resourceCache.end()) return resIt->second;
+
+	return CreateStaticMesh(key, asset->GetGeometry(), asset->GetSubmesh());
 }
 
 std::shared_ptr<DynamicMesh> MeshRegistry::CreateDynamicMesh(const GeometryData& data, const std::vector<MeshSubmesh>& submeshes, const std::string& debugName)

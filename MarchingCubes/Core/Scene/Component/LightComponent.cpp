@@ -2,6 +2,8 @@
 #include "LightComponent.h"
 #include "Core/Scene/Object/GameObject.h"
 #include "Core/Scene/Scene.h"
+#include "Core/Assets/ResourceManager.h"
+#include "Core/Scene/Component/BillboardComponent.h"
 
 BEGIN_ENUM_REFLECTION(ELightType)
     REFLECT_ENUM(ELightType::Directional)
@@ -22,6 +24,11 @@ void LightComponent::Init()
 {
     Component::Init();
     if (auto scene = GetScene()) scene->RegisterLight(this);
+    if (auto billboard = GetOwner()->GetComponent<BillboardComponent>())
+    {
+        auto lightIcon = EngineCore::GetResourceManager()->LoadTextureAsset("Icons/Light_64.png");
+        billboard->SetIcon(lightIcon, 20);
+    }
 }
 
 void LightComponent::Destroy()
@@ -32,8 +39,9 @@ void LightComponent::Destroy()
 void LightComponent::Serialize(Serializer& ar)
 {
     Component::Serialize(ar);
-    //int typeValue = static_cast<int>(m_type);
-    //ar.Serialize("LightType", typeValue);
+    int typeValue = static_cast<int>(m_type);
+    ar.Serialize("LightType", typeValue);
+    if (!ar.IsSaving()) m_type = static_cast<ELightType>(typeValue);
     ar.Serialize("Radiance", m_radiance);
     ar.Serialize("Range", m_range);
     ar.Serialize("SpotInnerCos", m_spotInnerCos);

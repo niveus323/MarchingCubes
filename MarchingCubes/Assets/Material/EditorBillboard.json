@@ -1,0 +1,9 @@
+{
+  "PSO" :  "Filled",
+  "MaterialConstants": {
+    "Albedo": [ 1.0, 1.0, 1.0 ],
+    "Opacity": 1.0,
+    "ShadingModel": 3
+  },
+  "Diffuse": "icons/Actor_64.png"
+}

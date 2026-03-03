@@ -158,6 +158,52 @@ namespace MeshGenerator
 		return result;
 	}
 
+	GeometryData CreateSolidQuad()
+	{
+		GeometryData result;
+		result.topology = D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST;
+
+		result.vertices.resize(4);
+		//Billboard는 normal, tangent 값을 CPU에서 계산하지 않음.(Editor용 Billboard는 사용x, Runtime용 Billboard는 VS에서 계산)
+		DirectX::XMFLOAT3 defaultNormal{ 0.0f, 0.0f, -1.0f };
+		DirectX::XMFLOAT4 defaultTangent{ 1.0f, 0.0f, 0.0f, 1.0f };
+
+		// Top-Left
+		result.vertices[0] = Vertex{
+			.pos = {-0.5f, 0.5f, 0.0f},
+			.normal = defaultNormal,
+			.tangent = defaultTangent,
+			.texCoord = {0.0f, 0.0f}
+		};
+
+		// Top-Right
+		result.vertices[1] = Vertex{
+			.pos = {0.5f, 0.5f, 0.0f},
+			.normal = defaultNormal,
+			.tangent = defaultTangent,
+			.texCoord = {1.0f, 0.0f}
+		};
+
+		// Bottom-Left
+		result.vertices[2] = Vertex{
+			.pos = {-0.5f, -0.5f, 0.0f},
+			.normal = defaultNormal,
+			.tangent = defaultTangent,
+			.texCoord = {0.0f, 1.0f}
+		};
+
+		// Bottom-Right
+		result.vertices[3] = Vertex{
+			.pos = {0.5f, -0.5f, 0.0f},
+			.normal = defaultNormal,
+			.tangent = defaultTangent,
+			.texCoord = {1.0f, 1.0f}
+		};
+		result.indices = { 0, 1, 2, 1, 3, 2 };
+
+		return result;
+	}
+
 	GeometryData CreateWireSphere(float radius, uint32_t sliceCount, uint32_t stackCount)
 	{
 		GeometryData result;

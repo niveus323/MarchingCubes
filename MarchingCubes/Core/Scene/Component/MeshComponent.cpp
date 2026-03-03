@@ -36,7 +36,31 @@ void MeshComponent::Submit()
     std::vector<uint32_t> materialIndices(m_materialInstnaces.size());
     for (int i = 0; i < m_materialInstnaces.size(); ++i)
     {
-        materialIndices[i] = renderSystem->GetMaterialRegistry()->GetMaterialHandle(m_materialInstnaces[i].material);
+        auto& matInst = m_materialInstnaces[i];
+        uint32_t materialGPUIndex = UINT32_MAX;
+        if (!matInst.m_overrides.empty())
+        {
+            std::string matInstanceKey = std::format("MatInst_{}[{}]", this->GetName(), i);
+            if (matInst.m_bDirty)
+            {
+                // 수정 발생 시 Registry에 변경 적용
+                materialGPUIndex = renderSystem->GetMaterialRegistry()->RegisterMaterialInstance(matInst, matInstanceKey);
+                matInst.m_bDirty = false;
+            }
+            else
+            {
+                //수정이 없었을 경우 캐시에서 받아온다
+                materialGPUIndex = renderSystem->GetMaterialRegistry()->FindMaterialHandle(matInstanceKey);
+            }
+        }
+        else
+        {
+            // 기존 MaterialAsset을 수정하지 않는 Instance라면 이미 업로드된 Material을 사용
+            materialGPUIndex = renderSystem->GetMaterialRegistry()->RegisterMaterialAsset(matInst.m_material);
+        }
+
+        
+        materialIndices[i] = materialGPUIndex;
     }
 
     // CBV 업로드
@@ -78,10 +102,7 @@ void MeshComponent::Submit()
             .rootParameterIndex = 1,
             .gpuAddress = m_objectCBList[i].gpuVA
         });
-
-        std::string pso = m_materialInstnaces[subMesh.materialslot].psoName;
-        if (pso.empty()) pso = m_materialInstnaces[subMesh.materialslot].material->GetPSO();
-        renderSystem->SubmitRenderItem(item, pso);
+        renderSystem->SubmitRenderItem(item, m_materialInstnaces[subMesh.materialslot].GetPSO());
 
         // OverlayPass 추가 렌더링
         for (auto& pass : m_overlayPasses)
@@ -104,7 +125,7 @@ void MeshComponent::Serialize(Serializer& ar)
 void MeshComponent::SetPSO(int slot, std::string_view psoName)
 {
     if (slot >= 0 && slot < m_materialInstnaces.size())
-        m_materialInstnaces[slot].psoName = psoName.data();
+        m_materialInstnaces[slot].m_psoName = psoName.data();
 }
 
 void MeshComponent::SetPSO(std::string_view psoName)
@@ -134,7 +155,7 @@ void MeshComponent::SyncMaterialSlots()
 
     for (size_t i = 1; i < submeshCount; ++i)
     {
-        if (!m_materialInstnaces[i].material)
+        if (!m_materialInstnaces[i].m_material)
         {
             m_materialInstnaces[i] = m_materialInstnaces[0];
         }
@@ -157,10 +178,10 @@ void MeshComponent::SetMaterial(int slot, std::shared_ptr<MaterialAsset> matAsse
     
     if (!matAsset)
     {
-        m_materialInstnaces[slot].material = m_materialInstnaces[0].material;
+        m_materialInstnaces[slot].m_material = m_materialInstnaces[0].m_material;
         return;
     }
-    m_materialInstnaces[slot].material = matAsset;
+    m_materialInstnaces[slot].m_material = matAsset;
     
 }
 

@@ -6,7 +6,7 @@
 class DescriptorAllocator
 {
 public:
-	DescriptorAllocator(uint32_t ringCount = 2u, uint32_t rtvCount = 64u, uint32_t dsvCount = 16u, uint32_t samplerCount = 1, uint32_t staticCount = 128u, uint32_t descriptorsPerFrame = 128u);
+	DescriptorAllocator(uint32_t ringCount = 2u, uint32_t rtvCount = 64u, uint32_t dsvCount = 16u, uint32_t samplerCount = 1, uint32_t staticCount = 2048u, uint32_t descriptorsPerFrame = 128u);
 	~DescriptorAllocator() = default;
 
 	DescriptorAllocator(const DescriptorAllocator&) = delete;
@@ -16,7 +16,7 @@ public:
 	uint32_t AllocateDSV();
 	uint32_t AllocateSampler();
 	uint32_t AllocateDynamic(uint32_t frameIdx);
-	uint32_t AllocateStaticSlot();
+	uint32_t AllocateStaticSlot(uint32_t count = 1);
 	void ResetDynamicSlots(uint32_t frameIdx);
 	
 	// --- RTV Getters ---

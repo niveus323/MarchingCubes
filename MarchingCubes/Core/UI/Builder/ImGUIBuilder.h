@@ -63,6 +63,7 @@ public:
 	virtual void AlignNextItem(UI::UI_Alignment align, float itemWidth = 0.0f) override;
 	virtual void PushStyle_Padding(const UI::Vector<float, 2>& padding) override;
 	virtual void PopStyle(int count = 1) override;
+	virtual void SetNextItemWidth(float width) override;
 
 	// --- ID °ü¸® ---
 	virtual void PushID(const char* str_id) override;
@@ -129,6 +130,10 @@ public:
 	virtual UI::Vector<float, 2> CalcTextSize(const char* text) override;
 	virtual void InvisibleButton(const char* str_id, const UI::Vector<float, 2>& size) override;
 
+	// --- Gizmo ---
+	virtual bool IsGizmoHovered() override;
+	_Success_(return)
+	virtual bool DrawTransformGizmo(const DirectX::XMFLOAT4X4& view, const DirectX::XMFLOAT4X4& proj, UI::EGizmoOperation op, UI::EGizmoMode mode, _Inout_ DirectX::XMFLOAT4X4& world, _Out_ DirectX::XMFLOAT3& translation, _Out_ DirectX::XMFLOAT3& rotation, _Out_ DirectX::XMFLOAT3& scale, float gizmoSize = 0.1f) override;
 private:
 	virtual bool InputInternal(const char* label, UI::UI_DataType type, void* pValue) override;
 	virtual bool DragInternal(const char* label, UI::UI_DataType type, void* pValue, float speed) override;

@@ -10,8 +10,10 @@ TextureRegistry::TextureRegistry(uint32_t rootSlot) :
 {
 	auto descriptorAllocator = EngineCore::GetDescriptorAllocator();
 	assert(descriptorAllocator);
-
-	m_descriptorBaseSlot = descriptorAllocator->AllocateStaticSlot();
+	constexpr uint32_t MAX_TEXTURES = 1024;
+	m_descriptorBaseSlot = descriptorAllocator->AllocateStaticSlot(MAX_TEXTURES);
+	m_textures.reserve(MAX_TEXTURES);
+	m_freeIndices.reserve(MAX_TEXTURES);
 }
 
 TextureRegistry::~TextureRegistry() = default;
@@ -39,7 +41,7 @@ void TextureRegistry::BindDescriptorTable(ID3D12GraphicsCommandList* cmd)
 	cmd->SetGraphicsRootDescriptorTable(m_rootSlot, EngineCore::GetDescriptorAllocator()->GetStaticGpu(m_descriptorBaseSlot));
 }
 
-uint32_t TextureRegistry::GetTextureHandle(const std::string& path)
+RegistryIndex TextureRegistry::FindTextureHandle(const std::string& path)
 {
 	auto iter = m_pathCache.find(path);
 	if (iter != m_pathCache.end())
@@ -50,7 +52,7 @@ uint32_t TextureRegistry::GetTextureHandle(const std::string& path)
 	return UINT32_MAX;
 }
 
-uint32_t TextureRegistry::LoadTexture(const std::shared_ptr<TextureAsset>& texAsset)
+RegistryIndex TextureRegistry::LoadTexture(const std::shared_ptr<TextureAsset>& texAsset)
 {
 	ID3D12Device* device = EngineCore::GetDevice();
 	DescriptorAllocator* descriptorAllocator = EngineCore::GetDescriptorAllocator();
@@ -60,6 +62,18 @@ uint32_t TextureRegistry::LoadTexture(const std::shared_ptr<TextureAsset>& texAs
 	std::string key = texAsset->GetSourcePath().string();
 	if (m_pathCache.contains(key)) return m_pathCache[key];
 
+	RegistryIndex newHandle = UINT32_MAX;
+	if (!m_freeIndices.empty())
+	{
+		newHandle = m_freeIndices.back();
+		m_freeIndices.pop_back();
+	}
+	else
+	{
+		newHandle = static_cast<RegistryIndex>(m_textures.size());
+		m_textures.push_back(TextureResource{});
+	}
+
 	const auto& img = texAsset->GetImage();
 	const auto& meta = texAsset->GetMetadata();
 
@@ -67,13 +81,11 @@ uint32_t TextureRegistry::LoadTexture(const std::shared_ptr<TextureAsset>& texAs
 	ComPtr<ID3D12Resource> res;
 	ThrowIfFailed(DirectX::CreateTexture(device, meta, &res));
 
-	uint32_t bindlessSlot = descriptorAllocator->AllocateStaticSlot();
-	if (m_descriptorBaseSlot == UINT32_MAX) m_descriptorBaseSlot = bindlessSlot;
-
-	D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc{};
-	srvDesc.Format = meta.format;
-	srvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
-
+	D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc{
+		.Format = meta.format,
+		.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING
+	};
+	
 	if (meta.dimension == TEX_DIMENSION_TEXTURE2D)
 	{
 		srvDesc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
@@ -84,7 +96,8 @@ uint32_t TextureRegistry::LoadTexture(const std::shared_ptr<TextureAsset>& texAs
 		// TODO: 3D/Array 대응 필요 시 여기 확장
 	}
 
-	auto cpuHandle = descriptorAllocator->GetStaticCpu(bindlessSlot);
+	uint32_t descriptorSlot = m_descriptorBaseSlot + newHandle;	
+	auto cpuHandle = descriptorAllocator->GetStaticCpu(descriptorSlot);
 	device->CreateShaderResourceView(res.Get(), &srvDesc, cpuHandle);
 
 	// Lazy-Upload Queueing
@@ -94,32 +107,45 @@ uint32_t TextureRegistry::LoadTexture(const std::shared_ptr<TextureAsset>& texAs
 		.debugName = texAsset->GetSourcePath().string()
 	});
 
-	m_pathCache.insert_or_assign(key, m_textures.size()); // NOTE: Lazy-Upload 시 실패하는 케이스 존재 시, 실제 업로드 타이밍에 캐시 등록하도록 처리하고 중복 예약을 회피할 것
-	TextureResource result{
-		.path = texAsset->GetSourcePath(),
+	m_pathCache.insert_or_assign(key, static_cast<RegistryIndex>(m_textures.size())); // NOTE: Lazy-Upload 시 실패하는 케이스 존재 시, 실제 업로드 타이밍에 캐시 등록하도록 처리하고 중복 예약을 회피할 것
+
+	m_textures[newHandle] = TextureResource{
+		.path = texAsset->GetSourcePath().string(),
 		.meta = FinalizeMeta(res->GetDesc()),
 		.res = std::move(res),
-		.bindlessSlot = bindlessSlot
+		.descriptorSlot = descriptorSlot
 	};
-	m_textures.push_back(std::move(result));
-	return static_cast<uint32_t>(m_textures.size() - 1);
+	return newHandle;
 }
 
-uint32_t TextureRegistry::GetBindlessIndex(uint32_t handle) const
+void TextureRegistry::UnloadTexture(RegistryIndex handle)
+{
+	if (handle >= m_textures.size() || !m_textures[handle].bValid)
+		return;
+
+	m_pathCache.erase(m_textures[handle].path);
+
+	m_textures[handle].res.Reset();
+	m_textures[handle].bValid = false;
+	m_textures[handle].path = "";
+
+	m_freeIndices.push_back(handle);
+}
+
+GPUArrayIndex TextureRegistry::GetTextureGPUIndex(RegistryIndex handle) const
 {
 	if (handle == UINT32_MAX || m_descriptorBaseSlot == UINT32_MAX)
 		return UINT32_MAX;
 
-	const auto& texRes = GetTexture(static_cast<size_t>(handle));
-	return texRes.bindlessSlot - m_descriptorBaseSlot;
+	return m_textures[handle].descriptorSlot - m_descriptorBaseSlot;
 }
 
-D3D12_GPU_DESCRIPTOR_HANDLE TextureRegistry::GetGpuHandle(uint32_t handle) const
+D3D12_GPU_DESCRIPTOR_HANDLE TextureRegistry::GetGpuDescriptorHandle(RegistryIndex handle) const
 {
 	if (handle >= m_textures.size()) return { 0 }; // 유효하지 않은 핸들
 
-	// 할당받은 bindless 슬롯 번호를 이용해 DescriptorAllocator에서 실제 GPU 주소를 가져옴
-	uint32_t slot = m_textures[handle].bindlessSlot;
+	// 할당받은 descriptor 슬롯 번호를 이용해 DescriptorAllocator에서 실제 GPU 주소를 가져옴
+	uint32_t slot = m_textures[handle].descriptorSlot;
 	return EngineCore::GetDescriptorAllocator()->GetStaticGpu(slot);
 }
 

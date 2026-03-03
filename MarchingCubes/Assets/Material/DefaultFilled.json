@@ -16,9 +16,9 @@
       }
     }
   },
-  "Diffuse": "gravelly_sand/gravelly_sand_diffuse",
-  "Normal": "gravelly_sand/gravelly_sand_normal",
-  "ARM": "gravelly_sand/gravelly_sand_arm",
-  "Displacement": "gravelly_sand/gravelly_sand_displace",
-  "Rough" :  "gravelly_sand/gravelly_sand_rough"
+  "Diffuse": "gravelly_sand/gravelly_sand_diffuse.dds",
+  "Normal": "gravelly_sand/gravelly_sand_normal.dds",
+  "ARM": "gravelly_sand/gravelly_sand_arm.dds",
+  "Displacement": "gravelly_sand/gravelly_sand_displace.dds",
+  "Rough" :  "gravelly_sand/gravelly_sand_rough.dds"
 }

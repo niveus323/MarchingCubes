@@ -11,10 +11,7 @@ using DebugViewModeHandle = int;
 class EditorApp : public DXAppBase
 {
 public:
-	EditorApp(uint32_t width, uint32_t height, std::wstring name) :
-		DXAppBase(width, height, name)
-	{ 
-	}
+	EditorApp(uint32_t width, uint32_t height, std::wstring name);
 	virtual ~EditorApp() = default;
 	virtual void Destroy() override;
 	virtual void Update(float deltaTime) override;
@@ -84,7 +81,7 @@ protected:
 	DebugViewModeHandle m_hNormalView = -1;
 
 private:
-	bool bIsPlayMode = false;
+	bool m_bIsPlayMode = false;
 	// Viewport
 	ComPtr<ID3D12Resource> m_offscreenResource;
 	ComPtr<ID3D12Resource> m_offscreenDepth;

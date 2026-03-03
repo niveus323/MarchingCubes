@@ -142,22 +142,20 @@ namespace TexImporter
     }
 }
 
-TextureAsset::TextureAsset(const std::filesystem::path& sourcePath, const std::filesystem::path& cacheRoot) : 
-    m_sourcePath(sourcePath),
-    m_cacheRoot(cacheRoot)
+TextureAsset::TextureAsset(const std::filesystem::path& sourcePath) : 
+    m_sourcePath(sourcePath)
 {
     m_image = std::make_unique<ScratchImage>();
-    auto fullPath = m_cacheRoot / m_sourcePath;
 
-    if (TexImporter::IsDDSPath(fullPath))
+    if (TexImporter::IsDDSPath(m_sourcePath))
     {
         // DDS 파일 로드
-        ThrowIfFailed(DirectX::LoadFromDDSFile(fullPath.c_str(), DirectX::DDS_FLAGS_NONE, nullptr, *m_image));
+        ThrowIfFailed(DirectX::LoadFromDDSFile(m_sourcePath.c_str(), DirectX::DDS_FLAGS_NONE, nullptr, *m_image));
     }
-    else if (TexImporter::IsWICPath(fullPath))
+    else if (TexImporter::IsWICPath(m_sourcePath))
     {
         DirectX::ScratchImage tempImage;
-        ThrowIfFailed(DirectX::LoadFromWICFile(fullPath.c_str(), DirectX::WIC_FLAGS_NONE, nullptr, tempImage));
+        ThrowIfFailed(DirectX::LoadFromWICFile(m_sourcePath.c_str(), DirectX::WIC_FLAGS_NONE, nullptr, tempImage));
 
         // 밉맵 생성
         DirectX::ScratchImage mipChain;
@@ -183,7 +181,7 @@ TextureAsset::TextureAsset(const std::filesystem::path& sourcePath, const std::f
     else
     {
         // 확장자가 없거나 지원하지 않는 경우, 기존 로직처럼 강제로 .dds를 붙여서 시도하거나 에러 처리
-        std::filesystem::path ddsPath = fullPath;
+        std::filesystem::path ddsPath = m_sourcePath;
         ddsPath.replace_extension(L".dds");
         ThrowIfFailed(DirectX::LoadFromDDSFile(ddsPath.c_str(), DirectX::DDS_FLAGS_NONE, nullptr, *m_image));
     }

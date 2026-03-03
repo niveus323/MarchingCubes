@@ -1,6 +1,8 @@
 #pragma once
 #include <filesystem>
 #include <DirectXTex.h>
+using RegistryIndex = uint32_t;
+using GPUArrayIndex = uint32_t;
 
 // Forward Delclaration
 class UploadContext;
@@ -30,11 +32,12 @@ struct TextureMeta
 
 struct TextureResource
 {
-    std::wstring path;
+    std::string path;
     TextureMeta meta;
     ComPtr<ID3D12Resource> res;
+    bool bValid = true;
 
-    uint32_t bindlessSlot = UINT32_MAX;
+    uint32_t descriptorSlot = UINT32_MAX;
 };
 
 /* [TextureRegistry]
@@ -53,12 +56,12 @@ public:
 	void SyncGpu(ID3D12GraphicsCommandList* cmd);
 	void BindDescriptorTable(ID3D12GraphicsCommandList* cmd);
 
-    uint32_t GetTextureHandle(const std::string& path);
-	uint32_t LoadTexture(const std::shared_ptr<TextureAsset>& texAsset);
+    RegistryIndex FindTextureHandle(const std::string& path);
+    RegistryIndex LoadTexture(const std::shared_ptr<TextureAsset>& texAsset);
+    void UnloadTexture(RegistryIndex handle);
 	const TextureResource& GetTexture(size_t texHandle) const { return m_textures[texHandle]; }
-    uint32_t GetDescriptorBaseSlot() const { return m_descriptorBaseSlot; }
-    uint32_t GetBindlessIndex(uint32_t handle) const;
-    D3D12_GPU_DESCRIPTOR_HANDLE GetGpuHandle(uint32_t handle) const;
+    GPUArrayIndex GetTextureGPUIndex(RegistryIndex handle) const;
+    D3D12_GPU_DESCRIPTOR_HANDLE GetGpuDescriptorHandle(RegistryIndex handle) const;
 
 private:
     TextureMeta FinalizeMeta(const D3D12_RESOURCE_DESC& desc);
@@ -68,7 +71,8 @@ private:
     uint32_t m_descriptorBaseSlot = UINT32_MAX;
 
 	std::vector<TextureResource> m_textures;
-    std::unordered_map<std::string, uint32_t> m_pathCache;
+    std::vector<RegistryIndex> m_freeIndices;
+    std::unordered_map<std::string, RegistryIndex> m_pathCache;
 
     // Lazy-Upload
 	struct PendingTextures

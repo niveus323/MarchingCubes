@@ -9,7 +9,7 @@
 #include "Core/Scene/Object/Controller/EditorController.h"
 #include "Core/Scene/Object/SpectatorPawn.h"
 #include "Core/Geometry/Mesh/Class/Mesh.h"
-#include "Core/UI/UIRenderer.h"
+#include "Core/UI/Renderer/UIRenderer.h"
 #include "Core/UI/Builder/UIBuilder.h"
 #include <typeindex>
 
@@ -28,7 +28,7 @@ void Scene::Init()
 
 void Scene::InitUI(IUIRenderer* ui)
 {
-    if (!m_isPlaying)
+    if (!m_bPlaying)
     {
         auto uiToken_Controller = ui->AddFrameRenderCallbackToken( [this](IUIBuilder* builder) {
                 if (auto editorPC = dynamic_cast<EditorController*>(this->m_currentController))
@@ -48,7 +48,7 @@ void Scene::InitUI(IUIRenderer* ui)
 
 void Scene::BeginPlay()
 {
-    m_isPlaying = true;
+    m_bPlaying = true;
     // 디폴트로 GameMode 생성
     m_gameMode = CreateObject<GameMode>("GameMode");
     m_currentController = m_gameMode->GetController<PlayerController>();
@@ -63,8 +63,8 @@ void Scene::BeginPlay()
 
 void Scene::BeginEditor()
 {
-    auto editorPC = CreateObject<EditorController>("EditorController");
-    auto spectator = CreateObject<SpectatorPawn>("SpectatorPawn");
+    auto editorPC = CreateObject<EditorController>("EditorController", EObjectFlags::EditorOnly);
+    auto spectator = CreateObject<SpectatorPawn>("SpectatorPawn", EObjectFlags::EditorOnly);
     editorPC->Possess(spectator);
     SetMainCamera(spectator->GetComponent<CameraComponent>());
     m_currentController = editorPC;
@@ -75,7 +75,7 @@ void Scene::BeginEditor()
 void Scene::EndPlay()
 {
     // TODO : GameMode, PlayerController 제거 및 동적 생성된 게임 용 오브젝트 제거
-    m_isPlaying = false;
+    m_bPlaying = false;
 }
 
 void Scene::EndEditor()
@@ -96,7 +96,7 @@ void Scene::OnExit(IUIRenderer* ui)
         m_uiTokens.clear();
     }
 
-    if (m_isPlaying) EndPlay();
+    if (m_bPlaying) EndPlay();
     else EndEditor();
 
     ClearSubsystems();
@@ -133,7 +133,9 @@ void Scene::Render()
 {	
 	for (const auto rendererComp : m_rendererCache)
 	{
-        if(rendererComp->IsActive()) rendererComp->Submit();
+        // 게임 실행 중에는 EditorOnly인 컴포넌트들을 패스
+        if (rendererComp->HasAnyFlags(EObjectFlags::EditorOnly) && m_bPlaying) continue; 
+        if (rendererComp->IsActive()) rendererComp->Submit();
 	}
 }
 

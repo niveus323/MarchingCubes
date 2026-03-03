@@ -29,7 +29,7 @@ void StaticMeshComponent::Serialize(Serializer& ar)
 	{
 		for (const auto& materialAsset : m_materialInstnaces)
 		{
-			std::string tempPath = materialAsset.material->GetPath().data();
+			std::string tempPath = materialAsset.m_material->GetPath().data();
 			ar.BeginObject("MaterialSlot");
 			ar.Serialize("Path", tempPath);
 			ar.EndObject();
@@ -75,7 +75,7 @@ void StaticMeshComponent::SetMeshByPath(const std::string& path)
 		for (int i=0; i< matAssets.size(); ++i)
 		{
 			m_materialInstnaces[i] = MaterialInstance{
-				.material = matAssets[i]
+				.m_material = matAssets[i]
 			};
 		}
 		SyncMaterialSlots();

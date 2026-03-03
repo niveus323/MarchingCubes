@@ -22,7 +22,7 @@ static inline bool IsTearingSupported(IDXGIFactory6* factory) {
 
 DXAppBase::DXAppBase(uint32_t width, uint32_t height, std::wstring name) : 
 	m_width(width),
-	m_height(height+24u),
+	m_height(height),
 	m_aspectRatio(static_cast<float>(width) / static_cast<float>(height)),
 	m_userWarpDevice(false),
 	m_viewport(0.0f, 0.0f, static_cast<float>(width), static_cast<float>(height)),

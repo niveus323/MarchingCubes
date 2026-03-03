@@ -9,6 +9,7 @@ enum class EPropertyType
 	Int,
 	Float,
 	Bool,
+    Vector2,
 	Vector3,
     String,
     Enum,
