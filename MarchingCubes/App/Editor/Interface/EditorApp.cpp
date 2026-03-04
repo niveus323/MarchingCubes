@@ -1,8 +1,7 @@
 ﻿#include "pch.h"
 #include "EditorApp.h"
 #include "Win32Application.h"
-#include "Core/UI/ImGUIRenderer.h"
-#include "Core/UI/UIRenderer.h"
+#include "Core/UI/Renderer/ImGUIRenderer.h"
 #include "Core/Trace/Profiler.h"
 #include "Core/Rendering/Memory/GpuAllocator.h"
 #include "Core/Input/InputState.h"
@@ -11,8 +10,15 @@
 #include "Core/Rendering/PSO/DescriptorAllocator.h"
 #include "Core/Engine/Serializer/JsonSerializer.h"
 #include "Core/Utils/FileUtils.h"
-//#include "../Panel/ViewportPanel.h"
+#include "Contents/Scene/Terraform/Scene_Terraform.h"
+#include "Core/Scene/Object/Pawn.h"
+constexpr uint32_t kEditorMenuBarHeight = 19u;
 using namespace std::placeholders;
+
+EditorApp::EditorApp(uint32_t width, uint32_t height, std::wstring name) :
+	DXAppBase(width, height + kEditorMenuBarHeight, name)
+{
+}
 
 void EditorApp::Destroy()
 {
@@ -162,19 +168,19 @@ void EditorApp::InitUI(ID3D12GraphicsCommandList* cmd)
 	);
 
 	m_hierarchyPanel = AddPanel<SceneHierarchyPanel>();
-	m_hierarchyPanel->SetOnSelectionChanged([&](GameObject* selected){
-		if (m_currentScene)
+	m_hierarchyPanel->SetOnSelectionChanged([&scene = m_currentScene, &inspector = m_inspectorPanel](GameObject* selected) {
+		if (scene)
 		{
-			if (auto controller = dynamic_cast<EditorController*>(m_currentScene->GetController()))
-			{
-				controller->SelectObject(selected);
-			}
+			if (auto controller = scene->GetEditorController()) controller->SelectObject(selected);
 		}
-		if (m_inspectorPanel) m_inspectorPanel->SetTarget(selected);
+		if (inspector) inspector->SetTarget(selected);
 	});
 
 	m_uiToken_Hierarchy = m_uiRenderer->AddFrameRenderCallbackToken(
-		std::bind(&EditorApp::RenderHierarchyUI, this, _1),
+		[&scene = m_currentScene, &panel = m_hierarchyPanel](IUIBuilder* ui){
+			if (!scene || !panel) return;
+			panel->OnRenderUI(ui);
+		},
 		UI::UICallbackOptions{
 			.layer = UI::EUILayer::Editor_Panel,
 			.enabled = true,
@@ -184,7 +190,10 @@ void EditorApp::InitUI(ID3D12GraphicsCommandList* cmd)
 
 	m_inspectorPanel = AddPanel<InspectorPanel>();
 	m_uiToken_Inspector = m_uiRenderer->AddFrameRenderCallbackToken(
-		std::bind(&EditorApp::RenderInspectorUI, this, _1),
+		[&scene = m_currentScene, &panel = m_inspectorPanel](IUIBuilder* ui) {
+			if (!scene || !panel) return;
+			panel->OnRenderUI(ui);
+		},
 		UI::UICallbackOptions{
 			.layer = UI::EUILayer::Editor_Panel,
 			.enabled = true,
@@ -192,13 +201,12 @@ void EditorApp::InitUI(ID3D12GraphicsCommandList* cmd)
 		}
 	);
 
-	// TODO : Profiler 에디터로 옮기기
 	m_uiToken_Profiler = m_uiRenderer->AddFrameRenderCallbackToken(std::bind(&EditorApp::RenderProfilingUI, this, _1), UI::UICallbackOptions{
 		.layer = UI::EUILayer::Global_Debug,
 		.rateHz = 0,
 		.enabled = true,
 		.id = "Profiler"
-		});
+	});
 
 	// profiler
 	m_profilerOwner = std::make_shared<Profiler>();
@@ -276,7 +284,7 @@ void EditorApp::OnSceneLoaded(Scene* scene)
 		if(m_hierarchyPanel) m_hierarchyPanel->SetCurrentScene(scene);
 		if(m_inspectorPanel) m_inspectorPanel->SetTarget(nullptr);
 
-		if (auto controller = dynamic_cast<EditorController*>(scene->GetController()))
+		if (auto controller = dynamic_cast<EditorController*>(scene->GetEditorController()))
 		{
 			if (m_viewportPanel) m_viewportPanel->SetEditorController(controller);
 			controller->SetSelectionChangedCallback([this](GameObject* newSelection) {
@@ -289,20 +297,25 @@ void EditorApp::OnSceneLoaded(Scene* scene)
 
 void EditorApp::UpdateInputCaptureState()
 {
-	bool mouseCaptured = false;
-	bool kbdCaptured = false;
+	bool bMouseCaptured = false;
+	bool bKeyboardCaptured = false;
 
 	if (m_uiRenderer)
 	{
-		mouseCaptured = m_uiRenderer->IsCapturingMouse();
-		kbdCaptured = m_uiRenderer->IsCapturingKeyboard();
+		bMouseCaptured = m_uiRenderer->IsCapturingMouse();
+		bKeyboardCaptured = m_uiRenderer->IsCapturingKeyboard();
+		// NOTE : 뷰포트 UI에 대한 캡쳐였다면 이를 무시
+		if (m_viewportPanel)
+		{
+			if (m_viewportPanel->IsViewportHovered()) bMouseCaptured = false;
+			if (m_viewportPanel->IsViewportFocused()) bKeyboardCaptured = false;
+		}
 	}
-
-	// 마우스가 뷰포트 위에 있다면 ImGui의 캡처를 무시하고 씬으로 전달
-	if (m_viewportPanel && m_viewportPanel->IsViewportHovered()) mouseCaptured = false;
-	m_inputState->SetInputCaptured(mouseCaptured, kbdCaptured);
+	
+	m_inputState->SetInputCaptured(bMouseCaptured, bKeyboardCaptured);
 }
 
+//TODO : PSO파일로 이동
 void EditorApp::CreateInputElements()
 {
 	m_inputElements.push_back(D3D12_INPUT_ELEMENT_DESC{
@@ -344,6 +357,11 @@ void EditorApp::CreateInputElements()
 		.InputSlotClass = D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA,
 		.InstanceDataStepRate = 0
 	});
+}
+
+std::shared_ptr<Scene> EditorApp::CreateDefaultScene()
+{
+	return std::make_shared<Scene_Terraform>();
 }
 
 DebugViewModeHandle EditorApp::RegisterDebugViewMode(std::string_view name, std::function<void(RenderSystem*)> func)
@@ -392,22 +410,6 @@ void EditorApp::RenderFpsUI(IUIBuilder* ui)
 	ui->Text(std::format("cpu : {:.3f} ms", GetTimer().GetCpuFrameMsAvg()));
 	ui->Text(std::format("gpu : {:.3f} ms", GetTimer().GetGpuFrameMsAvg()));
 	ui->EndPanel();
-}
-
-void EditorApp::RenderHierarchyUI(IUIBuilder* ui)
-{
-	if (m_hierarchyPanel && m_currentScene)
-	{
-		m_hierarchyPanel->OnRenderUI(ui);
-	}
-}
-
-void EditorApp::RenderInspectorUI(IUIBuilder* ui)
-{
-	if (m_inspectorPanel && m_currentScene)
-	{
-		m_inspectorPanel->OnRenderUI(ui);
-	}
 }
 
 void EditorApp::RenderProfilingUI(IUIBuilder* ui)
@@ -561,6 +563,8 @@ void EditorApp::RenderProfilingUI(IUIBuilder* ui)
 void EditorApp::RenderMainMenuBarUI(IUIBuilder* ui)
 {
 	ui->BeginMainMenuBar();
+	ui->BeginDisabled(m_bIsPlayMode);
+
 	// 파일 로드/세이브
 	if (ui->BeginMenu("File"))
 	{
@@ -590,6 +594,35 @@ void EditorApp::RenderMainMenuBarUI(IUIBuilder* ui)
 			// 패널 표시 플래그 토글
 			m_bShowSubsystemManager = true;
 		}
+
+		if (ui->BeginMenu("Viewport Options"))
+		{
+			EditorController* editorController = m_currentScene->GetEditorController();
+			ui->SetNextItemWidth(100.0f);
+			float camSpeed = editorController->GetCameraSpeed();
+			if (ui->Drag("Camera Speed", &camSpeed, 1.0f)) editorController->SetCameraSpeed(camSpeed);
+
+			ui->SetNextItemWidth(100.0f);
+			float gizmoSize = editorController->GetGizmoSize();
+			if (ui->Drag("Gizmo Size", &gizmoSize, 0.01f)) editorController->SetGizmoSize(gizmoSize);
+
+			ui->EndMenu();
+		}
+
+		if (ui->MenuItem("Input"))
+		{
+
+		}
+
+		ui->EndMenu();
+	}
+
+	if (ui->BeginMenu("GameObject"))
+	{
+		if (ui->MenuItem("GameObject")) m_currentScene->CreateObject<GameObject>("GameObject");
+		if (ui->MenuItem("SceneObject")) m_currentScene->CreateObject<SceneObject>("SceneObject");
+		if (ui->MenuItem("Pawn")) m_currentScene->CreateObject<Pawn>("NewPawn");
+
 		ui->EndMenu();
 	}
 
@@ -618,12 +651,7 @@ void EditorApp::RenderMainMenuBarUI(IUIBuilder* ui)
 			bToolTypesLoaded = true;
 		}
 
-		EditorController* editorController = nullptr;
-		if (m_currentScene)
-		{
-			editorController = dynamic_cast<EditorController*>(m_currentScene->GetController());
-		}
-
+		EditorController* editorController = m_currentScene->GetEditorController();
 		for (int i=0; i<toolTypes.size(); ++i)
 		{
 			TypeDescriptor* desc = toolTypes[i];
@@ -660,7 +688,7 @@ void EditorApp::RenderMainMenuBarUI(IUIBuilder* ui)
 		}
 		ui->EndMenu();
 	}
-
+	ui->EndDisabled();
 	ui->EndMainMenuBar();
 }
 
@@ -775,7 +803,7 @@ void EditorApp::OnPlayButtonClicked()
 {
 	if (m_currentScene)
 	{
-		bIsPlayMode = true;
+		m_bIsPlayMode = true;
 		m_currentScene->EndEditor();
 		m_currentScene->BeginPlay();
 		if (m_viewportPanel) RequestResizeViewport(UI::Vector<float, 2>(1280.0f, 720.0f));
@@ -786,7 +814,7 @@ void EditorApp::OnCloseButtonClicked()
 {
 	if (m_currentScene)
 	{
-		bIsPlayMode = false;
+		m_bIsPlayMode = false;
 		m_currentScene->EndPlay();
 		m_currentScene->BeginEditor();
 		if (m_viewportPanel) RequestResizeViewport(m_viewportPanel->GetViewportSize());

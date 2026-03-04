@@ -20,6 +20,7 @@ struct PSInput
     float3 WorldTangent : TEXCOORD3;
     float TangentSign : TEXCOORD4;
     float4 Color : COLOR0;
+    float3 LocalPos : TEXCOORD5;
 };
 
 // Vertex Shader: transform position by view-projection
@@ -27,6 +28,7 @@ PSInput VSMain(VSInput input)
 {
     PSInput output;
     
+    output.LocalPos = input.Position;
     float4 modelPos = float4(input.Position, 1.0f);
     float4 worldPos = mul(modelPos, gWorld);
     output.Position = mul(worldPos, gViewProj);

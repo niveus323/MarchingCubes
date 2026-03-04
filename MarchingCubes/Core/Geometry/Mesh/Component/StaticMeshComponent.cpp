@@ -9,9 +9,8 @@
 #include "Core/Assets/MeshAsset.h"
 #include "Core/Assets/Material/MaterialAsset.h"
 
-// TODO : Path 기반 메쉬 교체 기능 InsepctorPanel에 구현
 BEGIN_REFLECTION(StaticMeshComponent, MeshComponent)
-	REFLECT_PROPERTY(m_path, EPropertyType::String)
+	REFLECT_PROPERTY(m_path, EPropertyType::String, "Path")
 END_REFLECTION()
 
 void StaticMeshComponent::Serialize(Serializer& ar)
@@ -29,7 +28,7 @@ void StaticMeshComponent::Serialize(Serializer& ar)
 	{
 		for (const auto& materialAsset : m_materialInstnaces)
 		{
-			std::string tempPath = materialAsset.material->GetPath().data();
+			std::string tempPath = materialAsset.m_material->GetPath().data();
 			ar.BeginObject("MaterialSlot");
 			ar.Serialize("Path", tempPath);
 			ar.EndObject();
@@ -75,7 +74,7 @@ void StaticMeshComponent::SetMeshByPath(const std::string& path)
 		for (int i=0; i< matAssets.size(); ++i)
 		{
 			m_materialInstnaces[i] = MaterialInstance{
-				.material = matAssets[i]
+				.m_material = matAssets[i]
 			};
 		}
 		SyncMaterialSlots();

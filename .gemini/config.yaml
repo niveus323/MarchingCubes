@@ -1,7 +1,9 @@
-summary: true         # PR 생성 시 자동으로 요약을 포스팅합니다. (기본값: true)
-code_review: true     # PR 생성 시 자동으로 코드 리뷰 코멘트를 남깁니다. (기본값: true)
-include_drafts: false # Draft 상태의 PR에는 봇이 자동으로 동작하지 않도록 합니다. (기본값: true)
-ignore:
+pull_request_opened:
+  summary: true         # PR 생성 시 자동으로 요약을 포스팅합니다.
+  code_review: true     # PR 생성 시 자동으로 코드 리뷰 코멘트를 남깁니다.
+  include_drafts: false # Draft 상태의 PR에는 봇이 자동으로 동작하지 않도록 합니다.
+
+ignore_patterns:
   - "ThirdParty/**"
   - "Build/**"
   - "packages/**"

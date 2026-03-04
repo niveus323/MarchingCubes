@@ -1,6 +1,6 @@
 #include "pch.h"
 #include "Win32Application.h"
-#include "Core/UI/UIRenderer.h"
+#include "Core/UI/Renderer/UIRenderer.h"
 HWND Win32Application::m_hwnd = nullptr;
 bool Win32Application::s_bIsResizing = false;
 uint32_t Win32Application::s_windowWidth = 0;

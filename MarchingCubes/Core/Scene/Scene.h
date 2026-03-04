@@ -8,6 +8,7 @@
 #include "Core/Utils/StringUtils.h"
 #include "Core/DataStructures/Data.h"
 #include <unordered_map>
+#include <unordered_set>
 #include <typeindex>
 
 /* [Scene]
@@ -25,15 +26,13 @@ class LightComponent;
 class GameMode;
 class IUIRenderer;
 class Controller;
+class EditorController;
 class Mesh;
 class IUIBuilder;
 
 class Scene : public Entity
 {
 public:
-	Scene();
-	virtual ~Scene();
-
 	virtual void Init();
 	virtual void InitUI(IUIRenderer* ui);
 	virtual void BeginPlay(); // TODO : 프리뷰/게임 시작 연결
@@ -46,23 +45,22 @@ public:
 	virtual void Render();
 	virtual void Serialize(Serializer& ar) override;
 
+	// --- Object Functions---
 	template<std::derived_from<GameObject> T = GameObject>
-	T* CreateObject(std::string_view name, EObjectFlags flags = EObjectFlags::None)
+	T* CreateObject(std::string_view name = "", EObjectFlags flags = EObjectFlags::None)
 	{
 		auto newObj = std::make_shared<T>();
 		newObj->SetFlags(flags);
 		newObj->SetScene(std::static_pointer_cast<Scene>(this->shared_from_this()));
-		if (name.empty())
-		{
-			std::string className = StringUtils::GetCleanClassName(typeid(T).name());
-			newObj->SetName(className);
-		}
-		else
-		{
-			newObj->SetName(std::string(name));
-		}
-
+		
+		// 고유 이름 발급
+		std::string baseName = name.empty() ? StringUtils::GetCleanClassName(typeid(T).name()) : std::string(name);
+		std::string uniqueName = MakeUniqueName(baseName);
+		newObj->SetName(uniqueName);
+		m_activeNames.insert(uniqueName);
+		
 		T* ptr = newObj.get();
+		m_uuidMap[newObj->GetUUID()] = newObj.get();
 		m_objects.push_back(std::move(newObj));
 		ptr->Init();
 		return ptr;
@@ -94,12 +92,11 @@ public:
 		return std::move(result);
 	}
 	GameObject* FindObject(uint64_t uuid);
+	// Scene에 배치된 오브젝트의 이름 중복 여부를 체크하여 넘버링 부여
+	std::string MakeUniqueName(const std::string& name);
 
 	void RegisterLight(LightComponent* light) { m_lightCache.push_back(light); }
 	void UnregisterLight(LightComponent* light) { if (!m_lightCache.empty())  std::erase(m_lightCache, light); }
-
-	CameraConstants GetCameraConstants();
-	LightBlobView GetLightBlob();
 
 	//--- Subsystem ---
 	template <std::derived_from<ISceneSubsystem> T>
@@ -132,10 +129,23 @@ public:
 		return nullptr;
 	}
 	const std::unordered_map<std::type_index, std::shared_ptr<ISceneSubsystem>>& GetSubsystems() const { return m_sceneSubsystems; }
-	// --- Object Getter ---
+
+	// --- Object Getter & Setter ---
+	CameraConstants GetCameraConstants();
+	LightBlobView GetLightBlob();
 	CameraComponent* GetMainCamera() { return m_mainCamera; }
-	Controller* GetController() { return m_currentController; }
+	void SetMainCamera(CameraComponent* cameraComp);
+
+	GameMode* GetGameMode() { return m_gameMode; }
+	void SetGameMode(GameMode* gameMode) { m_gameMode = gameMode; }
+
+	EditorController* GetEditorController() const { return m_editorController; }
+	Controller* GetPlayerController(int playerIndex = 0) const;
 	const auto& GetObjects() const { return m_objects; }
+
+	// Scene Flags Getter
+	bool IsPlaying() const { return m_bPlaying; }
+
 protected:
 	void ClearSubsystems()
 	{
@@ -146,20 +156,12 @@ protected:
 		}
 		m_sceneSubsystems.clear();
 	}
-
-	void SetMainCamera(CameraComponent* cameraComp);
-	
-	GameMode* GetGameMode() { return m_gameMode; }
-	void SetGameMode(GameMode* gameMode) { m_gameMode = gameMode; }
-
 private:
 	friend class RendererComponent;
 	void RegisterRenderable(RendererComponent* rendererComp) { m_rendererCache.push_back(rendererComp); }
 	void UnregisterRenderable(RendererComponent* rendererComp) { 
 		std::erase_if(m_rendererCache, [rendererComp](const RendererComponent* target) { return target == rendererComp; }); 
 	}
-
-	void RenderSceneGizmoUI(IUIBuilder* ui);
 protected:
 	CameraComponent* m_mainCamera = nullptr;
 	float m_viewportWidth = 0.0f;
@@ -167,17 +169,19 @@ protected:
 
 	bool m_bLoadedFromFile = false; // TODO : 씬 관리는 Data-Driven으로 변경(씬 클래스 상속 불가로)
 private:
-	bool m_isPlaying = false;
+	bool m_bPlaying = false;
 
 	std::unordered_map<uint64_t, GameObject*> m_uuidMap;
 	std::vector<std::shared_ptr<GameObject>> m_objects; //소유용
 
 	// Cache
+	std::unordered_set<std::string> m_activeNames;
+	std::unordered_map<std::string, uint32_t> m_nameCounters;
 	std::vector<RendererComponent*> m_rendererCache;
 	std::vector<LightComponent*> m_lightCache;
 	std::vector<uint8_t> m_lightUploadBuffer;
 	GameMode* m_gameMode = nullptr;
-	Controller* m_currentController = nullptr;
+	EditorController* m_editorController = nullptr;
 
 	std::unordered_map<std::type_index, std::shared_ptr<ISceneSubsystem>> m_sceneSubsystems;
 

@@ -17,6 +17,11 @@ InputState::InputState()
 	m_keyMap[ActionKey::ToggleDebugView] = VK_F1;
 	m_keyMap[ActionKey::ToggleWireFrame] = VK_F2;
 	m_keyMap[ActionKey::ToggleDebugNormal] = VK_F3;
+	
+	// --- Editor Only ---
+	m_keyMap[ActionKey::ToggleGizmoTranslation] = 'W';
+	m_keyMap[ActionKey::ToggleGizmoRotation] = 'E';
+	m_keyMap[ActionKey::ToggleGizmoScaling] = 'R';
 }
 
 void InputState::Update()

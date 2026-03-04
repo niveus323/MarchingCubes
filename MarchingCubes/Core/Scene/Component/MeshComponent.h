@@ -1,15 +1,12 @@
 #pragma once
 #include "RendererComponent.h"
 #include "Core/Rendering/Memory/CommonMemory.h"
-#include "Core/Assets/Material/MaterialAsset.h"
 #include "Core/Geometry/Mesh/Class/Mesh.h"
-
-#include <utility>
+#include "Core/Assets/Material/MaterialAsset.h"
 #include <DirectXCollision.h>
 
+//Forward Declaration
 class SceneObject;
-class MaterialAsset;
-struct MaterialInstance;
 
 class MeshComponent : public RendererComponent
 {
@@ -18,6 +15,9 @@ public:
 	virtual void Init() override;
 	virtual void Submit() override;
 	virtual void Serialize(Serializer& ar) override;
+
+	// Mesh Accessor
+	virtual Mesh* GetMesh() const = 0;
 
 	// Material Accessor
 	size_t GetMaterialSlotCount() const { return m_materialInstnaces.size(); }
@@ -33,7 +33,6 @@ public:
 	const std::vector<DirectX::BoundingBox>& GetBoundingBox() { return GetMesh()->GetBounds(); }
 
 protected:
-	virtual Mesh* GetMesh() const = 0;
 	void SyncMaterialSlots();
 
 protected:

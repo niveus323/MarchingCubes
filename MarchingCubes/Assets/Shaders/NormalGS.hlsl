@@ -9,6 +9,7 @@ struct PSInput
     float3 WorldTangent : TEXCOORD3;
     float TangentSign : TEXCOORD4;
     float4 Color : COLOR0;
+    float3 LocalPos : TEXCOORD5;
 };
 
 [maxvertexcount(6)]

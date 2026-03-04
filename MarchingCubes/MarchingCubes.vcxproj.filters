@@ -39,9 +39,6 @@
     <ClCompile Include="Core\Rendering\UploadContext.cpp">
       <Filter>소스 파일</Filter>
     </ClCompile>
-    <ClCompile Include="Core\UI\ImGUIRenderer.cpp">
-      <Filter>소스 파일</Filter>
-    </ClCompile>
     <ClCompile Include="Core\Geometry\MarchingCubes\MarchingCubesTables.cpp">
       <Filter>소스 파일</Filter>
     </ClCompile>
@@ -204,9 +201,6 @@
     <ClCompile Include="Core\UI\Builder\ImGUIBuilder.cpp">
       <Filter>소스 파일</Filter>
     </ClCompile>
-    <ClCompile Include="Core\UI\UIRenderer.cpp">
-      <Filter>소스 파일</Filter>
-    </ClCompile>
     <ClCompile Include="Core\Engine\Serializer\Serializer.cpp">
       <Filter>소스 파일</Filter>
     </ClCompile>
@@ -241,6 +235,24 @@
       <Filter>소스 파일</Filter>
     </ClCompile>
     <ClCompile Include="Core\Assets\Material\MaterialAsset.cpp">
+      <Filter>소스 파일</Filter>
+    </ClCompile>
+    <ClCompile Include="App\Editor\Panel\ViewportPanel.cpp">
+      <Filter>소스 파일</Filter>
+    </ClCompile>
+    <ClCompile Include="Core\Scene\Component\BillboardComponent.cpp">
+      <Filter>소스 파일</Filter>
+    </ClCompile>
+    <ClCompile Include="Core\UI\Renderer\UIRenderer.cpp">
+      <Filter>소스 파일</Filter>
+    </ClCompile>
+    <ClCompile Include="Core\UI\Renderer\ImGUIRenderer.cpp">
+      <Filter>소스 파일</Filter>
+    </ClCompile>
+    <ClCompile Include="ThirdParty\ImGuizmo\ImGuizmo.cpp">
+      <Filter>소스 파일</Filter>
+    </ClCompile>
+    <ClCompile Include="Core\Scene\Component\TransformableComponent.cpp">
       <Filter>소스 파일</Filter>
     </ClCompile>
   </ItemGroup>
@@ -279,12 +291,6 @@
       <Filter>헤더 파일</Filter>
     </ClInclude>
     <ClInclude Include="Core\Rendering\UploadContext.h">
-      <Filter>헤더 파일</Filter>
-    </ClInclude>
-    <ClInclude Include="Core\UI\UIRenderer.h">
-      <Filter>헤더 파일</Filter>
-    </ClInclude>
-    <ClInclude Include="Core\UI\ImGUIRenderer.h">
       <Filter>헤더 파일</Filter>
     </ClInclude>
     <ClInclude Include="Core\Geometry\MarchingCubes\MarchingCubesTables.h">
@@ -512,6 +518,30 @@
     <ClInclude Include="Core\Utils\EnumBitmask.h">
       <Filter>헤더 파일</Filter>
     </ClInclude>
+    <ClInclude Include="App\Editor\Panel\ViewportPanel.h">
+      <Filter>헤더 파일</Filter>
+    </ClInclude>
+    <ClInclude Include="Core\Scene\Component\BillboardComponent.h">
+      <Filter>헤더 파일</Filter>
+    </ClInclude>
+    <ClInclude Include="Core\UI\Renderer\ImGUIRenderer.h">
+      <Filter>헤더 파일</Filter>
+    </ClInclude>
+    <ClInclude Include="Core\UI\Renderer\UIRenderer.h">
+      <Filter>헤더 파일</Filter>
+    </ClInclude>
+    <ClInclude Include="ThirdParty\ImGuizmo\ImGuizmo.h">
+      <Filter>헤더 파일</Filter>
+    </ClInclude>
+    <ClInclude Include="ThirdParty\ImGuizmo\ImZoomSlider.h">
+      <Filter>헤더 파일</Filter>
+    </ClInclude>
+    <ClInclude Include="Core\Math\MathHelper.h">
+      <Filter>헤더 파일</Filter>
+    </ClInclude>
+    <ClInclude Include="Core\Scene\Component\TransformableComponent.h">
+      <Filter>헤더 파일</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <None Include="..\Directory.Builds.targets" />
@@ -531,6 +561,8 @@
     <FxCompile Include="Assets\Shaders\BrushCS.hlsl" />
     <FxCompile Include="Assets\Shaders\NormalGS.hlsl" />
     <FxCompile Include="Assets\Shaders\TerrainChunkBorderGS.hlsl" />
+    <FxCompile Include="Assets\Shaders\BillboardVS.hlsl" />
+    <FxCompile Include="Assets\Shaders\EditorBillboardPS.hlsl" />
   </ItemGroup>
   <ItemGroup>
     <CustomBuild Include="Assets\Shaders\LinePS.hlsl" />

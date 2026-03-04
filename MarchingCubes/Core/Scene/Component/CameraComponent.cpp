@@ -1,12 +1,24 @@
 #include "pch.h"
 #include "CameraComponent.h"
 #include "Core/Scene/Object/SceneObject.h"
+#include "Core/Assets/ResourceManager.h"
+#include "Core/Scene/Component/BillboardComponent.h"
 
-BEGIN_REFLECTION(CameraComponent, Component)
-	REFLECT_PROPERTY(m_fov, EPropertyType::Float)
-	REFLECT_PROPERTY(m_nearZ, EPropertyType::Float)
-	REFLECT_PROPERTY(m_farZ, EPropertyType::Float)
+BEGIN_REFLECTION(CameraComponent, TransformableComponent)
+	REFLECT_PROPERTY(m_fov, EPropertyType::Float, "Fov")
+	REFLECT_PROPERTY(m_nearZ, EPropertyType::Float, "NearZ")
+	REFLECT_PROPERTY(m_farZ, EPropertyType::Float, "FarZ")
 END_REFLECTION()
+
+void CameraComponent::Init()
+{
+	TransformableComponent::Init();
+	auto billboard = GetOwner()->GetComponent<BillboardComponent>();
+	if (!billboard) billboard = GetOwner()->AddComponent<BillboardComponent>(EObjectFlags::Transient | EObjectFlags::EditorOnly);
+
+	auto icon = EngineCore::GetResourceManager()->LoadTextureAsset("Icons/Camera_64.png");
+	billboard->SetIcon(icon, 1);
+}
 
 CameraConstants CameraComponent::GetCameraConstants() const
 {
@@ -20,7 +32,7 @@ CameraConstants CameraComponent::GetCameraConstants() const
 
 XMMATRIX CameraComponent::GetViewMatrix() const
 {
-	auto* transform = GetOwner<SceneObject>()->GetTransformComponent();
+	auto* transform = GetTransformComp();
 	if(!transform) return XMMatrixIdentity();
 
 	XMFLOAT3 pos = transform->GetWorldPosition();

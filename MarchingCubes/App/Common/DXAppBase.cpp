@@ -22,7 +22,7 @@ static inline bool IsTearingSupported(IDXGIFactory6* factory) {
 
 DXAppBase::DXAppBase(uint32_t width, uint32_t height, std::wstring name) : 
 	m_width(width),
-	m_height(height+24u),
+	m_height(height),
 	m_aspectRatio(static_cast<float>(width) / static_cast<float>(height)),
 	m_userWarpDevice(false),
 	m_viewport(0.0f, 0.0f, static_cast<float>(width), static_cast<float>(height)),
@@ -465,11 +465,11 @@ void DXAppBase::InitPipeline()
 
 void DXAppBase::InitializeScene()
 {
-	// TODO : Scene 초기화에 Resource 초기화가 섞여 있음 -> 좋은 분리 방법 고민 중.
 	ThrowIfFailed(m_commandAllocators[0]->Reset());
 	ThrowIfFailed(m_commandList->Reset(m_commandAllocators[0].Get(), nullptr));
 	OnBuildInitialScene(m_commandList.Get());
-	LoadScene(std::move(CreateDefaultScene()));
+	// TODO : Scene 클래스 단일화 후 CreateDefaultScene 제거 및 기본 로드할 Scene 파일 적용
+	LoadScene(std::move(CreateDefaultScene())); 
 
 	// Close CommandList
 	ThrowIfFailed(m_commandList->Close());

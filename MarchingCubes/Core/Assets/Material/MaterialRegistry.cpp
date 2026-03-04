@@ -4,6 +4,7 @@
 #include "Core/Engine/EngineCore.h"
 #include "Core/Rendering/UploadContext.h"
 #include "Core/Rendering/PSO/DescriptorAllocator.h"
+#include "Core/Assets/TextureAsset.h"
 #include "MaterialAsset.h"
 #include <ranges>
 
@@ -30,35 +31,15 @@ void MaterialRegistry::SyncGpu(ID3D12GraphicsCommandList* cmd)
 	std::vector<MaterialConstants> constants;
 	constants.reserve(m_materials.size());
 
-	std::unordered_map<uint32_t, uint32_t> indexCache;
-	auto GetCachedIndex = [&indexCache, &texReg = m_textureRegistry](uint32_t handle) {
-		if (handle == UINT32_MAX) return UINT32_MAX;
-		auto it = indexCache.find(handle);
-		if (it != indexCache.end()) return it->second;
-
-		uint32_t idx = texReg->GetBindlessIndex(handle);
-		indexCache.emplace(handle, idx);
-		return idx;
-	};
-
 	for (const auto& src : m_materials)
 	{
-		MaterialConstants dst = src.GetConstants();
-		dst.baseTextures.diffuseIndex = GetCachedIndex(src.GetDiffuseHandle());
-		dst.baseTextures.normalIndex = GetCachedIndex(src.GetNormalHandle());
-		dst.baseTextures.armIndex = GetCachedIndex(src.GetARMHandle());
-		dst.baseTextures.displacementIndex = GetCachedIndex(src.GetDisplacementHandle());
-		dst.baseTextures.roughnessIndex = GetCachedIndex(src.GetRoughHandle());
-		dst.baseTextures.emissiveIndex = GetCachedIndex(src.GetEmissiveHandle());
-
-		constants.push_back(dst);
+		constants.push_back(src.GetConstants());
 	}
 
 	if (m_materialBuffer != nullptr)
 	{
-		BufferHandle oldBuf{};
-		oldBuf.res = m_materialBuffer.Detach();
-		uploadContext->FreeBufferHandle(oldBuf);
+		m_pendingKills.push_back(m_materialBuffer);
+		m_materialBuffer = nullptr;
 	}
 
 	const UINT64 byteSize = static_cast<UINT64>(constants.size()) * sizeof(MaterialConstants);
@@ -71,8 +52,15 @@ void MaterialRegistry::SyncGpu(ID3D12GraphicsCommandList* cmd)
 	auto barrier = CD3DX12_RESOURCE_BARRIER::Transition(m_materialBuffer.Get(), D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE | D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
 	cmd->ResourceBarrier(1, &barrier);
 	DescriptorAllocator::CreateSRV_Structured(device, m_materialBuffer.Get(), static_cast<uint32_t>(sizeof(MaterialConstants)), descriptorAllocator->GetStaticCpu(m_descriptorSlot));
-
+	
 	m_bDirty = false;
+	
+	// 삭제 대기 큐가 일정 이상 쌓이면 FIFO로 Release
+	if (m_pendingKills.size() > 2)
+	{
+		m_pendingKills.erase(m_pendingKills.begin());
+	}
+
 }
 
 void MaterialRegistry::BindDescriptorTable(ID3D12GraphicsCommandList* cmd) const
@@ -83,53 +71,145 @@ void MaterialRegistry::BindDescriptorTable(ID3D12GraphicsCommandList* cmd) const
 	cmd->SetGraphicsRootDescriptorTable(m_rootSlot, descriptorAllocator->GetStaticGpu(m_descriptorSlot));
 }
 
-uint32_t MaterialRegistry::AddMaterial(const Material& data)
+RegistryIndex MaterialRegistry::RegisterMaterialInstance(const MaterialInstance& matInstance, const std::string& instanceKey)
 {
-	m_materials.push_back(data);
-	return static_cast<uint32_t>(m_materials.size() - 1);
-}
+	const auto& baseAsset = matInstance.m_material;
+	if (!baseAsset) return UINT32_MAX;
 
-uint32_t MaterialRegistry::GetMaterialHandle(std::string_view path)
-{
-	if (m_pathCache.find(path.data()) == m_pathCache.end())
+	Material newMat;
+	newMat.m_cb = baseAsset->GetConstants();
+	auto& matTextures = newMat.m_cb.baseTextures;
+	matTextures.diffuseIndex	  = ResolveTextureAsset(baseAsset->GetDiffuse());
+	matTextures.normalIndex		  = ResolveTextureAsset(baseAsset->GetNormal());
+	matTextures.armIndex		  = ResolveTextureAsset(baseAsset->GetARM());
+	matTextures.displacementIndex = ResolveTextureAsset(baseAsset->GetDisplacement());
+	matTextures.roughnessIndex	  = ResolveTextureAsset(baseAsset->GetRoughness());
+	matTextures.emissiveIndex	  = ResolveTextureAsset(baseAsset->GetEmissive());
+	matTextures.metallicIndex	  = ResolveTextureAsset(baseAsset->GetMetallic());
+
+	// NOTE : Material Editor 개발 시 Reflection 기반으로 수정할 것
+	for (const auto& [name, value] : matInstance.m_overrides)
 	{
-		Log::Print("MaterialRegistry", "%s not Loaded.", std::string(path).c_str());
-		return 0;
+		if (name == "DiffuseTexture")
+		{
+			if (const auto* texPtr = std::get_if<std::shared_ptr<TextureAsset>>(&value))
+				matTextures.diffuseIndex = ResolveTextureAsset(*texPtr);
+		}
+		else if (name == "NormalTexture")
+		{
+			if (const auto* texPtr = std::get_if<std::shared_ptr<TextureAsset>>(&value))
+				matTextures.normalIndex = ResolveTextureAsset(*texPtr);
+		}
+		else if (name == "ARMTexture")
+		{
+			if (const auto* texPtr = std::get_if<std::shared_ptr<TextureAsset>>(&value))
+				matTextures.armIndex = ResolveTextureAsset(*texPtr);
+		}
+		else if (name == "DisplacementTexture")
+		{
+			if (const auto* texPtr = std::get_if<std::shared_ptr<TextureAsset>>(&value))
+				matTextures.displacementIndex = ResolveTextureAsset(*texPtr);
+		}
+		else if (name == "RoughnessTexture")
+		{
+			if (const auto* texPtr = std::get_if<std::shared_ptr<TextureAsset>>(&value))
+				matTextures.roughnessIndex = ResolveTextureAsset(*texPtr);
+		}
+		else if (name == "EmissiveTexture")
+		{
+			if (const auto* texPtr = std::get_if<std::shared_ptr<TextureAsset>>(&value))
+				matTextures.emissiveIndex = ResolveTextureAsset(*texPtr);
+		}
+		else if (name == "MetallicTexture")
+		{
+			if (const auto* texPtr = std::get_if<std::shared_ptr<TextureAsset>>(&value))
+				matTextures.metallicIndex = ResolveTextureAsset(*texPtr);
+		}
+		else if (name == "Albedo")
+		{
+			if (const XMFLOAT3* albedo = std::get_if<XMFLOAT3>(&value))
+				newMat.m_cb.albedo = *albedo;
+		}
+		else if (name == "Metallic")
+		{
+			if (const float* f = std::get_if<float>(&value))
+				newMat.m_cb.metallic = *f;
+		}
+		else if (name == "Specular")
+		{
+			if (const float* f = std::get_if<float>(&value))
+				newMat.m_cb.specularStrength = *f;
+		}
+		else if (name == "Roughness")
+		{
+			if (const float* roughness = std::get_if<float>(&value)) 
+				newMat.m_cb.roughness = *roughness;
+		}
+		else if (name == "AO")
+		{
+			if (const float* ao = std::get_if<float>(&value))
+				newMat.m_cb.ao = *ao;
+		}
+		else if (name == "Opacity")
+		{
+			if (const float* opacity = std::get_if<float>(&value)) 
+				newMat.m_cb.opacity = *opacity;
+		}
 	}
-	return m_pathCache[path.data()];
+
+	auto it = m_pathCache.find(instanceKey);
+	if (it != m_pathCache.end())
+	{
+		RegistryIndex existingIndex = it->second;
+		m_materials[existingIndex] = newMat;
+		m_bDirty = true;
+		return existingIndex;
+	}
+
+	RegistryIndex resultIndex = static_cast<RegistryIndex>(m_materials.size());
+	m_pathCache.insert_or_assign(instanceKey, resultIndex);
+	m_materials.push_back(newMat);
+	m_bDirty = true;
+	return resultIndex;
 }
 
-uint32_t MaterialRegistry::GetMaterialHandle(const std::shared_ptr<MaterialAsset> matAsset)
+RegistryIndex MaterialRegistry::RegisterMaterialAsset(const std::shared_ptr<MaterialAsset> matAsset)
 {
 	std::string key = std::filesystem::path(matAsset->GetPath()).string();
 	if (m_pathCache.contains(key))
 	{
 		return m_pathCache[key];
 	}
-
-	auto GetTextureHandle = [&texReg = m_textureRegistry](std::shared_ptr<TextureAsset> asset) -> uint32_t {
-		if (!asset) return UINT32_MAX;
-		return texReg->LoadTexture(asset);
-	};
-
+	
 	Material newMat;
 	newMat.m_cb = matAsset->GetConstants();
-	newMat.m_diffuseHandle = GetTextureHandle(matAsset->GetDiffuse());
-	newMat.m_normalHandle = GetTextureHandle(matAsset->GetNormal());
-	newMat.m_armHandle = GetTextureHandle(matAsset->GetARM());
-	newMat.m_displaceHandle = GetTextureHandle(matAsset->GetDisplacement());
-	newMat.m_roughHandle = GetTextureHandle(matAsset->GetRoughness());
-	newMat.m_emissiveHandle = GetTextureHandle(matAsset->GetEmissive());
-	newMat.m_metailicHandle = GetTextureHandle(matAsset->GetMetallic());
+	auto& matTextures = newMat.m_cb.baseTextures;
+	matTextures.diffuseIndex	  = ResolveTextureAsset(matAsset->GetDiffuse());
+	matTextures.normalIndex		  = ResolveTextureAsset(matAsset->GetNormal());
+	matTextures.armIndex		  = ResolveTextureAsset(matAsset->GetARM());
+	matTextures.displacementIndex = ResolveTextureAsset(matAsset->GetDisplacement());
+	matTextures.roughnessIndex	  = ResolveTextureAsset(matAsset->GetRoughness());
+	matTextures.emissiveIndex	  = ResolveTextureAsset(matAsset->GetEmissive());
+	matTextures.metallicIndex	  = ResolveTextureAsset(matAsset->GetMetallic());
 	
-	uint32_t matHandle = static_cast<uint32_t>(m_materials.size());
+	RegistryIndex matHandle = static_cast<RegistryIndex>(m_materials.size());
 	m_pathCache.insert_or_assign(key, matHandle);
 	m_materials.push_back(newMat);
 	m_bDirty = true;
 	return matHandle;
 }
 
-const std::string MaterialRegistry::GetMaterialPathByHandle(const uint32_t handle)
+RegistryIndex MaterialRegistry::FindMaterialHandle(std::string_view path)
+{
+	if (m_pathCache.find(path.data()) == m_pathCache.end())
+	{
+		Log::Print("MaterialRegistry", "%s not Loaded.", std::string(path).c_str());
+		return UINT32_MAX;
+	}
+	return m_pathCache[path.data()];
+}
+
+const std::string MaterialRegistry::GetMaterialPath(const RegistryIndex handle)
 {
 	auto iter = std::ranges::find_if(m_pathCache, [&handle](const auto& pair) {
 		return pair.second == handle;
@@ -142,4 +222,11 @@ const std::string MaterialRegistry::GetMaterialPathByHandle(const uint32_t handl
 	return "";
 }
 
-
+// TextureAsset -> GPU TextureArray 인덱스로 변환
+GPUArrayIndex MaterialRegistry::ResolveTextureAsset(const std::shared_ptr<TextureAsset>& asset) const
+{
+	if (!asset) return UINT32_MAX;
+	RegistryIndex textureRegistyIndex = m_textureRegistry->LoadTexture(asset);
+	if (textureRegistyIndex == UINT32_MAX) return UINT32_MAX;
+	return m_textureRegistry->GetTextureGPUIndex(textureRegistyIndex);
+}

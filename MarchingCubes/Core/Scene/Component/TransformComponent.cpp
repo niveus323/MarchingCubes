@@ -1,11 +1,12 @@
 #include "pch.h"
 #include "TransformComponent.h"
 #include "Core/Scene/Object/SceneObject.h"
+#include "Core/Math/MathHelper.h"
 
 BEGIN_REFLECTION(TransformComponent, Component)
-	REFLECT_PROPERTY(m_transform.position, EPropertyType::Vector3)
-	REFLECT_PROPERTY(m_transform.rotation, EPropertyType::Vector3)
-	REFLECT_PROPERTY(m_transform.scale, EPropertyType::Vector3)
+	REFLECT_PROPERTY(m_transform.position, EPropertyType::Vector3, "Position")
+	REFLECT_PROPERTY(m_transform.rotation, EPropertyType::Vector3, "Rotation")
+	REFLECT_PROPERTY(m_transform.scale, EPropertyType::Vector3, "Scale")
 END_REFLECTION()
 
 void TransformComponent::Serialize(Serializer& ar)
@@ -107,6 +108,26 @@ DirectX::XMFLOAT3 TransformComponent::GetWorldScale() const
 	return { 1.0f, 1.0f, 1.0f };
 }
 
+void TransformComponent::SetWorldScale(const DirectX::XMFLOAT3& worldScale)
+{
+	auto parent = GetOwner()->GetOwner();
+	if (!parent)
+	{
+		SetScale(worldScale);
+		return;
+	}
+
+	if (auto parentTransform = parent->GetComponent<TransformComponent>())
+	{
+		DirectX::XMFLOAT3 parentScale = parentTransform->GetWorldScale();
+		DirectX::XMFLOAT3 newLocalScale;
+		newLocalScale.x = (std::abs(parentScale.x) > MathHelper::Epsilon) ? (worldScale.x / parentScale.x) : 0.0f;
+		newLocalScale.y = (std::abs(parentScale.y) > MathHelper::Epsilon) ? (worldScale.y / parentScale.y) : 0.0f;
+		newLocalScale.z = (std::abs(parentScale.z) > MathHelper::Epsilon) ? (worldScale.z / parentScale.z) : 0.0f;
+		SetScale(newLocalScale);
+	}
+}
+
 DirectX::XMMATRIX TransformComponent::GetLocalMatrix() const
 {
 	XMMATRIX T = XMMatrixTranslation(m_transform.position.x, m_transform.position.y, m_transform.position.z);
@@ -146,7 +167,7 @@ void TransformComponent::LookTo(const DirectX::XMFLOAT3& direction, const Direct
 {
 	XMVECTOR vDir = XMLoadFloat3(&direction);
 	XMVECTOR vUp = XMLoadFloat3(&up);
-	if (XMVectorGetX(XMVector3LengthSq(vDir)) <= 0.00001f) return;
+	if (XMVectorGetX(XMVector3LengthSq(vDir)) <= MathHelper::TolerantEpsilon) return;
 
 	vDir = XMVector3Normalize(vDir);
 

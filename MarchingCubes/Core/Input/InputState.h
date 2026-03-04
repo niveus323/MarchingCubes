@@ -16,9 +16,14 @@ enum class ActionKey
 	MoveRight,
 	MoveUp,
 	MoveDown,
+
+	// --- Editor Only ---
 	ToggleDebugView,
 	ToggleWireFrame,
 	ToggleDebugNormal,
+	ToggleGizmoTranslation,
+	ToggleGizmoRotation,
+	ToggleGizmoScaling,
 	Count
 };
 

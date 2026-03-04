@@ -3,12 +3,12 @@
 #include "Core/Scene/Object/GameObject.h"
 #include "Core/Scene/Scene.h"
 
-BEGIN_REFLECTION(RendererComponent, Component)
+BEGIN_REFLECTION(RendererComponent, TransformableComponent)
 END_REFLECTION()
 
 void RendererComponent::Init()
 {
-	Component::Init();
+	TransformableComponent::Init();
 	if (auto scene = GetOwner()->GetScene())
 	{
 		scene->RegisterRenderable(this);
@@ -17,6 +17,7 @@ void RendererComponent::Init()
 
 void RendererComponent::Destroy()
 {
+	TransformableComponent::Destroy();
 	if (auto scene = GetOwner()->GetScene())
 	{
 		scene->UnregisterRenderable(this);

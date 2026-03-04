@@ -13,14 +13,15 @@ struct alignas(16) ObjectConstants
 	XMFLOAT4X4 worldMatrix;
 	XMFLOAT4X4 worldInvMatrix;
 	uint32_t materialIndex = 0;// TODO : Submesh의 Material 대응을 위해 구조 수정 필요. (Objec와 Submesh는 1:N구조이므로 Object하나에 MaterialIndex는 N개 존재.)
-	bool bUseTriplanar = false;
+	uint32_t _padding[3];
 };
 
 enum class EShadingModel : uint32_t
 {
 	DefaultLit = 0,
 	Dielectric,
-	Translucent
+	Translucent,
+	Unlit
 };
 
 enum class ETextureMappingTypes : uint32_t
@@ -46,8 +47,8 @@ struct alignas(16) TextureParams
 
 	uint32_t roughnessIndex = UINT32_MAX;
 	uint32_t emissiveIndex = UINT32_MAX;
+	uint32_t metallicIndex = UINT32_MAX;
 	ETextureMappingTypes mappingType = ETextureMappingTypes::DefaultUV;
-	uint32_t _padding;
 
 	TriplanarParams triplanar;
 };

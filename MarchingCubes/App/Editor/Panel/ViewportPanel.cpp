@@ -41,6 +41,8 @@ void ViewportPanel::OnRenderUI(IUIBuilder* ui)
             ui->DrawRectFilled(p0, { p0.x + m_viewportSize.x, p0.y + m_viewportSize.y }, { 0.1f, 0.1f, 0.1f, 1.0f });
         }
 
+        if (m_editorController) m_editorController->RenderGizmoUI(ui);
+
         auto vMin = ui->GetWindowContentMin();
         auto vMax = ui->GetWindowContentMax();
         auto vPos = ui->GetWindowPos();

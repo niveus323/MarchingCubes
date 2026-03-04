@@ -62,17 +62,6 @@ uint32_t DescriptorAllocator::AllocateRTV()
     assert(m_nextRtv < m_rtvCount && "RTV Descriptor Heap Capacity Exceeded!");
 
     return m_nextRtv++;
-
-	/*D3D12_DESCRIPTOR_HEAP_DESC desc = {};
-	desc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_RTV;
-	desc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_NONE;
-	desc.NumDescriptors = 1;
-	desc.NodeMask = 0;
-
-	ComPtr<ID3D12DescriptorHeap> heap;
-	ThrowIfFailed(device->CreateDescriptorHeap(&desc, IID_PPV_ARGS(&heap)));
-	m_rtvHeaps.push_back(heap);
-	return static_cast<uint32_t>(m_rtvHeaps.size() - 1);*/
 }
 
 uint32_t DescriptorAllocator::AllocateDSV()
@@ -81,18 +70,6 @@ uint32_t DescriptorAllocator::AllocateDSV()
     assert(device && "Invalid Device");
     assert(m_nextDsv < m_dsvCount && "DSV Descriptor Heap Capacity Exceeded!");
     return m_nextDsv++;
-
-	/*D3D12_DESCRIPTOR_HEAP_DESC desc = {};
-	desc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_DSV;
-	desc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_NONE;
-	desc.NumDescriptors = 1;
-	desc.NodeMask = 0;
-
-	ComPtr<ID3D12DescriptorHeap> heap;
-	ThrowIfFailed(device->CreateDescriptorHeap(&desc, IID_PPV_ARGS(&heap)));
-	m_dsvHeaps.push_back(heap);
-
-	return static_cast<uint32_t>(m_dsvHeaps.size() - 1);*/
 }
 
 uint32_t DescriptorAllocator::AllocateSampler()
@@ -109,10 +86,12 @@ uint32_t DescriptorAllocator::AllocateDynamic(uint32_t frameIdx)
 	return cursor++;
 }
 
-uint32_t DescriptorAllocator::AllocateStaticSlot()
+uint32_t DescriptorAllocator::AllocateStaticSlot(uint32_t count)
 {
-	assert(m_nextStatic < m_ring->GetStaticCount());
-	return m_nextStatic++;
+    assert(m_nextStatic + count <= m_ring->GetStaticCount());
+    uint32_t startSlot = m_nextStatic;
+    m_nextStatic += count;
+    return startSlot;
 }
 
 

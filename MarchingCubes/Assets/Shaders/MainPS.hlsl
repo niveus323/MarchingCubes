@@ -14,6 +14,7 @@ struct PSInput
     float3 WorldTangent : TEXCOORD3;
     float TangentSign : TEXCOORD4;
     float4 Color : COLOR0;
+    float3 LocalPos : TEXCOORD5;
 };
 
 // Pixel Shader: output interpolated color
@@ -25,15 +26,17 @@ float4 PSMain(PSInput input) : SV_TARGET
         return float4(1.0f, 0.0f, 0.0f, 1.0f); // Error Color
     }
     
-    EvaluatedMaterial mat = EvaluateMaterial(gMaterials[gMaterialIndex], input.TexCoord, input.WorldPos, input.WorldNormal, input.WorldTangent, input.TangentSign);
+    EvaluatedMaterial mat = EvaluateMaterial(gMaterials[gMaterialIndex], input.TexCoord, input.LocalPos, input.WorldNormal, input.WorldTangent, input.TangentSign);
+     // 투명도 CutOut
+    if (mat.opacity < ALPHA_CUT_OFF) discard;
+    
     float3 V = normalize(gCameraPos - input.WorldPos);
     float3 N = mat.normal;
         
     // Default Reflection For Fresnel Function
     float3 F0;
-    if (mat.shadingModel == EShadingModel::TRANSLUCENT)
+    if (mat.shadingModel == EShadingModel::TRANSLUCENT) // 금속, 유리 등의 환경 맵핑 처리
     {
-        // 금속, 유리 등의 환경 맵핑 처리
         float IOR = mat.IOR;
         float fd = pow((1.0f - IOR) / (1.0f + IOR), 2.0f);
         F0 = fd.xxx;
@@ -53,10 +56,17 @@ float4 PSMain(PSInput input) : SV_TARGET
         
         return float4(LoEnv + mat.emissive, alpha);
     }
-    else if (mat.shadingModel == EShadingModel::DIELECTRIC)
+    else if (mat.shadingModel == EShadingModel::DIELECTRIC) // 유전체 모델
     {
-        // 유전체 모델
         F0 = ComputeF0_Dielectric(mat.IOR, mat.metalic, mat.albedo);
+    }
+    else if(mat.shadingModel == EShadingModel::UNLIT) // 라이팅을 받지 않는 Unlit 모델
+    {
+        float3 unlitColor = mat.albedo + mat.emissive;
+        // 감마 보정 (Gamma Correction)
+        unlitColor = pow(unlitColor, 1.0f / 2.2f);
+        
+        return float4(unlitColor, mat.opacity);
     }
     else //EShadingModel::DEFAULT_LIT
     {
@@ -64,9 +74,8 @@ float4 PSMain(PSInput input) : SV_TARGET
         F0 = ComputeF0_Default(mat.albedo, mat.specularStrength, mat.metalic);
     }
     
-    // 모든 라이트 순회
+    //--- Light 연산 루프 ---
     float3 LoSum = float3(0, 0, 0);
-    
     [loop]
     for (uint i = 0; i < g_NumLights; ++i)
     {

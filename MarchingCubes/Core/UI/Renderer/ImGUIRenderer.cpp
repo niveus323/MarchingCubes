@@ -1,9 +1,10 @@
 #include "pch.h"
 #include "Win32Application.h"
 #include "ImGUIRenderer.h"
-#include "Builder/ImGUIBuilder.h"
+#include "Core/UI/Builder/ImGUIBuilder.h"
 #include <imgui_impl_dx12.h>
 #include <imgui_impl_win32.h>
+#include <ThirdParty/ImGuizmo/ImGuizmo.h>
 #include <algorithm>
 using namespace UI;
 
@@ -81,6 +82,7 @@ void ImGUIRenderer::BeginRender()
 	ImGui_ImplDX12_NewFrame();
 	ImGui_ImplWin32_NewFrame();
 	ImGui::NewFrame();
+	ImGuizmo::BeginFrame();
 }
 
 void ImGUIRenderer::EndRender(ID3D12GraphicsCommandList* commandList)

@@ -7,12 +7,14 @@
 #include "Texture.hlsli"
 
 static const uint INVALID_MATERIAL_INDEX = 0xFFFFFFFF;
+static const float ALPHA_CUT_OFF = 0.05f;
 
 struct EShadingModel
 {
     static const uint DEFAULT_LIT = 0;
     static const uint DIELECTRIC = 1;
     static const uint TRANSLUCENT = 2;
+    static const uint UNLIT = 3;
 };
 
 struct TriplanarParams
@@ -31,8 +33,8 @@ struct TextureParams
     
     uint roughnessIndex;
     uint emissiveIndex;
+    uint metalicIndex;
     uint mappingType; // 0 - Default UV, 1 - Triplanar, 2 - Spherical ...
-    uint _padding0;
     
     // Triplanar
     TriplanarParams triplanar;
@@ -73,17 +75,17 @@ struct EvaluatedMaterial
     float3 normal; // 최종 노멀 (normal map 포함)
 };
 
-float3 SampleMaterialTexture(uint index, TextureParams tex, float2 uv, float3 worldPos, float3 worldNormal)
+float4 SampleMaterialTexture(uint index, TextureParams tex, float2 uv, float3 localPos, float3 worldNormal)
 {
-    return SampleFromSet(index, tex.mappingType, tex.triplanar.scale, tex.triplanar.sharpness, uv, worldPos, worldNormal);
+    return SampleFromSet(index, tex.mappingType, tex.triplanar.scale, tex.triplanar.sharpness, uv, localPos, worldNormal);
 }
 
-float3 SampleNormal(uint index, TextureParams tex, float2 uv, float3 worldPos, float3 worldNormal, float3 worldTangent, float tangentSign)
+float3 SampleNormal(uint index, TextureParams tex, float2 uv, float3 localPos, float3 worldNormal, float3 worldTangent, float tangentSign)
 {
     if (index == INVALID_TEXTURE_INDEX)
         return normalize(worldNormal);
     
-    float3 nTS = SampleFromSet(index, tex.mappingType, tex.triplanar.scale, tex.triplanar.sharpness, uv, worldPos, worldNormal);
+    float3 nTS = SampleFromSet(index, tex.mappingType, tex.triplanar.scale, tex.triplanar.sharpness, uv, localPos, worldNormal).rgb;
 
     // [0,1] -> [-1,1]
     nTS = nTS * 2.0f - 1.0f;
@@ -96,7 +98,7 @@ float3 SampleNormal(uint index, TextureParams tex, float2 uv, float3 worldPos, f
     return normalize(T * nTS.x + B * nTS.y + N * nTS.z);
 }
 
-EvaluatedMaterial EvaluateMaterial(MaterialBuffer mat, float2 uv, float3 worldPos, float3 worldNormal, float3 worldTan, float tangentSign)
+EvaluatedMaterial EvaluateMaterial(MaterialBuffer mat, float2 uv, float3 localPos, float3 worldNormal, float3 worldTan, float tangentSign)
 {
     EvaluatedMaterial outMat;
     outMat.albedo = mat.albedo;
@@ -114,23 +116,25 @@ EvaluatedMaterial EvaluateMaterial(MaterialBuffer mat, float2 uv, float3 worldPo
     // Diffuse 텍스처
     if (tex.diffuseIndex != INVALID_TEXTURE_INDEX)
     {
-        float3 texAlbedo = SampleMaterialTexture(tex.diffuseIndex, tex, uv, worldPos, worldNormal);
-        outMat.albedo *= texAlbedo;
+        float4 texAlbedo = SampleMaterialTexture(tex.diffuseIndex, tex, uv, localPos, worldNormal);
+        outMat.albedo *= texAlbedo.rgb;
+        outMat.opacity *= texAlbedo.a;
     }
 
     // ARM 텍스쳐
     if (tex.armIndex != INVALID_TEXTURE_INDEX)
     {
-        float3 arm = SampleMaterialTexture(tex.armIndex, tex, uv, worldPos, worldNormal);
+        float3 arm = SampleMaterialTexture(tex.armIndex, tex, uv, localPos, worldNormal).rgb;
         outMat.ambientOcclusion *= arm.r;
         outMat.roughness *= arm.g;
         outMat.metalic *= arm.b;
     }
     else 
     {
+        // Roughness 텍스쳐
         if (tex.roughnessIndex != INVALID_TEXTURE_INDEX)
         {
-            float roughTex = SampleMaterialTexture(tex.roughnessIndex, tex, uv, worldPos, worldNormal).r;
+            float roughTex = SampleMaterialTexture(tex.roughnessIndex, tex, uv, localPos, worldNormal).r;
             outMat.roughness *= roughTex;
         }
     }
@@ -138,11 +142,13 @@ EvaluatedMaterial EvaluateMaterial(MaterialBuffer mat, float2 uv, float3 worldPo
     // Emissive
     if (tex.emissiveIndex != INVALID_TEXTURE_INDEX)
     {
-        outMat.emissive = SampleMaterialTexture(tex.emissiveIndex, tex, uv, worldPos, worldNormal);
+        outMat.emissive = SampleMaterialTexture(tex.emissiveIndex, tex, uv, localPos, worldNormal).rgb;
     }
 
+    // TODO : Displacement, Metalic 텍스쳐 적용
+    
     // Normal (normal map 포함 최종 노멀)
-    outMat.normal = SampleNormal(tex.normalIndex, tex, uv, worldPos, worldNormal, worldTan, tangentSign);
+    outMat.normal = SampleNormal(tex.normalIndex, tex, uv, localPos, worldNormal, worldTan, tangentSign);
 
     return outMat;
 }

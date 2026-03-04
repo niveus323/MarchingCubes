@@ -17,16 +17,16 @@ ResourceManager::~ResourceManager()
 {
 }
 
-std::shared_ptr<TextureAsset> ResourceManager::LoadTextureAsset(const std::filesystem::path& path)
+std::shared_ptr<TextureAsset> ResourceManager::LoadTextureAsset(const std::filesystem::path & fileDir, const std::filesystem::path & folderDir)
 {
 	// 이미 로드되어 있는지 확인
-	std::string key = path.string();
+	std::string key = fileDir.string();
 	if (m_textureAssetCache.contains(key))
 	{
 		return m_textureAssetCache[key];
 	}
-
-	auto texAsset = std::make_shared<TextureAsset>(path);
+	auto sourcePath = folderDir / fileDir;
+	auto texAsset = std::make_shared<TextureAsset>(sourcePath); 
 	m_textureAssetCache.insert_or_assign(key, texAsset);
 	return texAsset;
 }
@@ -102,10 +102,10 @@ std::shared_ptr<MeshAsset> ResourceManager::LoadMeshAsset(const std::filesystem:
 	return asset;
 }
 
-const MeshAsset* ResourceManager::GetMeshAsset(const std::filesystem::path& path) const
+std::shared_ptr<MeshAsset> ResourceManager::GetMeshAsset(const std::filesystem::path& path) const
 {
 	auto it = m_meshAssetCache.find(path.string());
-	if (it != m_meshAssetCache.end()) return it->second.get();
+	if (it != m_meshAssetCache.end()) return it->second;
 	return nullptr;
 }
 
@@ -150,16 +150,11 @@ std::filesystem::path ResourceManager::ResolveTexturePath(const std::filesystem:
 	std::filesystem::path siblingPath = fbxPath.parent_path() / fileName;
 	if (std::filesystem::exists(siblingPath)) return siblingPath;
 
-	// DDS 텍스쳐 확인(Contents/Textures/...)
+	// 텍스쳐 확인(Assets/Textures/...)
 	auto parentDir = fbxPath.parent_path().filename();
 	auto contentsRelativePath = parentDir / fileName;
-	auto ddsPath = GetFullPath(AssetType::Texture, contentsRelativePath.c_str());
-	if (std::filesystem::exists(ddsPath)) return ddsPath;
-
-	// PNG 등 WIC 텍스쳐 확인(Assets/Textures/...)
-	auto assetDir = fbxPath.parent_path().parent_path().parent_path();
-	auto wicPath = assetDir / "Textures" / parentDir / fileName;
-	if (std::filesystem::exists(wicPath)) return wicPath;
+	auto texturePath = GetFullPath(AssetType::Texture, contentsRelativePath.c_str());
+	if (std::filesystem::exists(texturePath)) return texturePath;
 
 	// 못 찾았으면 원본 이름만 리턴 (TextureRegistry가 실패 처리하거나 기본 텍스처 사용)
 	return fileName;
@@ -186,6 +181,8 @@ void ResourceManager::InitializePrimitives()
 	registerPrimitive("@SolidSphere", MeshGenerator::CreateSphereMeshData(), filledMat);
 	// Solid Cube
 	registerPrimitive("@SolidCube", MeshGenerator::CreateSolidCube(), filledMat);
+	// Billboard Quad
+	registerPrimitive("@BillboardQuad", MeshGenerator::CreateSolidQuad(), filledMat);
 
 	auto LineMat = LoadMaterialAsset(GetFullPath(AssetType::Default, L"Material/DefaultLine.json"));
 	// Wire Sphere
@@ -242,12 +239,12 @@ std::shared_ptr<MaterialAsset> ResourceManager::SerializeMaterialAsset(Serialize
 	// Enum은 직접 직렬화를 지원하지 않으므로 캐스팅하여 처리
 	uint32_t shadingModelVal = static_cast<uint32_t>(consts.shadingModel);
 	ar.Serialize("ShadingModel", shadingModelVal);
-	consts.shadingModel = static_cast<EShadingModel>(shadingModelVal);
+	if(!ar.IsSaving()) consts.shadingModel = static_cast<EShadingModel>(shadingModelVal);
 
 	ar.BeginObject("TextureParams");
 	uint32_t mappingVal = static_cast<uint32_t>(consts.baseTextures.mappingType);
 	ar.Serialize("TextureMappingType", mappingVal);
-	consts.baseTextures.mappingType = static_cast<ETextureMappingTypes>(mappingVal);
+	if (!ar.IsSaving()) consts.baseTextures.mappingType = static_cast<ETextureMappingTypes>(mappingVal);
 
 	TriplanarParams triParams{};
 	ar.BeginObject("TriplanarParams");
@@ -266,7 +263,8 @@ std::shared_ptr<MaterialAsset> ResourceManager::SerializeMaterialAsset(Serialize
 		if (path.empty()) return nullptr;
 
 		return LoadTextureAsset(GetFullPath(AssetType::Texture, std::filesystem::path(path).c_str()));
-		};
+		//return LoadTextureAsset(std::filesystem::path(path).c_str());
+	};
 
 	asset->m_diffuse = SerializeTexture("Diffuse");
 	asset->m_normal = SerializeTexture("Normal");
@@ -277,18 +275,3 @@ std::shared_ptr<MaterialAsset> ResourceManager::SerializeMaterialAsset(Serialize
 	asset->m_metallic = SerializeTexture("Metallic");
 	return asset;
 }
-
-//void ResourceManager::RegisterMeshAsset(const std::string& key, const GeometryData& data)
-//{
-//	std::vector<MeshSubmesh> submeshes;
-//
-//	MeshSubmesh sm;
-//	sm.indexCount = (uint32_t)data.indices.size();
-//	sm.materialslot = 0;
-//	submeshes.push_back(sm);
-//
-//	std::vector<ImportedMaterialDesc> mats(1);
-//	mats[0].name = "DefaultMaterial";
-//
-//	m_meshAssetCache.insert_or_assign(key, std::make_shared<MeshAsset>(key, data, submeshes, mats));
-//}

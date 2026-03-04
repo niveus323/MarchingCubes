@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="utf-8"?>
+﻿<?xml version="1.0" encoding="utf-8"?>
 <Project DefaultTargets="Build" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
   <ItemGroup Label="ProjectConfigurations">
     <ProjectConfiguration Include="Debug|Win32">
@@ -127,7 +127,7 @@
       <ConformanceMode>false</ConformanceMode>
       <PrecompiledHeader>Create</PrecompiledHeader>
       <PrecompiledHeaderFile>pch.h</PrecompiledHeaderFile>
-      <AdditionalIncludeDirectories>$(ProjectDir);C:\Program Files\Autodesk\FBX\FBX SDK\2020.3.7\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(ProjectDir);C:\Program Files\Autodesk\FBX\FBX SDK\2020.3.7\include;$(solutionDir)\ThirdParty\ImGuizmo;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <LanguageStandard>stdcpp20</LanguageStandard>
       <OpenMPSupport>true</OpenMPSupport>
       <EnableEnhancedInstructionSet>AdvancedVectorExtensions2</EnableEnhancedInstructionSet>
@@ -163,6 +163,7 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
+    <ClCompile Include="Core\Scene\Component\BillboardComponent.cpp" />
     <ClCompile Include="Core\Scene\Component\CameraComponent.cpp" />
     <ClCompile Include="Core\Scene\Component\Component.cpp" />
     <ClCompile Include="Core\Geometry\MarchingCubes\CPU\CPUTerrainBackend.cpp" />
@@ -170,11 +171,11 @@
     <ClCompile Include="Core\Math\PhysicsHelper.cpp" />
     <ClCompile Include="Core\Rendering\BundleRecorder.cpp" />
     <ClCompile Include="Core\Scene\Scene.cpp" />
-    <ClCompile Include="Core\UI\UIRenderer.cpp" />
+    <ClCompile Include="Core\UI\Renderer\UIRenderer.cpp" />
     <ClCompile Include="Core\Utils\DXHelper.cpp" />
     <ClCompile Include="App\Common\DXAppBase.cpp" />
     <ClCompile Include="Core\Input\InputState.cpp" />
-    <ClCompile Include="Core\UI\ImGUIRenderer.cpp" />
+    <ClCompile Include="Core\UI\Renderer\ImGUIRenderer.cpp" />
     <ClCompile Include="Core\Geometry\MarchingCubes\GPU\GPUMarchingCubesCS.cpp" />
     <ClCompile Include="Core\Geometry\MarchingCubes\GPU\GPUTerrainBackend.cpp" />
     <ClCompile Include="Core\Geometry\FluidSystem.cpp" />
@@ -235,13 +236,17 @@
     <ClCompile Include="Core\Assets\MeshRegistry.cpp" />
     <ClCompile Include="Core\Scene\Object\SceneObject.cpp" />
     <ClCompile Include="Core\Scene\Component\MeshComponent.cpp" />
+    <ClCompile Include="ThirdParty\ImGuizmo\ImGuizmo.cpp" />
     <ClCompile Include="ThirdParty\mc33_impl.cpp" />
     <ClCompile Include="Core\Rendering\Memory\UploadRing.cpp" />
     <ClCompile Include="Core\Scene\Component\TransformComponent.cpp" />
     <ClCompile Include="App\Editor\Panel\ViewportPanel.cpp" />
+    <ClCompile Include="Core\Scene\Component\TransformableComponent.cpp" />
     <ClCompile Include="Win32Application.cpp" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="Core\Math\MathHelper.h" />
+    <ClInclude Include="Core\Scene\Component\BillboardComponent.h" />
     <ClInclude Include="Core\Engine\Reflection.h" />
     <ClInclude Include="Core\Geometry\MarchingCubes\TerrainFieldGenerator.h" />
     <ClInclude Include="Core\Scene\Component\CameraComponent.h" />
@@ -262,7 +267,7 @@
     <ClInclude Include="Core\Utils\DXHelper.h" />
     <ClInclude Include="Core\Geometry\Mesh\Class\Mesh.h" />
     <ClInclude Include="Core\Input\InputState.h" />
-    <ClInclude Include="Core\UI\ImGUIRenderer.h" />
+    <ClInclude Include="Core\UI\Renderer\ImGUIRenderer.h" />
     <ClInclude Include="Core\Geometry\MarchingCubes\MarchingCubesTables.h" />
     <ClInclude Include="Core\Assets\Material\Material.h" />
     <ClInclude Include="Core\Geometry\MarchingCubes\GPU\GPUMarchingCubesCS.h" />
@@ -318,7 +323,7 @@
     <ClInclude Include="pch.h" />
     <ClInclude Include="Core\Utils\Timer.h" />
     <ClInclude Include="Core\Rendering\UploadContext.h" />
-    <ClInclude Include="Core\UI\UIRenderer.h" />
+    <ClInclude Include="Core\UI\Renderer\UIRenderer.h" />
     <ClInclude Include="Core\Engine\Subsystem\SceneSubsystem\TerrainSystem.h" />
     <ClInclude Include="Core\Rendering\Memory\UploadRing.h" />
     <ClInclude Include="Core\Rendering\PSO\PSOSpec.h" />
@@ -331,9 +336,26 @@
     <ClInclude Include="Core\Scene\Object\SceneObject.h" />
     <ClInclude Include="Core\Scene\Component\TransformComponent.h" />
     <ClInclude Include="App\Editor\Panel\ViewportPanel.h" />
+    <ClInclude Include="ThirdParty\ImGuizmo\ImGuizmo.h" />
+    <ClInclude Include="ThirdParty\ImGuizmo\ImZoomSlider.h" />
+    <ClInclude Include="Core\Scene\Component\TransformableComponent.h" />
     <ClInclude Include="Win32Application.h" />
   </ItemGroup>
   <ItemGroup>
+    <FxCompile Include="Assets\Shaders\BillboardVS.hlsl">
+      <ShaderType Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">Vertex</ShaderType>
+      <ShaderType Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">Vertex</ShaderType>
+      <ShaderType Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">Vertex</ShaderType>
+      <ShaderType Condition="'$(Configuration)|$(Platform)'=='Release|x64'">Vertex</ShaderType>
+      <EntryPointName Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">VSMain</EntryPointName>
+    </FxCompile>
+    <FxCompile Include="Assets\Shaders\EditorBillboardPS.hlsl">
+      <ShaderType Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">Pixel</ShaderType>
+      <ShaderType Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">Pixel</ShaderType>
+      <ShaderType Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">Pixel</ShaderType>
+      <ShaderType Condition="'$(Configuration)|$(Platform)'=='Release|x64'">Pixel</ShaderType>
+      <EntryPointName Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">PSMain</EntryPointName>
+    </FxCompile>
     <FxCompile Include="Assets\Shaders\TerrainChunkBorderGS.hlsl">
       <ShaderType Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">Geometry</ShaderType>
       <ShaderModel Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">6.6</ShaderModel>

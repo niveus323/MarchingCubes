@@ -14,7 +14,7 @@
 * 	- GeometryData : .obj 파일을 로드하여 소유/참조 전달
 * 	- AnimData : .anim 파일을 로드하여 소유/참조 전달
 * 	- SoundData : .wav 등 사운드 파일을 로드하여 소유/참조 전달
-* 	- Texture : .dds, .png 등 텍스쳐 파일을 로드하여 D3D12_SUBRESOURCE_DATA를 소유/참조 전달
+* 	- Texture : .dds, .png 등 텍스쳐 파일을 로드하여 TextureAsset을 소유/참조 전달
 * 	- SceneData : .scene 과 같이 에디터로 작업한 내역을 저장 + 로드하여 SceneData를 소유/참조 전달
 * 	- DataAsset : .xml, .tex 등 raw 데이터를 관리/참조 전달
 */
@@ -27,14 +27,14 @@ public:
 	~ResourceManager();
 
 	// --- Texture Asset ---
-	std::shared_ptr<TextureAsset> LoadTextureAsset(const std::filesystem::path& path);
+	std::shared_ptr<TextureAsset> LoadTextureAsset(const std::filesystem::path& fileDir, const std::filesystem::path& folderDir = std::filesystem::path(L"Assets/Textures"));
 	
 	// --- Material Asset ---
 	std::shared_ptr<MaterialAsset> LoadMaterialAsset(const std::filesystem::path& path);
 	
 	// --- Mesh Asset ---
 	std::shared_ptr<MeshAsset> LoadMeshAsset(const std::filesystem::path& path, const MeshImportOptions& options);
-	const MeshAsset* GetMeshAsset(const std::filesystem::path& path) const;
+	std::shared_ptr<MeshAsset> GetMeshAsset(const std::filesystem::path& path) const;
 
 	// --- Data Asset ---
 	std::shared_ptr<DataAsset> LoadDataAsset(const std::filesystem::path& path);

@@ -20,7 +20,7 @@ void CustomMeshComponent::Serialize(Serializer& ar)
 		for (auto& mat : m_materialInstnaces)
 		{
 			ar.BeginObject("Material");
-			ar.Serialize("Path", std::string(mat.material->GetPath()));
+			ar.Serialize("Path", std::string(mat.m_material->GetPath()));
 			ar.EndObject();
 		}
 	}
@@ -32,7 +32,7 @@ void CustomMeshComponent::Serialize(Serializer& ar)
 			ar.BeginObject("Material");
 			std::string path;
 			ar.Serialize("Path", path);
-			m_materialInstnaces[i].material = EngineCore::GetResourceManager()->LoadMaterialAsset(path);
+			m_materialInstnaces[i].m_material = EngineCore::GetResourceManager()->LoadMaterialAsset(path);
 			ar.EndObject();
 		}
 	}

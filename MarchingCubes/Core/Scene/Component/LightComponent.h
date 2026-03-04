@@ -1,8 +1,8 @@
 #pragma once
-#include "Component.h"
+#include "TransformableComponent.h"
 #include "Core/DataStructures/ShaderTypes.h"
 
-class LightComponent : public Component
+class LightComponent : public TransformableComponent
 {
 	REFLECT_GENERATED_BODY(LightComponent)
 public:

@@ -1,13 +1,12 @@
 #pragma once
-#include "Component.h"
+#include "TransformableComponent.h"
 #include "Core/DataStructures/ShaderTypes.h"
 
-class CameraComponent : public Component
+class CameraComponent : public TransformableComponent
 {
 	REFLECT_GENERATED_BODY(CameraComponent)
 public:
-	virtual ~CameraComponent() = default;
-	
+	virtual void Init() override;
 	CameraConstants GetCameraConstants() const;
 
 	XMMATRIX GetViewMatrix() const;
@@ -36,8 +35,8 @@ public:
 	}
 
 private:
-	float m_viewportWidth;
-	float m_viewportHeight;
+	float m_viewportWidth = 1024.0f;
+	float m_viewportHeight = 720.0f;
 	float m_fov = XM_PIDIV4;
 	float m_aspect = 1.777f;
 	float m_nearZ = 0.1f;

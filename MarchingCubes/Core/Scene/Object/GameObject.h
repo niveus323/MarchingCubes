@@ -14,36 +14,13 @@ class Scene;
 *	- GameObject : 자식 GameObject를 std::vector로 관리 + 부모 GameObject를 Raw Pointer로 관리
 */
 
-//CRTP 패턴
-template<typename Derived>
-class GameObjectBase
-{
-public:
-	template<std::derived_from<Component> T = Component>
-	T* AddComponent(EObjectFlags flags = EObjectFlags::None)
-	{
-		static_assert(std::derived_from<Derived, GameObjectBase<Derived>>, "CRTP Violation: Derived class must inherit from GameObjectBase<Derived>");
-		Derived* derivedThis = static_cast<Derived*>(this);
-		auto newComponent = std::make_shared<T>();
-		
-		std::shared_ptr<Derived> sharedDerived = std::static_pointer_cast<Derived>(derivedThis->shared_from_this());
-		newComponent->SetOwner(sharedDerived);
-		newComponent->AddFlags(flags);
 
-		T* ptr = newComponent.get();
-		derivedThis->RegisterComponent(std::move(newComponent));
-		ptr->Init();
-		return ptr;
-	}
-};
-
-class GameObject : public Entity, public GameObjectBase<GameObject>
+class GameObject : public Entity
 {
 	REFLECT_GENERATED_BODY(GameObject)
-	friend class GameObjectBase<GameObject>;
 public:
 	virtual void Init() {}
-	virtual void Destroy() {}
+	virtual void Destroy();
 	virtual void BeginPlay() {}
 	virtual void EndPlay() {}
 	virtual void Update(float deltatime)
@@ -57,6 +34,18 @@ public:
 	virtual void Render() {}
 	virtual void OnPreSave() {}
 	virtual void Serialize(Serializer& ar) override;
+
+	void MarkForDestroy();
+	bool IsPendingDestroy() const { return HasAnyFlags(EObjectFlags::PendingKill); }
+
+	template<std::derived_from<Component> T = Component>
+	T* AddComponent(EObjectFlags flags = EObjectFlags::None)
+	{
+		return InternalAddComponent(std::make_shared<T>(), flags);
+	}
+	
+	// 런타임용 Component 생성 함수
+	Component* AddComponent(TypeDescriptor* typeDesc, EObjectFlags flags = EObjectFlags::None);
 
 	template<std::derived_from<Component> T = Component>
 	std::vector<T*> GetComponents()
@@ -136,7 +125,6 @@ public:
 	auto& GetComponents() const { return m_components; }
 	auto& GetChildren() const { return m_children; }
 
-protected:
 	void RegisterComponent(std::shared_ptr<Component>&& comp)
 	{
 		TypeDescriptor* typeDesc = comp->GetType();
@@ -170,6 +158,20 @@ protected:
 			}
 		}
 	}
+private:
+	template <typename T>
+	T* InternalAddComponent(std::shared_ptr<T> newComponent, EObjectFlags flags)
+	{
+		newComponent->SetOwner(std::static_pointer_cast<GameObject>(shared_from_this()));
+		newComponent->AddFlags(flags);
+
+		T* ptr = newComponent.get();
+		RegisterComponent(std::static_pointer_cast<Component>(newComponent));
+
+		ptr->Init();
+		return ptr;
+	}
+
 protected:
 	std::weak_ptr<Scene> m_scene;
 	std::weak_ptr<GameObject> m_owner;

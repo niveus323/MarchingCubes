@@ -4,7 +4,7 @@
 #include <concepts>
 #include <cstdint>
 #include <functional>
-
+#include <sal.h>
 
 namespace UI
 {
@@ -269,6 +269,19 @@ namespace UI
         NoSplit = 1 << 3,
         NoResize = 1 << 4,
     };
+
+    enum class EGizmoOperation : uint8_t
+    {
+        Translate,
+        Rotate,
+        Scale
+    };
+
+    enum class EGizmoMode : uint8_t
+    {
+        Local,
+        World
+    };
 }
 ENABLE_BITMASK(UI::UI_PanelOption);
 ENABLE_BITMASK(UI::UI_DockingOption);
@@ -308,10 +321,16 @@ public:
     virtual void EndMenu() = 0;
     virtual bool MenuItem(const char* id, const char* shortcutKey = NULL, bool bSelected = false) = 0;
 
-    virtual void BeginDisabled(bool disabled = true) = 0; // NOTE : ScopedDisable 사용
-    virtual void EndDisabled() = 0;
+    // --- Popup ---
+    virtual void OpenPopup(const char* id) = 0;
+    virtual bool BeginPopup(const char* id) = 0;
+    virtual void EndPopup() = 0;
+    virtual void CloseCurrentPopup() = 0;
+    virtual bool BeginPopupContextItem() = 0;
 
     // --- 기본 컨트롤 ---
+    virtual void BeginDisabled(bool disabled = true) = 0;
+    virtual void EndDisabled() = 0;
     virtual void Label(const char* text) = 0;
     virtual bool Button(const char* label, const UI::Vector<float, 2>& size = { 0,0 }) = 0;
     virtual bool Checkbox(const char* label, bool* v) = 0;
@@ -320,7 +339,8 @@ public:
     virtual void TextFormatted(const char* fmt, ...) = 0;
     virtual void TextColored(const UI::Color& color, const char* fmt, ...) = 0;
     virtual void Image(void* textureHandle, const UI::Vector<float, 2>& size) = 0;
-    
+    virtual bool Selectable(const char* label) = 0;
+
     // --- 입력 컨트롤 ---
     template<typename T>
     bool Input(const char* label, T* v)
@@ -361,6 +381,7 @@ public:
     virtual void AlignNextItem(UI::UI_Alignment align, float itemWidth = 0.0f) = 0;
     virtual void PushStyle_Padding(const UI::Vector<float, 2>& padding) = 0;
     virtual void PopStyle(int count = 1) = 0;
+    virtual void SetNextItemWidth(float width) = 0;
 
     // --- ID 관리 ---
     virtual void PushID(const char* str_id) = 0;
@@ -377,6 +398,7 @@ public:
     virtual bool IsWindowFocused() = 0;
     virtual bool IsWindowHovered() = 0;
     virtual bool IsKeyPressed_F12() = 0;
+    virtual bool IsKeyPressed_Delete() = 0;
     virtual void SetKeyboardFocus() = 0;
     virtual bool IsMouseClicked(int button) = 0;
     virtual bool IsMouseReleased(int button) = 0;
@@ -426,6 +448,11 @@ public:
     virtual void DrawTextAt(const UI::Vector<float, 2>& pos, const UI::Color& color, const char* text) = 0;
     virtual UI::Vector<float, 2> CalcTextSize(const char* text) = 0;
     virtual void InvisibleButton(const char* str_id, const UI::Vector<float, 2>& size) = 0;
+
+    // --- Gizmo ---
+    virtual bool IsGizmoHovered() = 0;
+    _Success_(return)
+    virtual bool DrawTransformGizmo(const DirectX::XMFLOAT4X4& view, const DirectX::XMFLOAT4X4& proj, UI::EGizmoOperation op, UI::EGizmoMode mode, _Inout_ DirectX::XMFLOAT4X4& world, _Out_ DirectX::XMFLOAT3& translation, _Out_ DirectX::XMFLOAT3& rotation, _Out_ DirectX::XMFLOAT3& scale, float gizmoSize = 0.1f) = 0;
 
 protected:
     virtual bool InputInternal(const char* label, UI::UI_DataType type, void* pValue) = 0;

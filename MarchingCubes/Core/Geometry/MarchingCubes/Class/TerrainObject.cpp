@@ -9,10 +9,11 @@
 #include "Core/Assets/ResourceManager.h"
 #include "Core/Rendering/UploadContext.h"
 #include "Core/Assets/Material/MaterialAsset.h"
+#include "Core/Scene/Component/BillboardComponent.h"
 #include <format>
 
 BEGIN_REFLECTION(TerrainObject, SceneObject)
-	REFLECT_PROPERTY(m_dataPath, EPropertyType::String)
+	REFLECT_PROPERTY(m_dataPath, EPropertyType::String, "Data")
 END_REFLECTION()
 
 void TerrainObject::Init()
@@ -28,7 +29,11 @@ void TerrainObject::Init()
 	cubeMeshComp->SetMeshByPath("@WireCube");
 	m_entireBoundingCube->SetActive(false);
 #endif // _DEBUG
-
+	auto billboard = GetComponent<BillboardComponent>();
+	if(!billboard)  billboard = GetOwner()->AddComponent<BillboardComponent>(EObjectFlags::Transient | EObjectFlags::EditorOnly);
+	
+	auto icon = EngineCore::GetResourceManager()->LoadTextureAsset("Icons/Landscape_64.png");
+	billboard->SetIcon(icon, 10);
 }
 
 void TerrainObject::Destroy()
