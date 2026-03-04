@@ -49,6 +49,7 @@ public:
 	void SetWorldRotation(const DirectX::XMFLOAT3& worldRot);
 	void SetWorldRotation(const DirectX::XMVECTOR& worldQuat);
 	DirectX::XMFLOAT3 GetWorldScale() const;
+	void SetWorldScale(const DirectX::XMFLOAT3& worldScale);
 
 	// Local Space
 	DirectX::XMMATRIX GetLocalMatrix() const;

@@ -67,14 +67,13 @@ void MeshComponent::Submit()
     const auto& submeshes = mesh->GetSubmeshes();
     if (auto uploadContext = EngineCore::GetUploadContext())
     {
-        XMFLOAT4X4 worldMat = GetOwner<SceneObject>()->GetWorldTransform();
+        XMMATRIX worldMatrix = m_transformCache->GetWorldMatrix();
         m_objectCBList.resize(submeshes.size());
         for (size_t i = 0; i < submeshes.size(); ++i)
         {
             ObjectConstants objConsts{};
             objConsts.materialIndex = materialIndices[submeshes[i].materialslot];
             // row-major -> column-major 변환
-            XMMATRIX worldMatrix = XMLoadFloat4x4(&worldMat);
             XMStoreFloat4x4(&objConsts.worldMatrix, XMMatrixTranspose(worldMatrix));
             XMStoreFloat4x4(&objConsts.worldInvMatrix, XMMatrixInverse(nullptr, worldMatrix));
 
@@ -84,7 +83,6 @@ void MeshComponent::Submit()
 
     GeometryBuffer* gpuBuffer = mesh->GetGPUBuffer();
     D3D12_PRIMITIVE_TOPOLOGY topology = mesh->GetTopology(); // PSO가 Topology를 사용하고 있어야 함
-    XMFLOAT4X4 worldMat = GetOwner<SceneObject>()->GetWorldTransform();
     for (size_t i = 0; i < submeshes.size(); ++i)
     {
         const auto& subMesh = submeshes[i];

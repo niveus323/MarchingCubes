@@ -321,10 +321,16 @@ public:
     virtual void EndMenu() = 0;
     virtual bool MenuItem(const char* id, const char* shortcutKey = NULL, bool bSelected = false) = 0;
 
-    virtual void BeginDisabled(bool disabled = true) = 0; // NOTE : ScopedDisable 사용
-    virtual void EndDisabled() = 0;
+    // --- Popup ---
+    virtual void OpenPopup(const char* id) = 0;
+    virtual bool BeginPopup(const char* id) = 0;
+    virtual void EndPopup() = 0;
+    virtual void CloseCurrentPopup() = 0;
+    virtual bool BeginPopupContextItem() = 0;
 
     // --- 기본 컨트롤 ---
+    virtual void BeginDisabled(bool disabled = true) = 0;
+    virtual void EndDisabled() = 0;
     virtual void Label(const char* text) = 0;
     virtual bool Button(const char* label, const UI::Vector<float, 2>& size = { 0,0 }) = 0;
     virtual bool Checkbox(const char* label, bool* v) = 0;
@@ -333,7 +339,8 @@ public:
     virtual void TextFormatted(const char* fmt, ...) = 0;
     virtual void TextColored(const UI::Color& color, const char* fmt, ...) = 0;
     virtual void Image(void* textureHandle, const UI::Vector<float, 2>& size) = 0;
-    
+    virtual bool Selectable(const char* label) = 0;
+
     // --- 입력 컨트롤 ---
     template<typename T>
     bool Input(const char* label, T* v)
@@ -391,6 +398,7 @@ public:
     virtual bool IsWindowFocused() = 0;
     virtual bool IsWindowHovered() = 0;
     virtual bool IsKeyPressed_F12() = 0;
+    virtual bool IsKeyPressed_Delete() = 0;
     virtual void SetKeyboardFocus() = 0;
     virtual bool IsMouseClicked(int button) = 0;
     virtual bool IsMouseReleased(int button) = 0;

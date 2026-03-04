@@ -38,10 +38,8 @@ void MaterialRegistry::SyncGpu(ID3D12GraphicsCommandList* cmd)
 
 	if (m_materialBuffer != nullptr)
 	{
-		BufferHandle oldBuf{
-			.res = m_materialBuffer.Detach()
-		};
-		uploadContext->FreeBufferHandle(oldBuf);
+		m_pendingKills.push_back(m_materialBuffer);
+		m_materialBuffer = nullptr;
 	}
 
 	const UINT64 byteSize = static_cast<UINT64>(constants.size()) * sizeof(MaterialConstants);
@@ -54,8 +52,15 @@ void MaterialRegistry::SyncGpu(ID3D12GraphicsCommandList* cmd)
 	auto barrier = CD3DX12_RESOURCE_BARRIER::Transition(m_materialBuffer.Get(), D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE | D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
 	cmd->ResourceBarrier(1, &barrier);
 	DescriptorAllocator::CreateSRV_Structured(device, m_materialBuffer.Get(), static_cast<uint32_t>(sizeof(MaterialConstants)), descriptorAllocator->GetStaticCpu(m_descriptorSlot));
-
+	
 	m_bDirty = false;
+	
+	// 삭제 대기 큐가 일정 이상 쌓이면 FIFO로 Release
+	if (m_pendingKills.size() > 2)
+	{
+		m_pendingKills.erase(m_pendingKills.begin());
+	}
+
 }
 
 void MaterialRegistry::BindDescriptorTable(ID3D12GraphicsCommandList* cmd) const

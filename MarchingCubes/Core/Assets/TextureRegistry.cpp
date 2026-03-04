@@ -107,7 +107,7 @@ RegistryIndex TextureRegistry::LoadTexture(const std::shared_ptr<TextureAsset>& 
 		.debugName = texAsset->GetSourcePath().string()
 	});
 
-	m_pathCache.insert_or_assign(key, static_cast<RegistryIndex>(m_textures.size())); // NOTE: Lazy-Upload 시 실패하는 케이스 존재 시, 실제 업로드 타이밍에 캐시 등록하도록 처리하고 중복 예약을 회피할 것
+	m_pathCache.insert_or_assign(key, newHandle); // NOTE: Lazy-Upload 시 실패하는 케이스 존재 시, 실제 업로드 타이밍에 캐시 등록하도록 처리하고 중복 예약을 회피할 것
 
 	m_textures[newHandle] = TextureResource{
 		.path = texAsset->GetSourcePath().string(),

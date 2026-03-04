@@ -13,28 +13,18 @@
 #include "Core/UI/Builder/UIBuilder.h"
 #include <typeindex>
 
-Scene::Scene()
-{
-    m_lightCache.clear();
-}
-
-Scene::~Scene()
-{
-}
-
 void Scene::Init()
 {
+    if (!m_gameMode) m_gameMode = CreateObject<GameMode>("GameMode");
+    m_lightCache.clear();
 }
 
 void Scene::InitUI(IUIRenderer* ui)
 {
     if (!m_bPlaying)
     {
-        auto uiToken_Controller = ui->AddFrameRenderCallbackToken( [this](IUIBuilder* builder) {
-                if (auto editorPC = dynamic_cast<EditorController*>(this->m_currentController))
-                {
-                    editorPC->RenderUI(builder);
-                }
+        auto uiToken_Controller = ui->AddFrameRenderCallbackToken( [&controller = m_editorController](IUIBuilder* builder) {
+                if(controller) controller->RenderUI(builder);
             },
             UI::UICallbackOptions{
                 .layer = UI::EUILayer::Editor_Panel, 
@@ -49,40 +39,50 @@ void Scene::InitUI(IUIRenderer* ui)
 void Scene::BeginPlay()
 {
     m_bPlaying = true;
-    // 디폴트로 GameMode 생성
-    m_gameMode = CreateObject<GameMode>("GameMode");
-    m_currentController = m_gameMode->GetController<PlayerController>();
-
-    // 게임용 메인 카메라 찾기
-    if (!m_mainCamera)
+    for (auto& obj : m_objects)
     {
-        // 찾기 편하기 위해 CameraObject를 만드는게 나을 것 같다.
-        // Component로 찾으려고 하면 Object 전체 순회 + Component 순회가 발생.
+        obj->BeginPlay();
     }
 }
 
 void Scene::BeginEditor()
 {
-    auto editorPC = CreateObject<EditorController>("EditorController", EObjectFlags::EditorOnly);
+    m_editorController = CreateObject<EditorController>("EditorController", EObjectFlags::EditorOnly);
     auto spectator = CreateObject<SpectatorPawn>("SpectatorPawn", EObjectFlags::EditorOnly);
-    editorPC->Possess(spectator);
+    m_editorController->Possess(spectator);
     SetMainCamera(spectator->GetComponent<CameraComponent>());
-    m_currentController = editorPC;
-    Pawn* pawn = m_currentController->GetPawn();
-    pawn->SetPosition({ 0.0f, 0.0f, -120.0f });
+    Pawn* pawn = m_editorController->GetPawn();
+    pawn->SetPosition({ 0.0f, 0.0f, -120.0f }); //TODO : 에디터 설정으로 변경
 }
 
 void Scene::EndPlay()
 {
-    // TODO : GameMode, PlayerController 제거 및 동적 생성된 게임 용 오브젝트 제거
     m_bPlaying = false;
+
+    for (auto& obj : m_objects)
+    {
+        obj->EndPlay();
+    }
+    // GameMode, PlayerController 제거 및 동적 생성된 게임 용 오브젝트 제거
+    if (m_gameMode)
+    {
+        if (auto pc = m_gameMode->GetController())
+        {
+            if (auto pawn = pc->GetPawn()) pawn->MarkForDestroy();
+            pc->MarkForDestroy();
+        }
+    }
 }
 
 void Scene::EndEditor()
 {
-    // TODO : EditorController, SpectatorPawn, Gizmo 등 에디터 용 오브젝트 제거
-
-    //m_editorMeshes.clear();
+    // EditorController, SpectatorPawn, Gizmo 등 에디터 용 오브젝트 제거
+    if (m_editorController)
+    {
+        if (auto pawn = m_editorController->GetPawn()) pawn->MarkForDestroy();
+        m_editorController->MarkForDestroy();
+        m_editorController = nullptr;
+    }
 }
 
 void Scene::OnExit(IUIRenderer* ui)
@@ -125,8 +125,29 @@ void Scene::Update(float deltaTime)
 
     for (auto& obj : m_objects)
     {
+        if (obj->IsPendingDestroy()) continue;
         obj->Update(deltaTime);
     }
+
+    std::erase_if(m_objects, [this](const std::shared_ptr<GameObject>& obj) {
+        if (obj->IsPendingDestroy())
+        {
+            // 부모에 대한 참조 제거
+            if (auto parent = obj->GetOwner())
+            {
+                if (!parent->IsPendingDestroy()) parent->RemoveChild(obj);
+            }
+
+            obj->Destroy();
+            m_uuidMap.erase(obj->GetUUID());
+            if (m_editorController && m_editorController->GetSelectedObject() == obj.get())
+            {
+                m_editorController->SelectObject(nullptr);
+            }
+            return true;
+        }
+        return false;
+    });
 }
 
 void Scene::Render()
@@ -237,6 +258,10 @@ void Scene::Serialize(Serializer& ar)
 
             ar.EndObject();
         }
+
+        // GameMode 로드 실패 시 디폴트 GameMode 생성
+        m_gameMode = FindObject<GameMode>();
+        if (!m_gameMode) m_gameMode = CreateObject<GameMode>("GameMode");
     }
     ar.EndArray();
 
@@ -257,33 +282,16 @@ GameObject* Scene::FindObject(uint64_t uuid)
     return nullptr;
 }
 
-CameraConstants Scene::GetCameraConstants()
+std::string Scene::MakeUniqueName(const std::string& name)
 {
-    return GetMainCamera()->GetCameraConstants();
-}
-
-LightBlobView Scene::GetLightBlob()
-{
-    uint32_t lightCount = (uint32_t)m_lightCache.size();
-    size_t headerSize = sizeof(LightConstantsHeader);
-    size_t dataSize = sizeof(Light) * lightCount;
-    size_t totalBytes = headerSize + dataSize;
-
-    if (m_lightUploadBuffer.size() < totalBytes) m_lightUploadBuffer.resize(totalBytes);
-
-    LightConstantsHeader header{ .lightCounts = lightCount };
-    memcpy(m_lightUploadBuffer.data(), &header, headerSize);
-
-    Light* lightDataPtr = reinterpret_cast<Light*>(m_lightUploadBuffer.data() + headerSize);
-    for (size_t i = 0; i < lightCount; ++i)
+    uint32_t& count = m_nameCounters[name];
+    std::string candidateName = std::string(name);
+    while (m_activeNames.find(candidateName) != m_activeNames.end())
     {
-        lightDataPtr[i] = m_lightCache[i]->GetLightInfo();
+        candidateName = name + std::to_string(count);
+        count++;
     }
-
-    return LightBlobView{
-        .data = m_lightUploadBuffer.data(),
-        .size = (uint32_t)totalBytes
-    };
+    return candidateName;
 }
 
 ISceneSubsystem* Scene::AddSubsystemByName(const std::string& className)
@@ -321,6 +329,33 @@ void Scene::RemoveSubsystem(std::type_index typeIndex)
     }
 }
 
+CameraConstants Scene::GetCameraConstants()
+{
+    return GetMainCamera()->GetCameraConstants();
+}
+
+LightBlobView Scene::GetLightBlob()
+{
+    uint32_t lightCount = (uint32_t)m_lightCache.size();
+    size_t headerSize = sizeof(LightConstantsHeader);
+    size_t dataSize = sizeof(Light) * lightCount;
+    size_t totalBytes = headerSize + dataSize;
+
+    if (m_lightUploadBuffer.size() < totalBytes) m_lightUploadBuffer.resize(totalBytes);
+
+    LightConstantsHeader header{ .lightCounts = lightCount };
+    memcpy(m_lightUploadBuffer.data(), &header, headerSize);
+
+    Light* lightDataPtr = reinterpret_cast<Light*>(m_lightUploadBuffer.data() + headerSize);
+    for (size_t i = 0; i < lightCount; ++i) 
+        lightDataPtr[i] = m_lightCache[i]->GetLightInfo();
+
+    return LightBlobView{
+        .data = m_lightUploadBuffer.data(),
+        .size = (uint32_t)totalBytes
+    };
+}
+
 void Scene::SetMainCamera(CameraComponent* cameraComp)
 {
     m_mainCamera = cameraComp;
@@ -328,4 +363,10 @@ void Scene::SetMainCamera(CameraComponent* cameraComp)
     {
         m_mainCamera->SetViewport(m_viewportWidth, m_viewportHeight);
     }
+}
+
+Controller* Scene::GetPlayerController(int playerIndex) const
+{
+    if (!m_gameMode) return nullptr;
+    return m_gameMode->GetController(playerIndex);
 }

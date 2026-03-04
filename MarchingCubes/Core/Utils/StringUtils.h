@@ -4,16 +4,19 @@
 
 namespace StringUtils
 {
+    // Reflection으로 등록된 class/struct의 타입 명에 대해 순수 이름만 리턴
     inline std::string GetCleanClassName(const char* rawName)
     {
         std::string name = rawName;
         size_t pos = name.find("class ");
-        if (pos != std::string::npos) {
+        if (pos != std::string::npos) 
+        {
             return name.substr(pos + 6);
         }
 
         pos = name.find("struct ");
-        if (pos != std::string::npos) {
+        if (pos != std::string::npos) 
+        {
             return name.substr(pos + 7);
         }
 

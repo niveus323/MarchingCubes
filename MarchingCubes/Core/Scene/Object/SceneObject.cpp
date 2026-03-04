@@ -11,8 +11,6 @@ void SceneObject::Init()
     GameObject::Init();
     m_transformComp = AddComponent<TransformComponent>();
 
-    auto billboard = AddComponent<BillboardComponent>(EObjectFlags::Transient | EObjectFlags::EditorOnly);
-    // 아이콘 세팅
-    auto iconMat = EngineCore::GetResourceManager()->LoadMaterialAsset(GetFullPath(AssetType::Default, L"Material/EditorBillboard.json"));
-    billboard->SetMaterial(iconMat);
+    // 에디터 뷰포트용 BillboardComponent 추가
+    AddComponent<BillboardComponent>(EObjectFlags::Transient | EObjectFlags::EditorOnly);
 }

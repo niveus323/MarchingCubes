@@ -1,7 +1,6 @@
 #pragma once
 #include "App/Common/DXAppBase.h"
 #include "Core/Rendering/RenderSystem.h"
-#include "Contents/Scene/Terraform/Scene_Terraform.h"
 #include "App/Editor/Panel/SceneHierarchyPanel.h"
 #include "App/Editor/Panel/InspectorPanel.h"
 #include "../Panel/ViewportPanel.h"
@@ -27,7 +26,7 @@ protected:
 	virtual void UpdateInputCaptureState() override;
 
 	virtual void CreateInputElements() override;
-	virtual std::shared_ptr<Scene> CreateDefaultScene() override { return std::make_shared<Scene_Terraform>(); }
+	virtual std::shared_ptr<Scene> CreateDefaultScene() override; // TODO : Scene 클래스 단일화 후 제거
 	virtual std::vector<std::wstring> GetPSOFiles() const override { return { L"EditorCommon.json" }; }
 
 	// Debug View Mode
@@ -38,8 +37,6 @@ protected:
 
 private:
 	void RenderFpsUI(IUIBuilder* ui);
-	void RenderHierarchyUI(IUIBuilder* ui);
-	void RenderInspectorUI(IUIBuilder* ui);
 	void RenderProfilingUI(IUIBuilder* ui);
 	void RenderMainMenuBarUI(IUIBuilder* ui);
 	void RenderSubsystemManagerUI(IUIBuilder* ui);

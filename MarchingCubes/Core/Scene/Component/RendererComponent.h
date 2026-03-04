@@ -1,7 +1,7 @@
 #pragma once
-#include "Core/Scene/Component/Component.h"
+#include "TransformableComponent.h"
 
-class RendererComponent : public Component
+class RendererComponent : public TransformableComponent
 {
 	REFLECT_GENERATED_BODY(RendererComponent)
 public:

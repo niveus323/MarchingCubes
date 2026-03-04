@@ -14,6 +14,7 @@ struct PSInput
     float3 WorldTangent : TEXCOORD3;
     float TangentSign : TEXCOORD4;
     float4 Color : COLOR0;
+    float3 LocalPos : TEXCOORD5;
 };
 
 // Pixel Shader: output interpolated color
@@ -25,7 +26,7 @@ float4 PSMain(PSInput input) : SV_TARGET
         return float4(1.0f, 0.0f, 0.0f, 1.0f); // Error Color
     }
     
-    EvaluatedMaterial mat = EvaluateMaterial(gMaterials[gMaterialIndex], input.TexCoord, input.WorldPos, input.WorldNormal, input.WorldTangent, input.TangentSign);
+    EvaluatedMaterial mat = EvaluateMaterial(gMaterials[gMaterialIndex], input.TexCoord, input.LocalPos, input.WorldNormal, input.WorldTangent, input.TangentSign);
      // ≈ı∏Ìµµ CutOut
     if (mat.opacity < ALPHA_CUT_OFF) discard;
     

@@ -85,7 +85,7 @@ PSOList::PSOList(const BuildContext& ctx, const std::vector<PSOSpec>& specs, con
 			ComPtr<ID3D12PipelineState> pso;
 			ThrowIfFailed(ctx.device->CreateGraphicsPipelineState(&psoDesc, IID_PPV_ARGS(pso.ReleaseAndGetAddressOf())));
 
-			m_psoLookUp[spec.id] = m_pipelineStates.size();
+			m_psoLookUp[spec.id] = static_cast<uint16_t>(m_pipelineStates.size());
 			m_psoToRSIndex.push_back(rsIndex);
 			m_pipelineStates.push_back(std::move(pso));
 		}
@@ -194,7 +194,7 @@ void PSOList::CreateRootSignature(ID3D12Device* device, const std::vector<RootSi
 		// Static Sampler 등록 ( 런타임에 바꿔야할 샘플러가 필요할 경우 Descriptor Table에 포함할 것.)
 		CD3DX12_STATIC_SAMPLER_DESC samplerDescs = CD3DX12_STATIC_SAMPLER_DESC(0, D3D12_FILTER_MIN_MAG_MIP_LINEAR); // s0
 		CD3DX12_VERSIONED_ROOT_SIGNATURE_DESC rootSignatureDesc{};
-		rootSignatureDesc.Init_1_1(rootParams.size(), rootParams.data(), 1, &samplerDescs, D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT);
+		rootSignatureDesc.Init_1_1(static_cast<UINT>(rootParams.size()), rootParams.data(), 1, &samplerDescs, D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT);
 
 		ComPtr<ID3DBlob> signatureBlob;
 		ThrowIfFailed(D3DX12SerializeVersionedRootSignature(&rootSignatureDesc, D3D_ROOT_SIGNATURE_VERSION_1_1, &signatureBlob, nullptr));
@@ -203,7 +203,7 @@ void PSOList::CreateRootSignature(ID3D12Device* device, const std::vector<RootSi
 		ThrowIfFailed(device->CreateRootSignature(0, signatureBlob->GetBufferPointer(), signatureBlob->GetBufferSize(), IID_PPV_ARGS(rootSignature.ReleaseAndGetAddressOf())));
 		NAME_D3D12_OBJECT_ALIAS(rootSignature, std::wstring(spec.id.begin(), spec.id.end()).c_str());
 
-		m_rsLookUp[spec.id] = m_rootSignatures.size();
+		m_rsLookUp[spec.id] = static_cast<uint16_t>(m_rootSignatures.size());
 		m_rootSignatures.push_back(std::move(rootSignature));
 	}
 }

@@ -3,8 +3,19 @@
 #include "Core/Scene/Scene.h"
 
 BEGIN_REFLECTION(GameObject, Entity)
-    REFLECT_PROPERTY(m_bActive, EPropertyType::Bool)
+    REFLECT_PROPERTY(m_bActive, EPropertyType::Bool, "Active")
 END_REFLECTION()
+
+void GameObject::Destroy()
+{
+    for (auto& comp : m_components) 
+        comp->Destroy();
+    for (auto& child : m_children) 
+        child->Destroy();
+
+    m_components.clear();
+    m_children.clear();
+}
 
 void GameObject::Serialize(Serializer& ar)
 {
@@ -129,6 +140,43 @@ void GameObject::Serialize(Serializer& ar)
         }
     }
     ar.EndArray();
+}
+
+void GameObject::MarkForDestroy()
+{
+    AddFlags(EObjectFlags::PendingKill);
+    for (auto& child : m_children)
+    {
+        child->MarkForDestroy();
+    }
+}
+
+Component* GameObject::AddComponent(TypeDescriptor* typeDesc, EObjectFlags flags)
+{
+    if (!typeDesc) return nullptr;
+
+    // Dependency Injection (Reflection에 등록된 종속 컴포넌트들을 체크하여 함께 생성 및 주입)
+    for (TypeDescriptor* reqType : typeDesc->GetRequiredComponents())
+    {
+        bool bHasRequired = false;
+        for (auto& existing : m_components)
+        {
+            if (existing->GetType() == reqType || existing->GetType()->IsDerivedFrom(reqType->GetName()))
+            {
+                bHasRequired = true;
+                break;
+            }
+        }
+
+        // 없다면 재귀적으로 먼저 추가
+        if (!bHasRequired) AddComponent(reqType, flags);
+    }
+
+    if (Component* newComp = static_cast<Component*>(typeDesc->CreateInstance()))
+    {
+        return InternalAddComponent(std::shared_ptr<Component>(newComp), flags);
+    }
+    return nullptr;
 }
 
 void GameObject::AddChild(std::shared_ptr<GameObject> child)

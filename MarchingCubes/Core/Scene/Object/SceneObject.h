@@ -14,14 +14,10 @@ class Scene;
 *	- TransformComponent : TransformComponent를 캐싱하여 관리
 *	- Scene : 해당 오브젝트를 소유중인 Scene 참조
 */
-class SceneObject : public GameObject, public GameObjectBase<SceneObject>
+class SceneObject : public GameObject
 {
 	REFLECT_GENERATED_BODY(SceneObject)
-	friend class GameObjectBase<SceneObject>;
 public:
-	using GameObjectBase<SceneObject>::AddComponent;
-
-	virtual ~SceneObject() = default;
 	virtual void Init() override;
 	virtual void Update(float deltaTime) override
 	{
@@ -68,7 +64,7 @@ public:
 	DirectX::XMVECTOR GetRightVector() const			{ return m_transformComp->GetRightVec(); }
 	DirectX::XMVECTOR GetUpVector() const				{ return m_transformComp->GetUpVec(); }
 	void SetTransform(const DirectX::XMFLOAT3& pos, const DirectX::XMFLOAT3& rot, const DirectX::XMFLOAT3& scale) { m_transformComp->SetTransform(pos, rot, scale); }
-
+	void SetTransform(const Transform& transform) { m_transformComp->SetTransform(transform.position, transform.rotation, transform.scale); }
 private:
 	TransformComponent* m_transformComp = nullptr;	
 

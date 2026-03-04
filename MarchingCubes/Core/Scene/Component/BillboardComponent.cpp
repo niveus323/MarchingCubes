@@ -14,7 +14,7 @@
 #include "Core/Scene/Scene.h"
 
 BEGIN_REFLECTION(BillboardComponent, RendererComponent)
-	REFLECT_PROPERTY(m_size, EPropertyType::Vector2)
+	REFLECT_PROPERTY(m_size, EPropertyType::Vector2, "Size")
 END_REFLECTION()
 
 void BillboardComponent::Init()
@@ -25,13 +25,22 @@ void BillboardComponent::Init()
 		auto registry = EngineCore::GetRenderSystem()->GetMeshRegistry();
 		m_quadMesh = registry->CreateStaticMesh(asset);
 	}
+	// 디폴트 아이콘 세팅
+	auto iconMat = EngineCore::GetResourceManager()->LoadMaterialAsset(GetFullPath(AssetType::Default, L"Material/EditorBillboard.json"));
+	SetMaterial(iconMat);
+}
+
+void BillboardComponent::Destroy()
+{
+	RendererComponent::Destroy();
 }
 
 void BillboardComponent::Submit()
 {
+	// GameObject를 통해 동적으로 추가된 Billboard는 Material이 nullptr이다.
 	if (!IsActive() || !m_iconMat.m_material || !m_quadMesh) return;
 
-	if (auto meshComp = GetOwner<SceneObject>()->GetComponent<MeshComponent>())
+	if (auto meshComp = GetOwner()->GetComponent<MeshComponent>())
 	{
 		// 유효한 메쉬가 있다면 빌보드는 렌더링하지 않음
 		Mesh* mesh = meshComp->GetMesh();
@@ -45,7 +54,7 @@ void BillboardComponent::Submit()
 	uint32_t materialGPUIndex = UINT32_MAX;
 	if (!m_iconMat.m_overrides.empty())
 	{
-		std::string matInstanceKey = std::format("MatInst_{}", this->GetUUID());
+		std::string matInstanceKey = std::format("MatInst_Billboard_{}", m_iconIdentifier);
 		if (m_iconMat.m_bDirty)
 		{
 			materialGPUIndex = renderSystem->GetMaterialRegistry()->RegisterMaterialInstance(m_iconMat, matInstanceKey);
@@ -106,12 +115,13 @@ void BillboardComponent::SetIcon(std::shared_ptr<TextureAsset> textureAsset, int
 
 	m_iconMat.SetParameter("DiffuseTexture", textureAsset);
 	m_priority = priority;
+	m_iconIdentifier = std::filesystem::path(textureAsset->GetSourcePath()).filename().string();
 }
 
 DirectX::BoundingBox BillboardComponent::GetBoundingBox() const
 {
 	DirectX::BoundingBox box;
-	if (auto transform = GetOwner<SceneObject>()->GetComponent<TransformComponent>())
+	if (auto transform = GetTransformComp())
 	{
 		DirectX::XMFLOAT3 pos = { 0.0f, 0.0f, 0.0f };
 		DirectX::XMFLOAT3 extents = { m_size.x * 0.5f, m_size.y * 0.5f, 0.1f }; // NOTE : z값에 의해 피킹이 잘 이루어지지 않을 경우 수정
@@ -122,15 +132,14 @@ DirectX::BoundingBox BillboardComponent::GetBoundingBox() const
 
 DirectX::XMMATRIX BillboardComponent::GetWorldMatrix(CameraComponent* camera)
 {
-	XMMATRIX worldMat = GetOwner<SceneObject>()->GetWorldMatrix();
-
+	XMMATRIX worldMat = m_transformCache->GetWorldMatrix();
+	
 	XMVECTOR position, rotQuat, scale;
 	XMMatrixDecompose(&scale, &rotQuat, &position, worldMat);
 
-	XMVECTOR camPos = XMLoadFloat3(&camera->GetOwner<SceneObject>()->GetWorldPosition());
-	//float distance = XMVectorGetX(XMVector3Length(position - camPos));
+	auto cameraTransformComp = camera->GetTransformComp();
+	XMVECTOR camPos = XMLoadFloat3(&cameraTransformComp->GetWorldPosition());
 	float constantScreenSizeFactor = 5.0f;
-	//float finalIconScale = distance * constantScreenSizeFactor;
 	float finalIconScale = constantScreenSizeFactor;
 
 	XMMATRIX scaleMat = XMMatrixScaling(finalIconScale, finalIconScale, finalIconScale);

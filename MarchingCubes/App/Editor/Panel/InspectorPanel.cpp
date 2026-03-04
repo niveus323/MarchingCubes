@@ -61,13 +61,57 @@ void InspectorPanel::OnRenderUI(IUIBuilder* ui)
             }
             ui->Separator();
 
+            Component* componentToRemove = nullptr;
             for (auto* comp : m_target->GetComponents())
             {
                 // Flags 체크 (굳이 노출하지 않아도 될 디버깅 목적 등의 컴포넌트는 배제)
                 if (comp->HasAnyFlags(EObjectFlags::Invisible)) continue;
 
                 ui->PushID(comp);
-                if (ui->CollapsingHeader(comp->GetName().c_str(), true))
+                bool bOpen = ui->CollapsingHeader(comp->GetType()->GetName().c_str());
+                if (ui->BeginPopupContextItem())
+                {
+                    bool bCanDelete = true;
+                    std::string dependencyName = "";
+
+                    for (auto* otherComp : m_target->GetComponents())
+                    {
+                        if (otherComp == comp) continue;
+
+                        auto requiredTypes = otherComp->GetType()->GetRequiredComponents();
+                        for (auto* reqType : requiredTypes)
+                        {
+                            // 다른 컴포넌트가 현재 컴포넌트의 타입을 요구조건으로 가지고 있는지 확인
+                            if (comp->GetType() == reqType || comp->GetType()->IsDerivedFrom(reqType->GetName()))
+                            {
+                                bCanDelete = false;
+                                dependencyName = otherComp->GetType()->GetName();
+                                break;
+                            }
+                        }
+                        if (!bCanDelete) break;
+                    }
+
+                    if (bCanDelete)
+                    {
+                        if (ui->MenuItem("Remove Component"))
+                        {
+                            // 즉시 삭제하지 않고 예약
+                            componentToRemove = comp;
+                        }
+                    }
+                    else
+                    {
+                        // 삭제 불가 시 사유를 포함하여 비활성화 텍스트 출력
+                        ui->BeginDisabled(true);
+                        ui->Text(std::format("Cannot Remove (Required by {})", dependencyName));
+                        ui->EndDisabled();
+                    }
+
+                    ui->EndPopup();
+                }
+
+                if (bOpen)
                 {
                     if (ui->BeginTable("ComponentProps", 2))
                     {
@@ -75,16 +119,41 @@ void InspectorPanel::OnRenderUI(IUIBuilder* ui)
                         ui->EndTable();
                     }
                 }
-
                 ui->PopID();
             }
 
-            //ui->Separator();
-            // TODO : 컴포넌트 추가 팝업
-            //if (ui->Button("Add Component"))
-            //{
-            //    ImGui::OpenPopup("AddComponentPopup");
-            //}
+            if (componentToRemove)
+            {
+                m_target->UnregisterComponent(componentToRemove->GetUUID());
+            }
+
+            ui->Separator();
+            if (ui->Button("Add Component"))
+            {
+                ui->OpenPopup("AddComponentPopup");
+            }
+
+            if (ui->BeginPopup("AddComponentPopup"))
+            {
+                static std::string searchText = "";
+                ui->InputText("Search", searchText);
+                ui->Separator();
+
+                std::vector<TypeDescriptor*> componentTypes = ReflectionRegistry::Get().GetTypesDerivedFrom("Component");
+                for (TypeDescriptor* typeDesc : componentTypes)
+                {
+                    std::string typeName = typeDesc->GetName();
+                    if (typeName == "Component") continue;
+
+                    if (!searchText.empty() && typeName.find(searchText) == std::string::npos) continue;
+                    if (ui->Selectable(typeName.c_str()))
+                    {
+                        m_target->AddComponent(typeDesc);
+                        ui->CloseCurrentPopup();
+                    }
+                }
+                ui->EndPopup();
+            }
         }
         else
         {
@@ -161,6 +230,11 @@ void InspectorPanel::DrawSingleProperty(IUIBuilder* ui, void* instance, const Pr
             break;
         case EPropertyType::Float:
             HandleProperty<float>(instance, prop, [&](float* ptr) {
+                return ui->Property(name, ptr);
+            });
+            break;
+        case EPropertyType::Vector2:
+            HandleProperty<UI::Vector<float, 2>>(instance, prop, [&](auto* ptr) {
                 return ui->Property(name, ptr);
             });
             break;

@@ -20,14 +20,14 @@ SamplerState gLinearSampler : register(s0);
 // Texture
 static const uint INVALID_TEXTURE_INDEX = 0xFFFFFFFFu;
 
-float4 SampleTriplanar(Texture2D tex, SamplerState samp, float3 worldPos, float3 normal, float scale, float sharpness)
+float4 SampleTriplanar(Texture2D tex, SamplerState samp, float3 localPos, float3 normal, float scale, float sharpness)
 {
     float3 n = normalize(normal);
     float3 an = abs(n);
     
-    float2 uvX = worldPos.yz * scale;
-    float2 uvY = worldPos.xz * scale;
-    float2 uvZ = worldPos.xy * scale;
+    float2 uvX = localPos.yz * scale;
+    float2 uvY = localPos.xz * scale;
+    float2 uvZ = localPos.xy * scale;
     
     float4 xTex = tex.Sample(samp, uvX);
     float4 yTex = tex.Sample(samp, uvY);
@@ -40,14 +40,14 @@ float4 SampleTriplanar(Texture2D tex, SamplerState samp, float3 worldPos, float3
     return xTex * w.x + yTex * w.y + zTex * w.z;
 }
 
-float4 SampleFromSet(uint index, uint mappingType, float scale, float sharpness, float2 uv, float3 worldPos, float3 normal)
+float4 SampleFromSet(uint index, uint mappingType, float scale, float sharpness, float2 uv, float3 localPos, float3 normal)
 {
     if (index == INVALID_TEXTURE_INDEX)
         return 1.0.xxxx;
     
     if (mappingType == ETextureMappingType::TRIPLANAR)
     {
-        return SampleTriplanar(gMaterialTextures[index], gLinearSampler, worldPos, normal, scale, sharpness);
+        return SampleTriplanar(gMaterialTextures[index], gLinearSampler, localPos, normal, scale, sharpness);
     }
     else
     {

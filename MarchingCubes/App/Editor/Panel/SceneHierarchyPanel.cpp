@@ -13,18 +13,26 @@ void SceneHierarchyPanel::OnRenderUI(IUIBuilder* ui)
     {
         if (m_currentScene)
         {
-            // TODO : 오브젝트 추가 버튼 
-            //if(ui->Button("Add Object", { 100, 50 }))
-
             ui->SearchBar("Search objects...", m_filterText);
             ui->Separator();
 
+            if (ui->IsWindowFocused() && ui->IsKeyPressed_Delete())
+            {
+                if (m_selectedObject)
+                {
+                    m_selectedObject->MarkForDestroy();
+                    SetSelection(nullptr); // UI 즉시 초기화
+                }
+            }
+
             if (ui->BeginTable("HierarchyTable", 1))
             {
-                const auto& objects = m_currentScene->GetObjects();
-                for (const auto& obj : objects)
+                for (const auto& obj : m_currentScene->GetObjects())
                 {
+                    // 부모가 있는 오브젝트는 DrawNode 내부에서 UI에 노출하므로 continue
+                    if (obj->GetOwner() != nullptr) continue;
                     if (obj->HasAnyFlags(EObjectFlags::Invisible)) continue;
+
                     if (!m_filterText.empty())
                     {
                         if (!ContainsIgnoreCase(obj->GetName(), m_filterText)) continue;
@@ -56,7 +64,6 @@ void SceneHierarchyPanel::DrawNode(IUIBuilder* ui, GameObject* node, const std::
     // Flag 체크 (굳이 Panel에 보여줄 필요 없는 디버깅 목적 등의 객체는 패스)
     if (node->HasAnyFlags(EObjectFlags::Invisible)) return;
     // 검색어가 있고 이름에 포함 안 되면 스킵
-    // (실제로는 자식이 포함되면 부모도 보여줘야 하므로 로직이 더 복잡할 수 있음)
     if (!filterText.empty() && !ContainsIgnoreCase(node->GetName(), filterText)) return;
 
     ui->PushID(node);
@@ -82,13 +89,23 @@ void SceneHierarchyPanel::DrawNode(IUIBuilder* ui, GameObject* node, const std::
     }
     else
     {
-        bool isLeaf = node->GetChildren().empty(); // && node->GetComponents().empty()
+        bool isLeaf = node->GetChildren().empty();
         bool isSelected = (m_selectedObject == node);
         bool opened = ui->BeginTreeNode(node->GetName().c_str(), isLeaf, isSelected);
 
         if (ui->IsItemClicked())
         {
             SetSelection(node);
+        }
+
+        if (ui->BeginPopupContextItem())
+        {
+            if (ui->MenuItem("Delete Object"))
+            {
+                node->MarkForDestroy();
+                if (m_selectedObject == node) SetSelection(nullptr);
+            }
+            ui->EndPopup();
         }
 
         if (isSelected && ui->IsWindowFocused() && ui->IsKeyPressed_F12())

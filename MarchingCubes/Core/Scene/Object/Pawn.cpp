@@ -1,8 +1,37 @@
 #include "pch.h"
 #include "Pawn.h"
+#include "Core/Scene/Scene.h"
+#include "Core/Scene/Object/GameMode/GameMode.h"
+#include "Core/Scene/Object/Controller/PlayerController.h"
+
+BEGIN_ENUM_REFLECTION(EAutoPossessTarget)
+    REFLECT_ENUM(EAutoPossessTarget::Disabled)
+    REFLECT_ENUM(EAutoPossessTarget::Player0)
+    REFLECT_ENUM(EAutoPossessTarget::Player1)
+    REFLECT_ENUM(EAutoPossessTarget::Player2)
+    REFLECT_ENUM(EAutoPossessTarget::Player3)
+END_ENUM_REFLECTION(EAutoPossessTarget)
 
 BEGIN_REFLECTION(Pawn, SceneObject)
+    REFLECT_PROPERTY_ENUM(m_autoPossess, EAutoPossessTarget, "AutoPossess")
 END_REFLECTION()
+
+void Pawn::BeginPlay()
+{
+    SceneObject::BeginPlay();
+    if (m_autoPossess != EAutoPossessTarget::Disabled)
+    {
+        auto scene = GetScene();
+        assert(scene);
+        if (GameMode* gm = scene->GetGameMode())
+        {
+            if (Controller* pc = gm->GetController(static_cast<int>(m_autoPossess)))
+            {
+                pc->Possess(this);
+            }
+        }
+    }
+}
 
 void Pawn::AddMovementInput(DirectX::XMVECTOR dir, float scale)
 {

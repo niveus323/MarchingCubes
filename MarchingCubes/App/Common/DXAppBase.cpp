@@ -465,11 +465,11 @@ void DXAppBase::InitPipeline()
 
 void DXAppBase::InitializeScene()
 {
-	// TODO : Scene 초기화에 Resource 초기화가 섞여 있음 -> 좋은 분리 방법 고민 중.
 	ThrowIfFailed(m_commandAllocators[0]->Reset());
 	ThrowIfFailed(m_commandList->Reset(m_commandAllocators[0].Get(), nullptr));
 	OnBuildInitialScene(m_commandList.Get());
-	LoadScene(std::move(CreateDefaultScene()));
+	// TODO : Scene 클래스 단일화 후 CreateDefaultScene 제거 및 기본 로드할 Scene 파일 적용
+	LoadScene(std::move(CreateDefaultScene())); 
 
 	// Close CommandList
 	ThrowIfFailed(m_commandList->Close());

@@ -13,6 +13,7 @@ class BillboardComponent :public RendererComponent
 	REFLECT_GENERATED_BODY(BillboardComponent)
 public:
 	virtual void Init() override;
+	virtual void Destroy() override;
 	virtual void Submit() override;
 	virtual void Serialize(Serializer& ar) override;
 
@@ -29,6 +30,7 @@ private:
 
 	// 사용할 이미지 등 정보가 담기 MaterialInstance
 	MaterialInstance m_iconMat;
+	std::string m_iconIdentifier = "Default";
 	DirectX::XMFLOAT2 m_size = { 1.0f, 1.0f };
 	BufferHandle m_objectCB{};
 

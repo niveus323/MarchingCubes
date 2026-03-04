@@ -13,7 +13,7 @@ public:
 	virtual void EndTable() override;
 	virtual bool CollapsingHeader(const char* label, bool defaultOpen = true) override;
 
-	// -- Tab ---
+	// --- Tab ---
 	virtual bool BeginTabBar(const char* id) override;
 	virtual void EndTabBar() override;
 	virtual bool BeginTabItem(const char* id, bool* pOpen = nullptr) override;
@@ -28,10 +28,16 @@ public:
 	virtual void EndMenu() override;
 	virtual bool MenuItem(const char* id, const char* shortcutKey = NULL, bool bSelected = false) override;
 
-	virtual void BeginDisabled(bool disabled = true) override;
-	virtual void EndDisabled() override;
+	// --- Popup ---
+	virtual void OpenPopup(const char* id) override;
+	virtual bool BeginPopup(const char* id) override;
+	virtual void EndPopup() override;
+	virtual void CloseCurrentPopup() override;
+	virtual bool BeginPopupContextItem() override;
 
 	// --- 기본 컨트롤 ---
+	virtual void BeginDisabled(bool disabled = true) override;
+	virtual void EndDisabled() override;
 	virtual void Label(const char* text) override;
 	virtual bool Button(const char* label, const UI::Vector<float, 2>& size) override;
 	virtual bool Checkbox(const char* label, bool* v) override;
@@ -40,6 +46,7 @@ public:
 	virtual void TextFormatted(const char* fmt, ...) override;
 	virtual void TextColored(const UI::Color& color, const char* fmt, ...) override;
 	virtual void Image(void* textureHandle, const UI::Vector<float, 2>& size) override;
+	virtual bool Selectable(const char* label) override;
 
 	// --- 입력 컨트롤 ---
 	virtual bool InputText(const char* label, std::string& text);
@@ -80,6 +87,7 @@ public:
 	virtual bool IsWindowFocused() override;
 	virtual bool IsWindowHovered() override;
 	virtual bool IsKeyPressed_F12() override;
+	virtual bool IsKeyPressed_Delete() override;
 	virtual void SetKeyboardFocus() override;
 	virtual bool IsMouseClicked(int button) override;
 	virtual bool IsMouseReleased(int button) override;

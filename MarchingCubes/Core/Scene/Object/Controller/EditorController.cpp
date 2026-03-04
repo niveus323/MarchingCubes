@@ -12,8 +12,8 @@
 #include "Core/Math/PhysicsHelper.h"
 
 BEGIN_REFLECTION(EditorController, Controller)
-    REFLECT_PROPERTY(m_cameraSpeed, EPropertyType::Float)
-    REFLECT_PROPERTY(m_mouseSensitivity, EPropertyType::Float)
+    REFLECT_PROPERTY(m_cameraSpeed, EPropertyType::Float, "CamSpeed")
+    REFLECT_PROPERTY(m_mouseSensitivity, EPropertyType::Float, "Sensitivity")
 END_REFLECTION()
 
 void EditorController::Update(float deltaTime)
@@ -60,16 +60,15 @@ void EditorController::RenderGizmoUI(IUIBuilder* ui)
     if (!scene || !m_selectedObject) return;
 
     auto camera = scene->GetMainCamera();
-    auto sceneObj = dynamic_cast<SceneObject*>(m_selectedObject);
-    if (!camera || !sceneObj) return;
+    if (!camera) return;
 
-    TransformComponent* transform = sceneObj->GetTransformComponent();
+    TransformComponent* transform = m_selectedObject->GetComponent<TransformComponent>();
     if (!transform) return;
 
     DirectX::XMFLOAT4X4 viewMat, projMat, worldMat;
     DirectX::XMStoreFloat4x4(&viewMat, camera->GetViewMatrix());
     DirectX::XMStoreFloat4x4(&projMat, camera->GetProjMatrix());
-    DirectX::XMStoreFloat4x4(&worldMat, sceneObj->GetWorldMatrix());
+    DirectX::XMStoreFloat4x4(&worldMat, transform->GetWorldMatrix());
 
     DirectX::XMFLOAT3 outPos = transform->GetWorldPosition();
     DirectX::XMFLOAT3 outRot = transform->GetWorldRotation();
@@ -88,9 +87,37 @@ void EditorController::RenderGizmoUI(IUIBuilder* ui)
     m_bIsGizmoHovered = ui->IsGizmoHovered();
     if (bManipulated)
     {
-        transform->SetWorldPosition(outPos);
-        transform->SetWorldRotation(outRot);
-        transform->SetScale(outScale);
+        switch (m_currentGizmoOperation)
+        {
+            case UI::EGizmoOperation::Translate:
+            {
+                if (m_currentGizmoMode == UI::EGizmoMode::World)
+                    transform->SetWorldPosition(outPos);
+                else
+                    transform->SetPosition(outPos);
+            }
+            break;
+            case UI::EGizmoOperation::Rotate:
+            {
+                if (m_currentGizmoMode == UI::EGizmoMode::World)
+                    transform->SetWorldRotation(outRot);
+                else
+                    transform->SetRotation(outRot);
+                
+            }
+            break;
+            case UI::EGizmoOperation::Scale:
+            {
+                if (m_currentGizmoMode == UI::EGizmoMode::World)
+                    transform->SetWorldScale(outScale);
+                else
+                    transform->SetScale(outScale);
+                
+            }
+            break;
+            default:
+            break;
+        }
     }
 }
 
@@ -100,7 +127,7 @@ void EditorController::ProcessInput(float deltaTime)
 
     auto input = EngineCore::GetInputState();
     bool bInputConsumed = false;
-    if (m_activeTool)
+    if (m_activeTool && !m_bIsGizmoHovered) // Gizmo 조작을 위해 Gizmo에 Hover하는 경우에는 Gizmo를 우선시한다
     {
         bInputConsumed = m_activeTool->ProcessInput(input, deltaTime);
     }

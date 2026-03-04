@@ -42,5 +42,6 @@ private:
     std::unordered_map<std::string, RegistryIndex> m_pathCache; // Path -> RegistryIndex Ä³½Ã
 
     ComPtr<ID3D12Resource> m_materialBuffer;
+    std::vector<ComPtr<ID3D12Resource>> m_pendingKills;
 };
 

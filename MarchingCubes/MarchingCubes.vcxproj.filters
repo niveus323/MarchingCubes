@@ -252,6 +252,9 @@
     <ClCompile Include="ThirdParty\ImGuizmo\ImGuizmo.cpp">
       <Filter>소스 파일</Filter>
     </ClCompile>
+    <ClCompile Include="Core\Scene\Component\TransformableComponent.cpp">
+      <Filter>소스 파일</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="pch.h">
@@ -531,6 +534,12 @@
       <Filter>헤더 파일</Filter>
     </ClInclude>
     <ClInclude Include="ThirdParty\ImGuizmo\ImZoomSlider.h">
+      <Filter>헤더 파일</Filter>
+    </ClInclude>
+    <ClInclude Include="Core\Math\MathHelper.h">
+      <Filter>헤더 파일</Filter>
+    </ClInclude>
+    <ClInclude Include="Core\Scene\Component\TransformableComponent.h">
       <Filter>헤더 파일</Filter>
     </ClInclude>
   </ItemGroup>

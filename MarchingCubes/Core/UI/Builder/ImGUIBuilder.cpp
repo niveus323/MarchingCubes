@@ -133,6 +133,31 @@ bool ImGUIBuilder::MenuItem(const char* id, const char* shortcutKey, bool bSelec
 	return ImGui::MenuItem(id, shortcutKey, bSelected);
 }
 
+void ImGUIBuilder::OpenPopup(const char* id)
+{
+	ImGui::OpenPopup(id);
+}
+
+bool ImGUIBuilder::BeginPopup(const char* id)
+{
+	return ImGui::BeginPopup(id);
+}
+
+void ImGUIBuilder::EndPopup()
+{
+	ImGui::EndPopup();
+}
+
+void ImGUIBuilder::CloseCurrentPopup()
+{
+	ImGui::CloseCurrentPopup();
+}
+
+bool ImGUIBuilder::BeginPopupContextItem()
+{
+	return ImGui::BeginPopupContextItem();
+}
+
 void ImGUIBuilder::BeginDisabled(bool disabled)
 {
 	ImGui::BeginDisabled(disabled);
@@ -188,6 +213,11 @@ void ImGUIBuilder::TextColored(const UI::Color& color, const char* fmt, ...)
 void ImGUIBuilder::Image(void* textureHandle, const UI::Vector<float, 2>& size)
 {
 	ImGui::Image((ImTextureID)textureHandle, ImVec2(size.x, size.y));
+}
+
+bool ImGUIBuilder::Selectable(const char* label)
+{
+	return ImGui::Selectable(label);
 }
 
 bool ImGUIBuilder::InputText(const char* label, std::string& text)
@@ -268,10 +298,9 @@ void ImGUIBuilder::PropertyText(const char* label, const char* value)
 
 bool ImGUIBuilder::PropertyInputText(const char* label, std::string& text)
 {
-	ImGui::TableNextRow();
-	ImGui::TableNextColumn();
+	std::string hiddenLabel = DrawPropertyLabel(label);
 	ImGui::SetNextItemWidth(-FLT_MIN);
-	return InputText(label, text);
+	return InputText(hiddenLabel.c_str(), text);
 }
 
 bool ImGUIBuilder::PropertyEnum(const char* label, int* currentValue, const std::vector<std::string>& names, const std::vector<int>& values)
@@ -391,6 +420,11 @@ bool ImGUIBuilder::IsWindowHovered()
 bool ImGUIBuilder::IsKeyPressed_F12()
 {
 	return ImGui::IsKeyPressed(ImGuiKey_F12);
+}
+
+bool ImGUIBuilder::IsKeyPressed_Delete()
+{
+	return ImGui::IsKeyPressed(ImGuiKey_Delete);
 }
 
 void ImGUIBuilder::SetKeyboardFocus()

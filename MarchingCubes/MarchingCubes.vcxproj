@@ -241,9 +241,11 @@
     <ClCompile Include="Core\Rendering\Memory\UploadRing.cpp" />
     <ClCompile Include="Core\Scene\Component\TransformComponent.cpp" />
     <ClCompile Include="App\Editor\Panel\ViewportPanel.cpp" />
+    <ClCompile Include="Core\Scene\Component\TransformableComponent.cpp" />
     <ClCompile Include="Win32Application.cpp" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="Core\Math\MathHelper.h" />
     <ClInclude Include="Core\Scene\Component\BillboardComponent.h" />
     <ClInclude Include="Core\Engine\Reflection.h" />
     <ClInclude Include="Core\Geometry\MarchingCubes\TerrainFieldGenerator.h" />
@@ -336,6 +338,7 @@
     <ClInclude Include="App\Editor\Panel\ViewportPanel.h" />
     <ClInclude Include="ThirdParty\ImGuizmo\ImGuizmo.h" />
     <ClInclude Include="ThirdParty\ImGuizmo\ImZoomSlider.h" />
+    <ClInclude Include="Core\Scene\Component\TransformableComponent.h" />
     <ClInclude Include="Win32Application.h" />
   </ItemGroup>
   <ItemGroup>

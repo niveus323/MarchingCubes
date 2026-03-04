@@ -148,11 +148,23 @@ public:
     void SetParent(TypeDescriptor* parent) { m_parent = parent; }
     const std::vector<Property>& GetProperties() const { return m_properties; }
     const std::string& GetName() const { return m_className; }
+    void AddRequiredComponent(TypeDescriptor* reqType) { m_requiredComponents.push_back(reqType); }
+    std::vector<TypeDescriptor*> GetRequiredComponents() const 
+    { 
+        std::vector<TypeDescriptor*> result = m_requiredComponents;
+        if (m_parent)
+        {
+            auto parentReqs = m_parent->GetRequiredComponents();
+            result.insert(result.end(), parentReqs.begin(), parentReqs.end());
+        }
+        return result;
+    }
 
 private:
     std::string m_className;
     TypeDescriptor* m_parent = nullptr;
     std::vector<Property> m_properties;
+    std::vector<TypeDescriptor*> m_requiredComponents;
     std::function<void*()> m_constructor;
 };
 
@@ -216,6 +228,7 @@ struct ClassRegisterar
 };
 
 // --- Reflection 매크로 ---
+//  -- Header 매크로 --
 // .h 클래스 내부에 GetStaticType, GetType 선언
 #define REFLECT_GENERATED_BODY(Class) \
 public: \
@@ -225,7 +238,8 @@ public: \
     friend struct ClassRegisterar<Class>; \
     Class() = default; 
 
-// Enum 클래스용
+//  -- Cpp 매크로 --
+// Enum 클래스 등록
 #define BEGIN_ENUM_REFLECTION(EnumName) \
     class EnumRegistrar_##EnumName { \
     public: \
@@ -263,17 +277,21 @@ public: \
         return &typeDesc; \
     }
 
+// 종속 컴포넌트 명시
+#define REFLECT_REQUIRE_COMPONENT(CompClass) \
+            typeDesc.AddRequiredComponent(CompClass::GetStaticType());
+
 // 프로퍼티 등록
-#define REFLECT_PROPERTY(Name, Type) \
-            typeDesc.AddProperty(#Name, Type, offsetof(ThisClass, Name));
+#define REFLECT_PROPERTY(Prop, Type, Name) \
+            typeDesc.AddProperty(Name, Type, offsetof(ThisClass, Prop));
 
 // 배열(std::vector) 프로퍼티 등록
-#define REFLECT_PROPERTY_ARRAY(Name, ElementType) \
-    typeDesc.AddPropertyVector<decltype(ThisClass::Name)>(#Name, ElementType, offsetof(ThisClass, Name), #Name);
+#define REFLECT_PROPERTY_ARRAY(Prop, ElementType, Name) \
+    typeDesc.AddPropertyVector<decltype(ThisClass::Name)>(Name, ElementType, offsetof(ThisClass, Prop), #Name);
 
 // Enum 프로퍼티 등록
-#define REFLECT_PROPERTY_ENUM(Name, EnumType) \
-    typeDesc.AddProperty(#Name, EPropertyType::Enum, offsetof(ThisClass, Name), #EnumType);
+#define REFLECT_PROPERTY_ENUM(Prop, EnumType, Name) \
+    typeDesc.AddProperty(Name, EPropertyType::Enum, offsetof(ThisClass, Prop), #EnumType);
 
 // Getter/Setter 등록
 #define REFLECT_PROPERTY_FN(Name, EnumType, CppType, GetterFunc, SetterFunc) \
@@ -299,13 +317,13 @@ public: \
     );
 
 // 조건부 일반 프로퍼티 (ConditionFunc가 true일 때만 표시)
-#define REFLECT_PROPERTY_IF(Name, Type, ConditionFunc) \
-            typeDesc.AddProperty(#Name, Type, offsetof(ThisClass, Name), "", "",\
+#define REFLECT_PROPERTY_IF(Prop, Type, Name, ConditionFunc) \
+            typeDesc.AddProperty(Name, Type, offsetof(ThisClass, Prop), "", "",\
             [](void* inst) { return static_cast<ThisClass*>(inst)->ConditionFunc(); });
 
 // 조건부 일반 프로퍼티 (람다형)
-#define REFLECT_PROPERTY_EXPR_IF(Name, Type, Expr) \
-    typeDesc.AddProperty(#Name, Type, offsetof(ThisClass, Name), "", "",\
+#define REFLECT_PROPERTY_EXPR_IF(Prop, Type, Name, Expr) \
+    typeDesc.AddProperty(Name, Type, offsetof(ThisClass, Prop), "", "",\
     [](void* voidInst) { \
         ThisClass* inst = static_cast<ThisClass*>(voidInst); \
         return (Expr); \

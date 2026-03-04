@@ -9,9 +9,8 @@
 #include "Core/Assets/MeshAsset.h"
 #include "Core/Assets/Material/MaterialAsset.h"
 
-// TODO : Path 기반 메쉬 교체 기능 InsepctorPanel에 구현
 BEGIN_REFLECTION(StaticMeshComponent, MeshComponent)
-	REFLECT_PROPERTY(m_path, EPropertyType::String)
+	REFLECT_PROPERTY(m_path, EPropertyType::String, "Path")
 END_REFLECTION()
 
 void StaticMeshComponent::Serialize(Serializer& ar)
