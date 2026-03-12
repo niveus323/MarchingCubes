@@ -72,6 +72,30 @@ int Win32Application::Run(DXAppBase* pAppBase, HINSTANCE hInstance, int nCmdShow
     return static_cast<char>(msg.wParam);
 }
 
+// NOTE : ShowCursor는 내부 카운터로 설정됨(중복 호출에 주의)
+void Win32Application::CaptureMouseInScreen(bool bCapture)
+{
+    if (bCapture)
+    {
+        // 커서를 숨기고 마우스를 현재 윈도우 영역에 가둠(Clip)
+        HWND hwnd = Win32Application::GetHwnd();
+        SetCapture(hwnd);
+        ShowCursor(FALSE);
+
+        RECT clientRect;
+        GetClientRect(hwnd, &clientRect);
+        ClientToScreen(hwnd, (POINT*)&clientRect.left);
+        ClientToScreen(hwnd, (POINT*)&clientRect.right);
+        ClipCursor(&clientRect);
+    }
+    else
+    {
+        ReleaseCapture();
+        ShowCursor(TRUE);
+        ClipCursor(nullptr);
+    }
+}
+
 LRESULT Win32Application::WindowProc(HWND hWnd, uint32_t message, WPARAM wParam, LPARAM lParam)
 {
     if (message == WM_CREATE)
@@ -88,10 +112,12 @@ LRESULT Win32Application::WindowProc(HWND hWnd, uint32_t message, WPARAM wParam,
         return 0;
     }
 
-    if (auto* pAppBase = reinterpret_cast<DXAppBase*>(GetWindowLongPtr(hWnd, GWLP_USERDATA))) {
-        if (auto* ui = pAppBase->GetUIRenderer()) {
-            if (ui->WndMsgProc(hWnd, message, wParam, lParam))
-                return 0;
+    if (auto* pAppBase = reinterpret_cast<DXAppBase*>(GetWindowLongPtr(hWnd, GWLP_USERDATA))) 
+    {
+        // UI용 메시지 처리
+        if (auto* ui = pAppBase->GetUIRenderer()) 
+        {
+            if (ui->WndMsgProc(hWnd, message, wParam, lParam)) return 0;
         }
 
         // 게임용 메시지 처리

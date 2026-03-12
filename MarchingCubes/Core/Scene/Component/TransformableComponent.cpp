@@ -11,6 +11,7 @@ void TransformableComponent::Init()
 {
 	Component::Init();
 	m_transformCache = GetOwner()->GetComponent<TransformComponent>();
+	if (!m_transformCache) GetOwner()->AddComponent<TransformComponent>();
 }
 
 TransformComponent* TransformableComponent::GetTransformComp() const

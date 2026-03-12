@@ -5,6 +5,7 @@ enum class ActionKey
 {
 	Escape,
 	Ctrl,
+	Shift,
 	MouseX,
 	MouseY,
 	LeftClick, 
@@ -24,6 +25,7 @@ enum class ActionKey
 	ToggleGizmoTranslation,
 	ToggleGizmoRotation,
 	ToggleGizmoScaling,
+	Eject,
 	Count
 };
 
@@ -33,6 +35,19 @@ enum class ActionKeyState
 	JustReleased,
 	JustPressed,
 	Pressed,
+};
+
+enum class InputContextFilter
+{
+	Common,
+	Game,
+	Editor
+};
+
+struct InputActionData
+{
+	WPARAM keyCode;
+	InputContextFilter context;
 };
 
 struct MousePos
@@ -64,40 +79,50 @@ public:
 
 	void Update();
 	void OnMouseMove(int x, int y);
-	void OnMouseDown(int x, int y, WPARAM btn) { m_keyState[btn] = ActionKeyState::JustPressed; SetMousePos(x, y); }
+	void OnMouseDown(int x, int y, WPARAM btn) 
+	{ 
+		m_keyState[btn] = ActionKeyState::JustPressed; 
+		SetMousePos(x, y); 
+	}
 	void OnMouseUp(int x, int y, WPARAM btn) { m_keyState[btn] = ActionKeyState::JustReleased; SetMousePos(x, y); }
-	void OnKeyDown(WPARAM key) { m_keyState[key] = ActionKeyState::JustPressed; }
+	void OnKeyDown(WPARAM key) { 
+		m_keyState[key] = ActionKeyState::JustPressed; 
+	}
 	void OnKeyUp(WPARAM key) { m_keyState[key] = ActionKeyState::JustReleased; }
 	bool IsPressed(ActionKey action) const;
+	bool IsPressedOnce(ActionKey action) const { return GetKeyState(action) == ActionKeyState::JustPressed; }
 	float GetAxisValue(ActionKey action) const;
 	ActionKeyState GetKeyState(ActionKey action) const;
 	MousePos GetMousePos() const { return m_curPos; }
-	void SetInputCaptured(bool capturedMouse, bool capturedKeyboard)
+	void SetInputBlocked(bool bBlockMouse, bool bBlockKeyboard)
 	{
-		m_isMouseCaptured = capturedMouse;
-		m_isKeyboardCaptured = capturedKeyboard;
+		m_bMouseBlocked = bBlockMouse;
+		m_bKeyboardBlocked = bBlockKeyboard;
 	}
 
 	//Ini
 	void LoadKeyBindingsFromIni(const std::wstring& filename);
 	void SaveKeyBindingsToIni(const std::wstring& filename);
 
+	void SetGameInputActive(bool bActive) { m_bGameInputActive = bActive; }
+	bool IsGameInputActive() const { return m_bGameInputActive; }
+
+	void BindKey(ActionKey target, WPARAM input, InputContextFilter filter = InputContextFilter::Common);
 private:
 	void SetMousePos(int x, int y) { m_curPos = MousePos(x,y); }
 	void SetMousePos(MousePos pos) { m_curPos = pos; }
 
 private:
-	bool m_isMouseCaptured = false;
-	bool m_isKeyboardCaptured = false;
+	bool m_bMouseBlocked = false;
+	bool m_bKeyboardBlocked = false;
+	bool m_bMouseInitialized = false;
+	bool m_bGameInputActive = false;
 
 	MousePos m_curPos{};
 	MousePos m_prevPos{};
 	MousePos m_deltaPos{};
 
-	bool m_mouseInitialized = false;
-
-	std::unordered_map<ActionKey, WPARAM> m_keyMap;
 	std::unordered_map<WPARAM, ActionKeyState> m_keyState;
-
+	std::unordered_map<ActionKey, InputActionData> m_actionMap;
 };
 

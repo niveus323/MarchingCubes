@@ -37,11 +37,13 @@ public:
     }
 
     // Accessors.
-    uint32_t GetWidth() const { return m_width; }
-    uint32_t GetHeight() const { return m_height; }
+    virtual uint32_t GetWidth() const { return m_width; }
+    virtual uint32_t GetHeight() const { return m_height; }
     const WCHAR* GetTitle() const { return m_title.c_str(); }
     IUIRenderer* GetUIRenderer() const { return m_uiRenderer.get(); }
     ID3D12Resource* CurrentBackbuffer() const { return m_renderTargets[m_frameIndex].Get(); }
+    uint64_t GetNextFenceValue() const { return m_nextFenceValue + 1; }
+    bool IsGPUCompletedTask(uint64_t fenceValue) { return m_swapChainFence->GetCompletedValue() >= fenceValue; }
 
 protected:
     virtual void InitUI(ID3D12GraphicsCommandList* cmd) {}
@@ -55,7 +57,6 @@ protected:
     virtual void UpdateInputCaptureState();
 
     virtual void CreateInputElements() = 0; // TODO : PSO 파일에 정의
-    virtual std::shared_ptr<Scene> CreateDefaultScene() = 0;
     virtual std::vector<std::wstring> GetPSOFiles() const = 0;
 
     std::wstring GetAssetFullPath(LPCWSTR assetName) { return GetFullPath(AssetType::Default, assetName); }
@@ -118,12 +119,6 @@ protected:
     ComPtr<ID3D12CommandAllocator> m_commandAllocators[kFrameCount];
     ComPtr<ID3D12CommandQueue> m_commandQueue;
     ComPtr<ID3D12GraphicsCommandList> m_commandList;
-    //ComPtr<ID3D12DescriptorHeap> m_rtvHeap;
-    //ComPtr<ID3D12DescriptorHeap> m_dsvHeap;
-    //uint32_t m_rtvDescriptorSize = 0;
-    //uint32_t m_dsvDescriptorSize = 0;
-    //D3D12_CPU_DESCRIPTOR_HANDLE m_rtvHandles[kFrameCount]{};
-    //D3D12_CPU_DESCRIPTOR_HANDLE m_dsvHandle{};
     uint32_t m_rtvHandles[kFrameCount]{ UINT32_MAX, UINT32_MAX };
     uint32_t m_dsvHandle = UINT32_MAX;
     bool m_bMainHandlesAllocated = false;
@@ -134,9 +129,7 @@ protected:
     std::vector<D3D12_INPUT_ELEMENT_DESC> m_inputElements;
     DXGI_FORMAT m_backbufferFormat = DXGI_FORMAT_R8G8B8A8_UNORM;
     DXGI_FORMAT m_depthFormat = DXGI_FORMAT_D32_FLOAT;
-    CD3DX12_VIEWPORT m_viewport;
-    CD3DX12_RECT m_scissorRect;
-
+    
     // Fence
     ComPtr<ID3D12Fence> m_swapChainFence;
     HANDLE m_fenceEvent = nullptr;

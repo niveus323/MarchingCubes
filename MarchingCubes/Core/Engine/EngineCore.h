@@ -15,23 +15,38 @@ struct ID3D12Device;
 class EngineCore
 {
 public:
-    static ID3D12Device* GetDevice() { return s_device; }
-    static RenderSystem* GetRenderSystem() { return s_renderSystem; }
-    static ResourceManager* GetResourceManager() { return s_resourceManager; }
-    static InputState* GetInputState() { return s_inputState; }
-    static UploadContext* GetUploadContext() { return s_uploadContext; }
-    static GpuAllocator* GetGpuAllocator() { return s_gpuAllocator; }
-    static DescriptorAllocator* GetDescriptorAllocator() { return s_descriptorAllocator; }
     static uint32_t GetFrameIndex() { return s_frameIndex; }
-
-    static void SetDevice(ID3D12Device* device) { s_device = device; }
-    static void SetRenderSystem(RenderSystem* rs) { s_renderSystem = rs; }
-    static void SetResourceManager(ResourceManager* rm) { s_resourceManager = rm; }
-    static void SetInputState(InputState* input) { s_inputState = input; }
-    static void SetUploadContext(UploadContext* uc) { s_uploadContext = uc; }
-    static void SetGpuAllocator(GpuAllocator* ga) { s_gpuAllocator = ga; }
-    static void SetDescriptorAllocator(DescriptorAllocator* da) { s_descriptorAllocator = da; }
     static void SetFrameIndex(uint32_t frameIndex) { s_frameIndex = frameIndex; }
+
+    static float GetDeltaTime() { return s_deltaTime; }
+    static void SetDeltaTime(float deltaTime) { s_deltaTime = deltaTime; }
+
+    static ID3D12Device* GetDevice() { return s_device; }
+    static void SetDevice(ID3D12Device* device) { s_device = device; }
+
+    static ID3D12Fence* GetSwapChainFence() { return s_swapChainFence; }
+    static void SetSwapChainFence(ID3D12Fence* fence) { s_swapChainFence = fence; }
+
+    static uint64_t GetNextFenceValue() { return *s_nextFenceValue + 1; }
+    static void SetNextFenceValuePtr(uint64_t* fenceValuePtr) { s_nextFenceValue = fenceValuePtr; }
+
+    static RenderSystem* GetRenderSystem() { return s_renderSystem; }
+    static void SetRenderSystem(RenderSystem* rs) { s_renderSystem = rs; }
+
+    static ResourceManager* GetResourceManager() { return s_resourceManager; }
+    static void SetResourceManager(ResourceManager* rm) { s_resourceManager = rm; }
+
+    static InputState* GetInputState() { return s_inputState; }
+    static void SetInputState(InputState* input) { s_inputState = input; }
+
+    static UploadContext* GetUploadContext() { return s_uploadContext; }
+    static void SetUploadContext(UploadContext* uc) { s_uploadContext = uc; }
+
+    static GpuAllocator* GetGpuAllocator() { return s_gpuAllocator; }
+    static void SetGpuAllocator(GpuAllocator* ga) { s_gpuAllocator = ga; }
+
+    static DescriptorAllocator* GetDescriptorAllocator() { return s_descriptorAllocator; }
+    static void SetDescriptorAllocator(DescriptorAllocator* da) { s_descriptorAllocator = da; }
 
     template<std::derived_from<ISubSystem> T>
     static void RegisterSubsystem(T* system)
@@ -98,15 +113,21 @@ public:
 
 
 private:
+    // 엔진 내부 값들(ex 프레임 인덱스, DeltaTime) 
+    static uint32_t s_frameIndex;
+    static float s_deltaTime;
+
     // 실제 정적 포인터 변수들
     static ID3D12Device* s_device;
+    static ID3D12Fence* s_swapChainFence;
+    static uint64_t* s_nextFenceValue;
+
     static RenderSystem* s_renderSystem;
     static ResourceManager* s_resourceManager;
     static InputState* s_inputState; // Scene 혹은 GameMode에서 Input을 받도록 하는게?
     static UploadContext* s_uploadContext;
     static GpuAllocator* s_gpuAllocator;
     static DescriptorAllocator* s_descriptorAllocator; // Scene의 PrepareRender에서만 필요
-    static uint32_t s_frameIndex;
 
     static std::unordered_map<std::type_index, ISubSystem*> s_subsystems;
 };

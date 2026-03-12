@@ -14,7 +14,7 @@ enum class EObjectFlags : uint32_t {
 	Transient = 1 << 0,  // 직렬화 제외
 	EditorOnly = 1 << 1, // 에디터에서만 존재하고 빌드 시 제외
     Invisible = 1 << 2,  // 에디터 HierarchyPanel에 노출X
-	PendingKill = 1 << 3 // 삭제 대기 중
+	PendingKill = 1 << 3, // 삭제 대기 중
 };
 ENABLE_BITMASK(EObjectFlags);
 

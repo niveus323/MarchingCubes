@@ -147,9 +147,6 @@
     <ClCompile Include="Core\Scene\Component\LightComponent.cpp">
       <Filter>소스 파일</Filter>
     </ClCompile>
-    <ClCompile Include="Contents\Scene\Terraform\Scene_Terraform.cpp">
-      <Filter>소스 파일</Filter>
-    </ClCompile>
     <ClCompile Include="Core\Engine\EngineCore.cpp">
       <Filter>소스 파일</Filter>
     </ClCompile>
@@ -255,6 +252,9 @@
     <ClCompile Include="Core\Scene\Component\TransformableComponent.cpp">
       <Filter>소스 파일</Filter>
     </ClCompile>
+    <ClCompile Include="App\Editor\Panel\ContentBrowserPanel.cpp">
+      <Filter>소스 파일</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="pch.h">
@@ -294,9 +294,6 @@
       <Filter>헤더 파일</Filter>
     </ClInclude>
     <ClInclude Include="Core\Geometry\MarchingCubes\MarchingCubesTables.h">
-      <Filter>헤더 파일</Filter>
-    </ClInclude>
-    <ClInclude Include="Core\Rendering\RenderUtils.h">
       <Filter>헤더 파일</Filter>
     </ClInclude>
     <ClInclude Include="Core\Assets\Material\Material.h">
@@ -411,9 +408,6 @@
       <Filter>헤더 파일</Filter>
     </ClInclude>
     <ClInclude Include="Core\Scene\Component\LightComponent.h">
-      <Filter>헤더 파일</Filter>
-    </ClInclude>
-    <ClInclude Include="Contents\Scene\Terraform\Scene_Terraform.h">
       <Filter>헤더 파일</Filter>
     </ClInclude>
     <ClInclude Include="Core\Engine\EngineCore.h">
@@ -542,6 +536,9 @@
     <ClInclude Include="Core\Scene\Component\TransformableComponent.h">
       <Filter>헤더 파일</Filter>
     </ClInclude>
+    <ClInclude Include="App\Editor\Panel\ContentBrowserPanel.h">
+      <Filter>헤더 파일</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <None Include="..\Directory.Builds.targets" />
@@ -553,6 +550,7 @@
     <None Include="Assets\Shaders\Material.hlsli" />
     <None Include="cpp.hint" />
     <None Include="Assets\Material\DefaultFilled.json" />
+    <None Include="Assets\Material\Coast_Sand.json" />
   </ItemGroup>
   <ItemGroup>
     <FxCompile Include="Assets\Shaders\MainVS.hlsl" />
@@ -563,6 +561,7 @@
     <FxCompile Include="Assets\Shaders\TerrainChunkBorderGS.hlsl" />
     <FxCompile Include="Assets\Shaders\BillboardVS.hlsl" />
     <FxCompile Include="Assets\Shaders\EditorBillboardPS.hlsl" />
+    <FxCompile Include="Assets\Shaders\SimpleIDViewPS.hlsl" />
   </ItemGroup>
   <ItemGroup>
     <CustomBuild Include="Assets\Shaders\LinePS.hlsl" />

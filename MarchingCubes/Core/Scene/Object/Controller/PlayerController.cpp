@@ -7,6 +7,8 @@ END_REFLECTION()
 
 void PlayerController::ProcessInput(float deltaTime)
 {
+    if (!m_bInputEnabled) return;
+
     auto input = EngineCore::GetInputState();
     if (!input) return;
 

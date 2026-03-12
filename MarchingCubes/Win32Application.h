@@ -9,9 +9,10 @@ public:
 	static int Run(DXAppBase* pAppBase, HINSTANCE hInstance, int nCmdShow);
 	static HWND GetHwnd() { return m_hwnd; }
 
+	static void CaptureMouseInScreen(bool bCapture);
 protected:
 	static LRESULT CALLBACK WindowProc(HWND hWnd, uint32_t message, WPARAM wParam, LPARAM lParam);
-
+	
 private:
 	static HWND m_hwnd;
 	static bool s_bIsResizing;

@@ -4,9 +4,28 @@
 #include "Core/Scene/Object/Controller/EditorController.h"
 #include "Core/Scene/Object/SpectatorPawn.h"
 #include "Core/Scene/Component/CameraComponent.h"
+#include "Core/Input/InputState.h"
 
-void ViewportPanel::OnUpdate()
+ViewportPanel::ViewportPanel(EditorApp* app) : IEditorPanel(app)
 {
+    m_bAllowEngineInput = true;
+}
+
+void ViewportPanel::OnUpdate(float deltaTime)
+{
+    auto it = m_onScreenMessages.begin();
+    while (it != m_onScreenMessages.end())
+    {
+        it->timeRemaining -= deltaTime;
+        if (it->timeRemaining <= 0.0f)
+        {
+            it = m_onScreenMessages.erase(it); // 시간 만료 시 삭제
+        }
+        else
+        {
+            ++it;
+        }
+    }
 }
 
 void ViewportPanel::OnRenderUI(IUIBuilder* ui)
@@ -19,20 +38,31 @@ void ViewportPanel::OnRenderUI(IUIBuilder* ui)
         m_bIsHovered = ui->IsWindowHovered();
         bool bResized = false;
 
-        UI::Vector<float, 2> viewportPanelSize = ui->GetRegionAvailable();
+        auto viewportPanelSize = ui->GetRegionAvailable();
+        auto p0 = ui->GetCursorScreenPos();
         if (m_viewportSize.x != viewportPanelSize.x || m_viewportSize.y != viewportPanelSize.y)
         {
             bResized = true;
             m_viewportSize = viewportPanelSize;
             if (m_viewportSize.x > 0.0f && m_viewportSize.y > 0.0f)  m_onViewportResized(m_viewportSize);
         }
-        
+
         uint64_t srvGPUHandle = m_ownerApp->GetOffscreenSRVGpuHandle().ptr;
-        
+
         if (srvGPUHandle != 0 && m_viewportSize.x > 0.0f && m_viewportSize.y > 0.0f)
         {
-            void* textureID = reinterpret_cast<void*>(srvGPUHandle);
-            ui->Image(textureID, m_viewportSize);
+            if (m_bHitProxyDebugMode)
+            {
+                // HitProxy 렌더링
+                auto hitProxySRV = EngineCore::GetRenderSystem()->GetHitProxySRV();
+                ui->Image((void*)hitProxySRV.ptr, m_viewportSize);
+            }
+            else
+            {
+                // 메인 렌더링
+                void* textureID = reinterpret_cast<void*>(srvGPUHandle);
+                ui->Image(textureID, m_viewportSize);
+            }
         }
         else
         {
@@ -41,29 +71,92 @@ void ViewportPanel::OnRenderUI(IUIBuilder* ui)
             ui->DrawRectFilled(p0, { p0.x + m_viewportSize.x, p0.y + m_viewportSize.y }, { 0.1f, 0.1f, 0.1f, 1.0f });
         }
 
-        if (m_editorController) m_editorController->RenderGizmoUI(ui);
-
-        auto vMin = ui->GetWindowContentMin();
-        auto vMax = ui->GetWindowContentMax();
-        auto vPos = ui->GetWindowPos();
-        m_viewportBounds[0] = { vMin.x + vPos.x, vMin.y + vPos.y };
-        m_viewportBounds[1] = { vMax.x + vPos.x, vMax.y + vPos.y };
+        // 뷰포트용 ToolBar UI 렌더링
+        RenderToolBar(ui);
 
         if (bResized) bResized = false;
-    }
-    // 에디터 컨트롤러 상태 동기화
-    if (m_editorController) m_editorController->SetViewportActive(m_bIsHovered, m_bIsFocused);
-    ui->EndPanel();
-    ui->PopStyle();
 
+        auto mainViewportPos = ui->GetMainViewportPos();
+        auto mainSize = ui->GetMainViewportSize();
+        // 에디터 컨트롤러 상태 동기화
+        if (m_editorController)
+        {
+            if (auto camera = m_editorController->GetPossessdCamera())
+            {
+                camera->SetAspect(m_viewportSize.x / m_viewportSize.y);
+            }
+            float clientViewportX = p0.x - mainViewportPos.x;
+            float clientViewportY = p0.y - mainViewportPos.y;
+            //m_editorController->SetViewportRect(p0.x, p0.y, m_viewportSize.x, m_viewportSize.y);
+            m_editorController->SetViewportRect(clientViewportX, clientViewportY, m_viewportSize.x, m_viewportSize.y);
+            m_editorController->SetViewportActive(m_bIsHovered, m_bIsFocused);
+        }
+    }
+   
     // 뷰포트 좌측 하단에 Gizmo 렌더링
+    RenderSceneGizmo(ui);
+
+    // 뷰포트 메시지
+    RenderScreenDebugMessages(ui);
+
+    ui->EndPanel();
+    ui->PopStyle_Var();
+}
+
+void ViewportPanel::SetEditorController(EditorController* controller)
+{
+    m_editorController = controller;
+    m_cameraComponent = (m_editorController) ? m_editorController->GetPawn()->GetComponent<CameraComponent>() : nullptr;    
+}
+
+void ViewportPanel::RenderToolBar(IUIBuilder* ui)
+{
+    UI::Vector<float, 2> toolOverlayPos(0.0f);
+    UI::Vector<float, 2> toolOverlaySize(0.0f); // 사이즈 설정하지 않음
+    UI::UI_PanelOption toolOverlayFlags =
+        UI::UI_PanelOption::NoDecoration |
+        UI::UI_PanelOption::AutoResize |
+        UI::UI_PanelOption::NoSavedSettings |
+        UI::UI_PanelOption::NoFocusOnAppearing |
+        UI::UI_PanelOption::NoNav |
+        UI::UI_PanelOption::NoMove |
+        UI::UI_PanelOption::NoDocking |
+        UI::UI_PanelOption::NoBackground;
+    ui->BeginOverlay("PlayOverlay", toolOverlayPos, toolOverlaySize, 0.0f, toolOverlayFlags);
+
+    ui->BeginDisabled(m_ownerApp->IsPlayMode());
+    if (ui->Button("Play")) m_ownerApp->OnPlayButtonClicked();
+    ui->EndDisabled();
+    ui->SameLine();
+    ui->BeginDisabled(!m_ownerApp->IsPlayMode());
+    if (ui->Button("Stop")) m_ownerApp->OnStopButtonClicked();
+    ui->EndDisabled();
+    // HitProxy 디버깅을 위한 임시 코드
+    ui->SameLine();
+    if (ui->Button("Toggle HitProxy")) m_bHitProxyDebugMode = !m_bHitProxyDebugMode;
+
+    ui->EndOverlay();
+
+    if (m_editorController)
+    {
+        ui->SameLine();
+        m_editorController->RenderGizmoOptionUI(ui);
+    }
+}
+
+void ViewportPanel::RenderSceneGizmo(IUIBuilder* ui)
+{
     if (m_viewportSize.x <= 0.0f || m_viewportSize.y <= 0.0f) return;
     float gizmoSize = 100.0f;
-    UI::Vector<float, 2> gizmoPos = {
-        m_viewportBounds[0].x + 15.0f,
-        m_viewportBounds[1].y - gizmoSize - 15.0f
-    };
-    if (ui->BeginOverlay("Gizmo", gizmoPos, { gizmoSize, gizmoSize }))
+    UI::Vector<float, 2> gizmoPos = { 15.0f, 15.0f };
+    UI::UI_PanelOption gizmoFlags = UI::UI_PanelOption::NoDecoration |
+        UI::UI_PanelOption::NoInput |
+        UI::UI_PanelOption::NoBackground |
+        UI::UI_PanelOption::NoSavedSettings |
+        UI::UI_PanelOption::NoFocusOnAppearing |
+        UI::UI_PanelOption::NoNav;
+
+    if (ui->BeginOverlay("Gizmo", gizmoPos, { gizmoSize, gizmoSize }, 0.0f, gizmoFlags, UI::UI_AlignmentX::Align_Left, UI::UI_AlignmentY::Align_Bottom))
     {
         // 중심점 계산
         UI::Vector<float, 2> center = ui->GetCursorScreenPos();
@@ -98,7 +191,7 @@ void ViewportPanel::OnRenderUI(IUIBuilder* ui)
         // Z-Sort (뒤에 있는 축부터 그리기 위해)
         std::sort(axes.begin(), axes.end(), [](const Axis& a, const Axis& b) {
             return a.zDepth > b.zDepth;
-        });
+            });
 
         for (const auto& axis : axes)
         {
@@ -118,12 +211,24 @@ void ViewportPanel::OnRenderUI(IUIBuilder* ui)
         }
         ui->DrawCircleFilled(center, 4.0f, { 1.0f, 1.0f, 1.0f, 1.0f }); // Pivot
     }
-    ui->EndOverlay(); // 오버레이 종료
+    ui->EndOverlay();
+
+    if (m_editorController) m_editorController->RenderGizmoUI(ui);
+
 }
 
-void ViewportPanel::SetEditorController(EditorController* controller)
+void ViewportPanel::RenderScreenDebugMessages(IUIBuilder* ui)
 {
-    m_editorController = controller;
-    m_cameraComponent = m_editorController->GetPawn()->GetComponent<CameraComponent>();
+    if (m_viewportSize.x <= 0.0f || m_viewportSize.y <= 0.0f) return;
+    // 텍스트 시작 위치 (뷰포트 영역의 좌측 상단 여백)
+    auto vMin = ui->GetWindowContentMin();
+    auto vPos = ui->GetWindowPos();
+    UI::Vector<float, 2> textPos = { vPos.x + vMin.x + 15.0f, vPos.y + vMin.y + 15.0f };
+
+    for (auto& message : m_onScreenMessages)
+    {
+        ui->DrawTextAt(textPos, message.color, message.text.c_str());
+        textPos.y += 20.0f; // 다음 줄로 이동
+    }
 }
 

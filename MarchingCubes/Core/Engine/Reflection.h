@@ -13,25 +13,30 @@ enum class EPropertyType
 	Vector3,
     String,
     Enum,
-    Color
+    Color,
+    Class,
+    Asset
 };
 
 struct Property
 {
-	std::string name;
-	EPropertyType type;
-	size_t offset;
-    std::string enumName;
-    std::string group;
+	std::string name="";
+	EPropertyType type = EPropertyType::Int;
+	size_t offset = 0;
+    std::string metaData="";
+    std::string group="";
     bool isArray = false;
 
-    std::function<size_t(void*)> getArraySize; // 배열 크기 Getter
-    std::function<void* (void*, size_t)> getArrayElement; // 배열 원소 Getter
-    std::function<void(void*, void*)> getter; // 접근용 Getter
-    std::function<void(void*, const void*)> setter; // 수정용 Setter
-    std::function<bool(void*)> isVisible; // 가시성 조건용 함수
+    std::function<size_t(void*)> getArraySize;                      // 배열 크기 Getter
+    std::function<void* (void*, size_t)> getArrayElement;           // 배열 원소 Getter
+    std::function<void(void*, void*)> getter;                       // 접근용 Getter
+    std::function<void(void*, const void*)> setter;                 // 수정용 Setter
+    std::function<bool(void*)> isVisible;                           // 가시성 조건용 함수
+    std::function<void(void*, size_t, void*)> indexedGetter;        // 인덱스 기반 Getter
+    std::function<void(void*, size_t, const void*)> indexedSetter;  // 인덱스 기반 Setter
 
     bool IsAccessor() const { return getter != nullptr; }
+    bool IsIndexedAccessor() const { return indexedGetter != nullptr; }
 	void* GetValuePtr(void* instance) const { return static_cast<char*>(instance) + offset; }
 };
 
@@ -56,13 +61,13 @@ class TypeDescriptor
 public:
     TypeDescriptor(const char* name) : m_className(name) {}
 
-    void AddProperty(const char* name, EPropertyType type, size_t offset, const char* enumName = "", const char* group = "", std::function<bool(void*)> condition = nullptr)
+    void AddProperty(const char* name, EPropertyType type, size_t offset, const char* metaData = "", const char* group = "", std::function<bool(void*)> condition = nullptr)
     {
         Property prop{
             .name = name,
             .type = type,
             .offset = offset,
-            .enumName = enumName,
+            .metaData = metaData,
             .group = group,
             .isVisible = condition
         };
@@ -73,18 +78,48 @@ public:
         EPropertyType type, 
         std::function<void(void*, void*)> getter, 
         std::function<void(void*, const void*)> setter, 
-        const char* enumName = "", 
+        const char* metaData = "", 
         std::function<bool(void*)> condition = nullptr)
     {
         Property prop{
             .name = name,
             .type = type,
             .offset = 0, // Accessor는 offset 미사용
-            .enumName = enumName,
+            .metaData = metaData,
             .getter = getter,
             .setter = setter,
             .isVisible = condition
         };
+        m_properties.push_back(prop);
+    }
+
+    void AddPropertyIndexedAccessor(const char* name, EPropertyType type,
+        std::function<size_t(void*)> sizeFunc,
+        std::function<void(void*, size_t, void*)> getter,
+        std::function<void(void*, size_t, const void*)> setter,
+        const char* metaData = "")
+    {
+        /*Property prop{
+            .name = name,
+            .type = type,
+            .offset = 0,
+            .metaData = metaData,
+            .isArray = true,
+            .getArraySize = sizeFunc,
+            .indexedGetter = getter,
+            .indexedSetter = setter
+        };*/
+        Property prop; // 빈 구조체 생성 후 명시적 대입
+        prop.name = name;
+        prop.type = type;
+        prop.offset = 0;
+        prop.metaData = metaData;
+
+        // 이 두 값이 true와 유효한 함수 포인터로 들어가야만 if문이 작동합니다!
+        prop.isArray = true;
+        prop.indexedGetter = getter;
+        prop.indexedSetter = setter;
+        prop.getArraySize = sizeFunc;
         m_properties.push_back(prop);
     }
 
@@ -278,20 +313,22 @@ public: \
     }
 
 // 종속 컴포넌트 명시
-#define REFLECT_REQUIRE_COMPONENT(CompClass) \
-            typeDesc.AddRequiredComponent(CompClass::GetStaticType());
+#define REFLECT_REQUIRE_COMPONENT(CompClass) typeDesc.AddRequiredComponent(CompClass::GetStaticType());
 
 // 프로퍼티 등록
-#define REFLECT_PROPERTY(Prop, Type, Name) \
-            typeDesc.AddProperty(Name, Type, offsetof(ThisClass, Prop));
+#define REFLECT_PROPERTY(Prop, Type, Name) typeDesc.AddProperty(Name, Type, offsetof(ThisClass, Prop));
 
 // 배열(std::vector) 프로퍼티 등록
-#define REFLECT_PROPERTY_ARRAY(Prop, ElementType, Name) \
-    typeDesc.AddPropertyVector<decltype(ThisClass::Name)>(Name, ElementType, offsetof(ThisClass, Prop), #Name);
+#define REFLECT_PROPERTY_ARRAY(Prop, ElementType, Name) typeDesc.AddPropertyVector<decltype(ThisClass::Name)>(Name, ElementType, offsetof(ThisClass, Prop), #Name);
 
 // Enum 프로퍼티 등록
-#define REFLECT_PROPERTY_ENUM(Prop, EnumType, Name) \
-    typeDesc.AddProperty(Name, EPropertyType::Enum, offsetof(ThisClass, Prop), #EnumType);
+#define REFLECT_PROPERTY_ENUM(Prop, EnumType, Name) typeDesc.AddProperty(Name, EPropertyType::Enum, offsetof(ThisClass, Prop), #EnumType);
+
+// 클래스 프로퍼티 등록
+#define REFLECT_PROPERTY_CLASS(Prop, BaseClass, Name) typeDesc.AddProperty(Name, EPropertyType::Class, offsetof(ThisClass, Prop), #BaseClass);
+
+// 에셋 프로퍼티 등록
+#define REFLECT_PROPERTY_ASSET(Prop, AssetType, Name) typeDesc.AddProperty(Name, EPropertyType::Asset, offsetof(ThisClass, Prop), #AssetType);
 
 // Getter/Setter 등록
 #define REFLECT_PROPERTY_FN(Name, EnumType, CppType, GetterFunc, SetterFunc) \
@@ -314,6 +351,15 @@ public: \
             static_cast<ThisClass*>(inst)->SetterFunc((EnumName)*static_cast<const int*>(inVal)); \
         }, \
         #EnumName \
+    );
+
+// Asset 배열용 Getter/Setter 등록
+#define REFLECT_PROPERTY_ASSET_ARRAY_FN(Name, AssetType, SizeFunc, GetterFunc, SetterFunc) \
+    typeDesc.AddPropertyIndexedAccessor(Name, EPropertyType::Asset, \
+        [](void* inst) -> size_t { return static_cast<ThisClass*>(inst)->SizeFunc(); }, \
+        [](void* inst, size_t idx, void* outVal) { *static_cast<std::string*>(outVal) = static_cast<ThisClass*>(inst)->GetterFunc(idx); }, \
+        [](void* inst, size_t idx, const void* inVal) { static_cast<ThisClass*>(inst)->SetterFunc(static_cast<int>(idx), *static_cast<const std::string*>(inVal)); }, \
+        #AssetType \
     );
 
 // 조건부 일반 프로퍼티 (ConditionFunc가 true일 때만 표시)

@@ -6,12 +6,20 @@
 #include "DataAsset.h"
 #include <unordered_map>
 
+enum class EAssetType
+{
+	DataAsset,
+	MeshAsset,
+	TextureAsset,
+	MaterialAsset
+};
+
 /* [ResourceManager]
 * - LifeTime : Engine Load -> Engine UnLoad
 * - OwnerShip : Engine
 * - Access : Engine::GetResourceManager()
 * - Responsibility : 
-* 	- GeometryData : .obj 파일을 로드하여 소유/참조 전달
+* 	- MeshData : .obj, .fbx 파일을 로드하여 소유/참조 전달
 * 	- AnimData : .anim 파일을 로드하여 소유/참조 전달
 * 	- SoundData : .wav 등 사운드 파일을 로드하여 소유/참조 전달
 * 	- Texture : .dds, .png 등 텍스쳐 파일을 로드하여 TextureAsset을 소유/참조 전달
@@ -39,6 +47,9 @@ public:
 	// --- Data Asset ---
 	std::shared_ptr<DataAsset> LoadDataAsset(const std::filesystem::path& path);
 	bool SaveDataAsset(const std::filesystem::path & path, std::shared_ptr<DataAsset> asset);
+
+	// --- Cached List ---
+	std::vector<std::string> GetCachedList(EAssetType type) const;
 
 	static std::filesystem::path ResolveTexturePath(const std::filesystem::path& fbxPath, const std::filesystem::path& texRelativePath);
 

@@ -22,16 +22,14 @@ public:
 	void SetSize(const DirectX::XMFLOAT2& size) { m_size = size; }
 	void SetIcon(std::shared_ptr<TextureAsset> textureAsset, int priority);
 	
-	DirectX::BoundingBox GetBoundingBox() const;
-	DirectX::XMMATRIX GetWorldMatrix(CameraComponent* camera);
-
+	DirectX::XMMATRIX GetWorldMatrix() const;
 private:
 	std::shared_ptr<StaticMesh> m_quadMesh;
 
 	// 사용할 이미지 등 정보가 담기 MaterialInstance
 	MaterialInstance m_iconMat;
 	std::string m_iconIdentifier = "Default";
-	DirectX::XMFLOAT2 m_size = { 1.0f, 1.0f };
+	DirectX::XMFLOAT2 m_size = { 5.0f, 5.0f };
 	BufferHandle m_objectCB{};
 
 	int m_priority = 0;

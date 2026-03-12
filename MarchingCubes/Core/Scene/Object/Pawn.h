@@ -16,7 +16,7 @@ class Pawn : public SceneObject
 	REFLECT_GENERATED_BODY(Pawn)
 public:
 	virtual void BeginPlay() override;
-	virtual void OnPossess() {}
+	virtual void OnPossess();
 	virtual void OnUnPossess() {}
 
 	virtual void AddMovementInput(DirectX::XMVECTOR dir, float scale);

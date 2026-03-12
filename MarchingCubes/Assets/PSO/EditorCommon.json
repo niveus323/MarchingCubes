@@ -64,19 +64,31 @@
       "inherits": "Default",
       "params": [
         {
-          "name" :  "ChunkBoundaryBuffer",
+          "name": "ChunkBoundaryBuffer",
           "type": "CBV",
-          "register": 3,
-          "num32Bit": 12
+          "register": 3
         }
       ]
+    },
+    {
+      "id": "IDPassRS",
+      "inherits": "Default",
+      "params": [
+        {
+          "name": "ObjectID",
+          "type": "Constant",
+          "register": 3,
+          "num32Bit": 1
 
+        }
+      ]
+       
     }
   ],
   "pso": [
     {
       "id": "Filled",
-      "order": 10,
+      "order": 1,
       "rootSignature": "Default",
       "shaders": {
         "vs": "MainVS.cso",
@@ -103,14 +115,14 @@
     },
     {
       "id": "Line",
-      "order": 11,
+      "order": 2,
       "inherits": "Filled",
       "shaders": { "ps": "LinePS_Material.cso" },
       "topology": "line"
     },
     {
       "id": "Wire",
-      "order": 12,
+      "order": 3,
       "inherits": "Filled",
       "shaders": { "ps": "LinePS_Material.cso" },
       "raster": {
@@ -120,7 +132,7 @@
     },
     {
       "id": "DrawNormal",
-      "order": 13,
+      "order": 4,
       "inherits": "Filled",
       "shaders": {
         "gs": "NormalGS.cso",
@@ -129,12 +141,39 @@
     },
     {
       "id": "DrawChunkBoundary",
-      "order": 20,
+      "order": 10,
       "inherits": "Filled",
       "rootSignature": "Overlay",
       "shaders": {
         "gs": "TerrainChunkBorderGS.cso",
         "ps": "LinePS_Visualizer.cso"
+      }
+    },
+    {
+      "id": "EditorBillboard",
+      "order": 20,
+      "inherits": "Filled",
+      "shaders": {
+        "vs": "BillboardVS.cso",
+        "ps": "EditorBillboardPS.cso"
+      }
+    },
+    {
+      "id": "IDPass_Mesh",
+      "order" :  5,
+      "inherits": "Filled",
+      "rootSignature": "IDPassRS",
+      "shaders": {
+        "ps": "SimpleIDViewPS.cso"
+      }
+    },
+    {
+      "id": "IDPass_Billboard",
+      "order": 21,
+      "inherits": "EditorBillboard",
+      "rootSignature": "IDPassRS",
+      "shaders": {
+        "ps": "SimpleIDViewPS.cso"
       }
     }
   ]

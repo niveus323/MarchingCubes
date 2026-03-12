@@ -72,7 +72,7 @@ void BillboardComponent::Submit()
 	
 	ObjectConstants objConsts{};
 	objConsts.materialIndex = materialGPUIndex;
-	XMMATRIX worldMatrix = GetWorldMatrix(GetScene()->GetMainCamera()); // 현재 렌더링을 하는 씬의 MainCamera를 기준으로 WorldMatrix 보정
+	XMMATRIX worldMatrix = GetWorldMatrix();
 	XMStoreFloat4x4(&objConsts.worldMatrix, XMMatrixTranspose(worldMatrix));
 	XMStoreFloat4x4(&objConsts.worldInvMatrix, XMMatrixInverse(nullptr, worldMatrix));
 	uploadContext->UploadConstants(&objConsts, sizeof(ObjectConstants), m_objectCB);
@@ -85,6 +85,7 @@ void BillboardComponent::Submit()
 		.indexOffset = subMesh.indexOffset,
 		.baseVertexLocation = subMesh.baseVertexLocation,
 		.materialIndex = materialGPUIndex,
+		.objectID = GetOwner()->GetObjectID(),
 		.debugName = m_name
 	};
 
@@ -93,8 +94,18 @@ void BillboardComponent::Submit()
 		.rootParameterIndex = 1,
 		.gpuAddress = m_objectCB.gpuVA
 	});
-	
 	renderSystem->SubmitRenderItem(item, m_iconMat.GetPSO());
+
+	// OverlayPass 추가 렌더링
+	for (auto& pass : m_overlayPasses)
+	{
+		if (!pass.bActive) continue;
+		item.resourceBindings.reserve(item.resourceBindings.size() + pass.resourceBindings.size());
+		item.resourceBindings.insert(item.resourceBindings.end(), pass.resourceBindings.begin(), pass.resourceBindings.end());
+
+		item.debugName = m_name + "_" + pass.name;
+		renderSystem->SubmitRenderItem(item, pass.psoName);
+	}
 }
 
 void BillboardComponent::Serialize(Serializer& ar)
@@ -118,33 +129,10 @@ void BillboardComponent::SetIcon(std::shared_ptr<TextureAsset> textureAsset, int
 	m_iconIdentifier = std::filesystem::path(textureAsset->GetSourcePath()).filename().string();
 }
 
-DirectX::BoundingBox BillboardComponent::GetBoundingBox() const
-{
-	DirectX::BoundingBox box;
-	if (auto transform = GetTransformComp())
-	{
-		DirectX::XMFLOAT3 pos = { 0.0f, 0.0f, 0.0f };
-		DirectX::XMFLOAT3 extents = { m_size.x * 0.5f, m_size.y * 0.5f, 0.1f }; // NOTE : z값에 의해 피킹이 잘 이루어지지 않을 경우 수정
-		box = DirectX::BoundingBox(pos, extents);
-	}
-	return box;
-}
-
-DirectX::XMMATRIX BillboardComponent::GetWorldMatrix(CameraComponent* camera)
+DirectX::XMMATRIX BillboardComponent::GetWorldMatrix() const
 {
 	XMMATRIX worldMat = m_transformCache->GetWorldMatrix();
-	
-	XMVECTOR position, rotQuat, scale;
-	XMMatrixDecompose(&scale, &rotQuat, &position, worldMat);
+	DirectX::XMMATRIX sizeMat = DirectX::XMMatrixScaling(m_size.x, m_size.y, 1.0f);
 
-	auto cameraTransformComp = camera->GetTransformComp();
-	XMVECTOR camPos = XMLoadFloat3(&cameraTransformComp->GetWorldPosition());
-	float constantScreenSizeFactor = 5.0f;
-	float finalIconScale = constantScreenSizeFactor;
-
-	XMMATRIX scaleMat = XMMatrixScaling(finalIconScale, finalIconScale, finalIconScale);
-	XMMATRIX invView = XMMatrixInverse(nullptr, camera->GetViewMatrix());
-	invView.r[3] = XMVectorSet(0.0f, 0.0f, 0.0f, 1.0f);
-
-	return scaleMat * invView * XMMatrixTranslationFromVector(position);
+	return DirectX::XMMatrixMultiply(sizeMat, worldMat);
 }

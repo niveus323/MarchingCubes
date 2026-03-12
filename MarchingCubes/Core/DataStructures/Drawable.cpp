@@ -18,13 +18,7 @@ void RecordDrawItem(ID3D12GraphicsCommandList* cmdList, const DrawBindingInfo& b
 
 void DrawItem(ID3D12GraphicsCommandList* cmd, const RenderItem& item)
 {
-	if (!item.meshBuffer) return;
-
-	if (item.indexCount == 0)
-	{
-		//Log::Print("RenderSystem", "%s : Index Count is Zero", item.debugName.c_str());
-		return;
-	}
+	if (!item.meshBuffer || item.indexCount == 0) return;
 
 	cmd->IASetPrimitiveTopology(item.topology);
 
@@ -38,15 +32,23 @@ void DrawItem(ID3D12GraphicsCommandList* cmd, const RenderItem& item)
 	{
 		switch (binding.type)
 		{
+			case EBindingType::CONSTANTS:
+				cmd->SetGraphicsRoot32BitConstant(binding.rootParameterIndex, binding.constantData, 0);
+				break;
 			case EBindingType::CBV:
 				cmd->SetGraphicsRootConstantBufferView(binding.rootParameterIndex, binding.gpuAddress);
 				break;
 			case EBindingType::SRV:
+				cmd->SetGraphicsRootShaderResourceView(binding.rootParameterIndex, binding.gpuAddress);
+				break;
 			case EBindingType::UAV:
+				cmd->SetGraphicsRootUnorderedAccessView(binding.rootParameterIndex, binding.gpuAddress);
+				break;
+			case EBindingType::TABLE:
 				cmd->SetGraphicsRootDescriptorTable(binding.rootParameterIndex, binding.gpuDescriptorHandle);
 				break;
 			default:
-				Log::Print("RednerItem", "Invalid ExtraBinding!!!!\n Check For: %s", item.debugName);
+				Log::Print("RenderItem", "Invalid Binding Type!!!!\n Check For: %s", item.debugName.c_str());
 				break;
 		}
 	}

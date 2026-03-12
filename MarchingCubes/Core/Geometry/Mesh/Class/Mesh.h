@@ -21,6 +21,7 @@ public:
 	std::string_view GetDebugName() const { return m_debugName; }
 	void SetDebugName(const std::string& name) { m_debugName = name; }
 	
+	// TODO : _DEBUG -> _EDITOR·Î º¯°æ
 #ifdef _DEBUG
 	const GeometryData& GetGeometryData() const { return m_cpuData; }
 #endif

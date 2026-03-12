@@ -1,0 +1,24 @@
+{
+  "PSO": "Filled",
+  "MaterialConstants": {
+    "Albedo": [ 1.0, 1.0, 1.0 ],
+    "Metallic": 0.0,
+    "Roughness": 1.0,
+    "SpecularStrength": 0.04,
+    "AO": 1.0,
+    "IOR": 1.0,
+    "Opacity": 1.0,
+    "ShadingModel": 0,
+    "TextureParams": {
+      "TextureMappingType": 1,
+      "TriplanarParams": {
+        "Scale": 0.01
+      }
+    }
+  },
+  "Diffuse": "coast_sand/coast_sand_diffuse.png",
+  "Normal": "coast_sand/coast_sand_normal.png",
+  "ARM": "coast_sand/coast_sand_arm.png",
+  "Displacement": "coast_sand/coast_sand_displace.png",
+  "Rough": "coast_sand/coast_sand_rough.png"
+}

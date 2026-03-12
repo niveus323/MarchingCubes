@@ -5,22 +5,12 @@
 #include "Core/Scene/Object/Pawn.h"
 
 BEGIN_REFLECTION(GameMode, GameObject)
-    REFLECT_PROPERTY(m_controllerClass, EPropertyType::String, "ControllerClass")
-    REFLECT_PROPERTY(m_defaultPawnClass, EPropertyType::String, "DefaultPawnClass")
+    REFLECT_PROPERTY_CLASS(m_controllerClass, PlayerController, "ControllerClass")
+    REFLECT_PROPERTY_CLASS(m_defaultPawnClass, Pawn, "DefaultPawnClass")
     REFLECT_PROPERTY(m_defualtPawnInitialTransform.position, EPropertyType::Vector3, "Spawn Position")
     REFLECT_PROPERTY(m_defualtPawnInitialTransform.rotation, EPropertyType::Vector3, "Spawn Rotation")
     REFLECT_PROPERTY(m_defualtPawnInitialTransform.scale, EPropertyType::Vector3, "Spawn Scale")
 END_REFLECTION()
-
-void GameMode::Init()
-{
-    GameObject::Init();
-}
-
-void GameMode::Destroy()
-{
-    GameObject::Destroy();
-}
 
 void GameMode::BeginPlay()
 {
@@ -34,13 +24,7 @@ void GameMode::BeginPlay()
         if (typeDesc) newPC = static_cast<PlayerController*>(typeDesc->CreateInstance());
         if (!newPC) newPC = scene->CreateObject<PlayerController>("PlayerController", EObjectFlags::Transient); // 실패 시 기본 PlayerController 생성
 
-        if (newPC)
-        {
-            std::shared_ptr<PlayerController> pcPtr(newPC);
-            scene->AddObject(pcPtr);
-            newPC->Init();
-            m_playerControllers[0] = newPC; // Player 0에 할당
-        }
+        m_playerControllers[0] = newPC; // Player 0에 할당
     }
 }
 
@@ -72,14 +56,26 @@ void GameMode::Update(float deltaTime)
                 {
                     std::shared_ptr<Pawn> pawnPtr(newPawn);
                     scene->AddObject(pawnPtr);
+                    scene->SetName(std::format("Default Pawn_%d", index));
                     newPawn->Init();
-                    newPawn->BeginPlay(); // 지연 생성되므로 명시적 호출
                     newPawn->SetTransform(m_defualtPawnInitialTransform);
                     pc->Possess(newPawn);
                 }
             }
         }
     }
+}
+
+void GameMode::Serialize(Serializer& ar)
+{
+    GameObject::Serialize(ar);
+
+    // 디폴트 생성 Controller 클래스
+    ar.Serialize("DefaultControllerClass", m_controllerClass);
+    // 디폴트 생성 Pawn 클래스
+    ar.Serialize("DefaultPawnClass", m_defaultPawnClass);
+    // 디폴트로 생성되는 Pawn의 트랜스폼
+    ar.Serialize("DefaultPawnTransform", m_defualtPawnInitialTransform);
 }
 
 PlayerController* GameMode::GetController(int playerIndex)

@@ -65,6 +65,7 @@ struct RenderItem
 	uint32_t baseVertexLocation = 0;
 	uint32_t instanceCount = 1;
 	uint32_t materialIndex = 0;
+	uint32_t objectID = 0;
 	std::string debugName;
 
 	std::vector<ShaderBinding> resourceBindings; // PSO마다 필요한 추가 바인딩 정보에 대한 포인터(per-Object)

@@ -6,6 +6,11 @@ BEGIN_REFLECTION(GameObject, Entity)
     REFLECT_PROPERTY(m_bActive, EPropertyType::Bool, "Active")
 END_REFLECTION()
 
+void GameObject::Init()
+{
+    m_objectID = GetScene()->AllocateObjectID(this);
+}
+
 void GameObject::Destroy()
 {
     for (auto& comp : m_components) 
@@ -189,6 +194,14 @@ void GameObject::AddChild(std::shared_ptr<GameObject> child)
     }
     child->m_owner = this->GetSharedPtr<GameObject>();
     child->SetScene(m_scene.lock()->GetSharedPtr<Scene>());
+
+    if (auto scenePtr = m_scene.lock())
+    {
+        if (!scenePtr->FindEntity(child->GetUUID()))
+        {
+            scenePtr->AddObject(child);
+        }
+    }
     m_children.push_back(std::move(child));
 }
 

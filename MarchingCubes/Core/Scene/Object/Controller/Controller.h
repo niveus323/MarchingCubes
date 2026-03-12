@@ -1,7 +1,9 @@
 #pragma once
 #include "Core/Scene/Object/GameObject.h"
 
+//Forward Declaration
 class Pawn;
+class CameraComponent;
 class IUIBuilder;
 
 class Controller : public GameObject
@@ -14,11 +16,13 @@ public:
 	virtual void RenderUI(IUIBuilder* ui) {};
 	
 	Pawn* GetPawn() { return m_possessed; }
+	bool IsInputEnabled() const { return m_bInputEnabled; }
+	void SetInputEnabled(bool bEnabled) { m_bInputEnabled = bEnabled; }
+	CameraComponent* GetPossessdCamera();
 protected:
 	virtual void ProcessInput(float deltaTime) = 0;
-
-protected:
+	CameraComponent* m_targetCam = nullptr;
 	Pawn* m_possessed = nullptr;
-
+	bool m_bInputEnabled = false;
 };
 

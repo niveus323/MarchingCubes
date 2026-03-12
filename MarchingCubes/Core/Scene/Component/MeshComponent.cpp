@@ -9,6 +9,7 @@
 #include "Core/Assets/ResourceManager.h"
 
 BEGIN_REFLECTION(MeshComponent, RendererComponent)
+    REFLECT_PROPERTY_ASSET_ARRAY_FN("Materials", Material, GetMaterialSlotCount, GetMaterialPath, SetMaterialByPath)
 END_REFLECTION()
 
 void MeshComponent::Init()
@@ -40,7 +41,7 @@ void MeshComponent::Submit()
         uint32_t materialGPUIndex = UINT32_MAX;
         if (!matInst.m_overrides.empty())
         {
-            std::string matInstanceKey = std::format("MatInst_{}[{}]", this->GetUUID(), i);
+            std::string matInstanceKey = std::format("MatInst_{}[{}]", GetMesh()->GetDebugName(), i);
             if (matInst.m_bDirty)
             {
                 // 수정 발생 시 Registry에 변경 적용
@@ -93,6 +94,7 @@ void MeshComponent::Submit()
             .indexOffset = subMesh.indexOffset,
             .baseVertexLocation = subMesh.baseVertexLocation,
             .materialIndex = materialIndices[subMesh.materialslot],
+            .objectID = GetOwner()->GetObjectID(),
             .debugName = m_name
         };
         item.resourceBindings.push_back(ShaderBinding{
@@ -177,53 +179,10 @@ void MeshComponent::SetMaterial(int slot, std::shared_ptr<MaterialAsset> matAsse
     if (!matAsset)
     {
         m_materialInstnaces[slot].m_material = m_materialInstnaces[0].m_material;
+        m_materialInstnaces[slot].m_bDirty = true;
         return;
     }
     m_materialInstnaces[slot].m_material = matAsset;
-    
-}
-
-void MeshComponent::AddOverlayPass(const std::string& name, const std::string& psoName, std::vector<ShaderBinding> extraBindings, bool bInitialActive)
-{
-    for (auto& pass : m_overlayPasses)
-    {
-        if (pass.name == name)
-        {
-            pass.psoName = psoName;
-            pass.resourceBindings = std::move(extraBindings);
-            return;
-        }
-    }
-
-    // 없으면 새로 생성
-    m_overlayPasses.push_back(OverlayPass{
-        .name = name,
-        .psoName = psoName,
-        .bActive = bInitialActive,
-        .resourceBindings = std::move(extraBindings)
-    });
-}
-
-void MeshComponent::SetOverlayPassActive(const std::string& name, bool bActive)
-{
-    for (auto& pass : m_overlayPasses)
-    {
-        if (pass.name == name)
-        {
-            pass.bActive = bActive;
-            return;
-        }
-    }
-}
-
-void MeshComponent::RemoveOverlayPass(const std::string& name)
-{
-    for (auto iter = m_overlayPasses.begin(); iter != m_overlayPasses.end(); ++iter)
-    {
-        if (iter->name == name)
-        {
-            m_overlayPasses.erase(iter);
-            return;
-        }
-    }
+    m_materialInstnaces[slot].m_overrides.clear();
+    m_materialInstnaces[slot].m_bDirty = true;
 }

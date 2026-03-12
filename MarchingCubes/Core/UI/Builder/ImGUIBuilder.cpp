@@ -1,11 +1,12 @@
 #include "pch.h"
 #include "ImGUIBuilder.h"
-#include <imgui.h>
 #include <imgui_stdlib.h>
+#include <imgui_internal.h>
+#include "ThirdParty/ImGuizmo/ImGuizmo.h"
+#include <DirectXMath.h>
 #include <cstdarg>
 #include <unordered_map>
 #include <algorithm>
-#include "ThirdParty/ImGuizmo/ImGuizmo.h"
 
 namespace UI
 {
@@ -41,15 +42,7 @@ namespace UI
 
 bool ImGUIBuilder::BeginPanel(const char* name, bool* pOpen, UI::UI_PanelOption flags)
 {
-	ImGuiWindowFlags windowFlag = ImGuiWindowFlags_None;
-	if (HasFlag(flags, UI::UI_PanelOption::MenuBar)) windowFlag |= ImGuiWindowFlags_MenuBar;
-	if (HasFlag(flags, UI::UI_PanelOption::NoDocking)) windowFlag |= ImGuiWindowFlags_NoDocking;
-	if (HasFlag(flags, UI::UI_PanelOption::NoInput)) windowFlag |= ImGuiWindowFlags_NoInputs;
-	if (HasFlag(flags, UI::UI_PanelOption::NoMove)) windowFlag |= ImGuiWindowFlags_NoMove;
-	if (HasFlag(flags, UI::UI_PanelOption::NoScrollBar)) windowFlag |= ImGuiWindowFlags_NoScrollbar;
-	if (HasFlag(flags, UI::UI_PanelOption::NoTitleBar)) windowFlag |= ImGuiWindowFlags_NoTitleBar;
-	if (HasFlag(flags, UI::UI_PanelOption::NoCollapse)) windowFlag |= ImGuiWindowFlags_NoCollapse;
-	return ImGui::Begin(name, pOpen, windowFlag);
+	return ImGui::Begin(name, pOpen, GetWindowFlags(flags));
 }
 
 void ImGUIBuilder::EndPanel()
@@ -96,6 +89,16 @@ bool ImGUIBuilder::BeginTabItem(const char* id, bool* pOpen)
 void ImGUIBuilder::EndTabItem()
 {
 	ImGui::EndTabItem();
+}
+
+bool ImGUIBuilder::BeginToolBar(const char* id, float size)
+{
+	return ImGui::BeginViewportSideBar(id, ImGui::GetMainViewport(), ImGuiDir_Up, size, ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_MenuBar);
+}
+
+void ImGUIBuilder::EndToolBar()
+{
+	ImGui::End();
 }
 
 void ImGUIBuilder::BeginMainMenuBar()
@@ -176,6 +179,11 @@ void ImGUIBuilder::Label(const char* text)
 bool ImGUIBuilder::Button(const char* label, const UI::Vector<float, 2>& size)
 {
 	return ImGui::Button(label, ImVec2(size.x, size.y));
+}
+
+void ImGUIBuilder::InvisibleButton(const char* str_id, const UI::Vector<float, 2>& size)
+{
+	ImGui::InvisibleButton(str_id, ImVec2(size.x, size.y));
 }
 
 bool ImGUIBuilder::Checkbox(const char* label, bool* v)
@@ -260,6 +268,40 @@ bool ImGUIBuilder::InputEnum(const char* label, int* currentValue, const std::ve
 	return changed;
 }
 
+bool ImGUIBuilder::BeginDragDropSource()
+{
+	return ImGui::BeginDragDropSource();
+}
+
+void ImGUIBuilder::SetDragDropPayload(const char* type, const void* data, size_t size)
+{
+	ImGui::SetDragDropPayload(type, data, size);
+}
+
+void ImGUIBuilder::EndDragDropSource()
+{
+	ImGui::EndDragDropSource();
+}
+
+bool ImGUIBuilder::BeginDragDropTarget()
+{
+	return ImGui::BeginDragDropTarget();
+}
+
+const void* ImGUIBuilder::AcceptDragDropPayload(const char* type)
+{
+	if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload(type))
+	{
+		return payload->Data;
+	}
+	return nullptr;
+}
+
+void ImGUIBuilder::EndDragDropTarget()
+{
+	ImGui::EndDragDropTarget();
+}
+
 void ImGUIBuilder::TableHeadersRow()
 {
 	ImGui::TableHeadersRow();
@@ -329,22 +371,91 @@ void ImGUIBuilder::Unindent(float width)
 	ImGui::Unindent(width);
 }
 
-void ImGUIBuilder::AlignNextItem(UI::UI_Alignment align, float itemWidth)
+void ImGUIBuilder::AlignNextItem(const UI::Vector<float, 2> size, UI::UI_AlignmentX alignX, UI::UI_AlignmentY alignY)
 {
-	float nextItemPos = ImGui::GetCursorPosX();
-	switch (align)
+	ImVec2 nextItemPos = ImGui::GetCursorPos();
+	ImVec2 regionAvail = ImGui::GetContentRegionAvail();
+	switch (alignX)
 	{
-		case UI::UI_Alignment::AlignCenter:
-			nextItemPos += (ImGui::GetContentRegionAvail().x - itemWidth) * 0.5f;
+		case UI::UI_AlignmentX::Align_Center:
+			nextItemPos.x += (regionAvail.x - size.x) * 0.5f;
 			break;
-		case UI::UI_Alignment::AlignRight:
-			nextItemPos += (ImGui::GetContentRegionAvail().x - itemWidth);
+		case UI::UI_AlignmentX::Align_Right:
+			nextItemPos.x += (regionAvail.x - size.x);
 			break;
-		case UI::UI_Alignment::AlignLeft:
+		case UI::UI_AlignmentX::Align_Left:
 		default:
 			return;
 	}
-	ImGui::SetCursorPosX(nextItemPos);
+	switch (alignY)
+	{
+		case UI::UI_AlignmentY::Align_Center:
+			nextItemPos.y += (regionAvail.y - size.y) * 0.5f;
+			break;
+		case UI::UI_AlignmentY::Align_Bottom:
+			nextItemPos.y += (regionAvail.y - size.y);
+			break;
+		case UI::UI_AlignmentY::Align_Top:
+		default:
+			return;
+	}
+	ImGui::SetCursorPos(nextItemPos);
+}
+
+void ImGUIBuilder::SetNextWindowAligned(UI::Vector<float, 2> pos, UI::UI_AlignmentX alignX, UI::UI_AlignmentY alignY)
+{
+	ImVec2 parentPos = ImGui::GetWindowPos();
+	ImVec2 parentSize = ImGui::GetWindowSize();
+
+	ImVec2 overlayPos = parentPos;
+	ImVec2 pivot(0.0f, 0.0f); // 기본값: 좌상단 기준
+
+	switch (alignX)
+	{
+		case UI::UI_AlignmentX::Align_Center:
+		{
+			overlayPos.x += (parentSize.x * 0.5f) + pos.x;
+			pivot.x = 0.5f;
+		}
+		break;
+		case UI::UI_AlignmentX::Align_Right:
+		{
+			overlayPos.x += parentSize.x - pos.x;
+			pivot.x = 1.0f;
+		}
+		break;
+		case UI::UI_AlignmentX::Align_Left:
+		default:
+		{
+			overlayPos.x += pos.x;
+		}
+		break;
+	}
+
+	switch (alignY)
+	{
+		case UI::UI_AlignmentY::Align_Center:
+		{
+			overlayPos.y += (parentSize.y * 0.5f) + pos.y;
+			pivot.y = 0.5f;
+		}
+		break;
+		case UI::UI_AlignmentY::Align_Bottom:
+		{
+			overlayPos.y += parentSize.y - pos.y;
+			pivot.y = 1.0f;
+		}
+		break;
+		case UI::UI_AlignmentY::Align_Top:
+		default:
+		{
+			overlayPos.y += pos.y;
+		}
+		break;
+	}
+
+	// 계산된 좌표와 피벗 적용
+	ImGui::SetNextWindowPos(overlayPos, ImGuiCond_Always, pivot);
 }
 
 void ImGUIBuilder::PushStyle_Padding(const UI::Vector<float, 2>& padding)
@@ -352,14 +463,32 @@ void ImGUIBuilder::PushStyle_Padding(const UI::Vector<float, 2>& padding)
 	ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(padding.x, padding.y));
 }
 
-void ImGUIBuilder::PopStyle(int count)
+void ImGUIBuilder::PushStyle_Button(const UI::Color& defaultColor, const UI::Color& hoverColor, const UI::Color& activeColor)
+{
+	ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(defaultColor.r, defaultColor.g, defaultColor.b, defaultColor.a));
+	ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(hoverColor.r, hoverColor.g, hoverColor.b, hoverColor.a));
+	ImGui::PushStyleColor(ImGuiCol_ButtonActive, ImVec4(activeColor.r, activeColor.g, activeColor.b, hoverColor.a));
+}
+
+void ImGUIBuilder::PopStyle_Var(int count)
 {
 	ImGui::PopStyleVar(count);
+}
+
+void ImGUIBuilder::PopStyle_Color(int count)
+{
+	ImGui::PopStyleColor(count);
 }
 
 void ImGUIBuilder::SetNextItemWidth(float width)
 {
 	ImGui::SetNextItemWidth(width);
+}
+
+UI::Vector<float, 2> ImGUIBuilder::CalcTextSize(const char* text)
+{
+	ImVec2 size = ImGui::CalcTextSize(text);
+	return { size.x, size.y };
 }
 
 void ImGUIBuilder::PushID(const char* str_id)
@@ -380,6 +509,11 @@ void ImGUIBuilder::PopID()
 bool ImGUIBuilder::IsItemClicked()
 {
 	return ImGui::IsItemClicked() && !ImGui::IsItemToggledOpen();
+}
+
+bool ImGUIBuilder::IsItemDoubleClicked()
+{
+	return ImGui::IsItemHovered() && ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left);
 }
 
 bool ImGUIBuilder::IsItemHovered()
@@ -701,34 +835,35 @@ void ImGUIBuilder::EndTooltip()
 	ImGui::EndTooltip();
 }
 
-bool ImGUIBuilder::BeginOverlay(const char* name, const UI::Vector<float, 2>& pos, const UI::Vector<float, 2>& size)
+bool ImGUIBuilder::BeginOverlay(const char* name, const UI::Vector<float, 2>& pos, const UI::Vector<float, 2>& size, float alpha, UI::UI_PanelOption flags, UI::UI_AlignmentX alignX, UI::UI_AlignmentY alignY)
 {
-	ImGui::SetNextWindowPos(ImVec2(pos.x, pos.y), ImGuiCond_Always);
-	ImGui::SetNextWindowSize(ImVec2(size.x, size.y));
-	ImGui::SetNextWindowBgAlpha(0.0f);
-
-	// Padding 제거 스타일 적용
-	ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0.0f, 0.0f));
-
-	return ImGui::Begin(name, nullptr,
-		ImGuiWindowFlags_NoDecoration |
-		ImGuiWindowFlags_NoInputs |
-		ImGuiWindowFlags_NoBackground |
-		ImGuiWindowFlags_NoSavedSettings |
-		ImGuiWindowFlags_NoFocusOnAppearing |
-		ImGuiWindowFlags_NoNav);
+	SetNextWindowAligned(pos, alignX, alignY);
+	// 지정한 Size가 있으면 Size 설정
+	if (size.x > 0.0f && size.y > 0.0f) 
+	{
+		ImGui::SetNextWindowSize(ImVec2(size.x, size.y));
+	}
+	// Background 사용할 경우 alpha 적용
+	if(!HasFlag(flags, UI::UI_PanelOption::NoBackground)) ImGui::SetNextWindowBgAlpha(alpha);
+	
+	return BeginPanel(name, nullptr, flags);
 }
 
 void ImGUIBuilder::EndOverlay()
 {
 	ImGui::End();
-	ImGui::PopStyleVar(1); // WindowPadding 복구
 }
 
 UI::Vector<float, 2> ImGUIBuilder::GetMainViewportPos()
 {
 	ImVec2 pos = ImGui::GetMainViewport()->Pos;
 	return { pos.x, pos.y };
+}
+
+UI::Vector<float, 2> ImGUIBuilder::GetMainViewportSize()
+{
+	ImVec2 size = ImGui::GetMainViewport()->Size;
+	return UI::Vector<float, 2>(size.x, size.y);
 }
 
 void ImGUIBuilder::DockSpaceOverViewport(const char* dockSpaceId, const void* viewport)
@@ -803,23 +938,12 @@ void ImGUIBuilder::DrawTextAt(const UI::Vector<float, 2>& pos, const UI::Color& 
 	);
 }
 
-UI::Vector<float, 2> ImGUIBuilder::CalcTextSize(const char* text)
-{
-	ImVec2 size = ImGui::CalcTextSize(text);
-	return { size.x, size.y };
-}
-
-void ImGUIBuilder::InvisibleButton(const char* str_id, const UI::Vector<float, 2>& size)
-{
-	ImGui::InvisibleButton(str_id, ImVec2(size.x, size.y));
-}
-
 bool ImGUIBuilder::IsGizmoHovered()
 {
 	return ImGuizmo::IsOver();
 }
 _Success_(return)
-bool ImGUIBuilder::DrawTransformGizmo(const DirectX::XMFLOAT4X4& view, const DirectX::XMFLOAT4X4& proj, UI::EGizmoOperation op, UI::EGizmoMode mode, _Inout_ DirectX::XMFLOAT4X4& world, _Out_ DirectX::XMFLOAT3& translation, _Out_ DirectX::XMFLOAT3& rotation, _Out_ DirectX::XMFLOAT3& scale, float gizmoSize)
+bool ImGUIBuilder::DrawTransformGizmo(const DirectX::XMFLOAT4X4 & view, const DirectX::XMFLOAT4X4 & proj, UI::EGizmoOperation op, UI::EGizmoMode mode, _Inout_ DirectX::XMFLOAT4X4 & world, _Out_ DirectX::XMFLOAT3 & translation, _Out_ DirectX::XMFLOAT3 & rotation, _Out_ DirectX::XMFLOAT3 & scale, const float* snap, float gizmoSize)
 {
 	ImGuizmo::SetOrthographic(false);
 	ImGuizmo::SetDrawlist();
@@ -843,14 +967,17 @@ bool ImGUIBuilder::DrawTransformGizmo(const DirectX::XMFLOAT4X4& view, const Dir
 	float textScaleMulti = 1.25f;
 	ImGui::SetWindowFontScale(textScaleMulti);
 
-	bool bManipulated = ImGuizmo::Manipulate(*view.m, *proj.m, gizmoOp, gizmoMode, *world.m) && ImGuizmo::IsUsing();
+	bool bManipulated = ImGuizmo::Manipulate(*view.m, *proj.m, gizmoOp, gizmoMode, *world.m, nullptr, snap) && ImGuizmo::IsUsing();
 	if (bManipulated)
 	{
 		float t[3], r[3], s[3];
 		ImGuizmo::DecomposeMatrixToComponents(*world.m, t, r, s);
 
 		translation = XMFLOAT3( t[0], t[1], t[2] );
-		rotation = XMFLOAT3( r[0], r[1], r[2] );
+		// Degree -> Radian
+		rotation.x = DirectX::XMConvertToRadians(r[0]);
+		rotation.y = DirectX::XMConvertToRadians(r[1]);
+		rotation.z = DirectX::XMConvertToRadians(r[2]);
 		scale = XMFLOAT3( s[0], s[1], s[2] );
 	}
 
@@ -898,5 +1025,24 @@ std::string ImGUIBuilder::DrawPropertyLabel(const char* label)
 	std::string hiddenLabel = "##";
 	hiddenLabel += label;
 	return hiddenLabel;
+}
+
+ImGuiWindowFlags ImGUIBuilder::GetWindowFlags(UI::UI_PanelOption flags)
+{
+	ImGuiWindowFlags windowFlag = ImGuiWindowFlags_None;
+	if (HasFlag(flags, UI::UI_PanelOption::MenuBar))			windowFlag |= ImGuiWindowFlags_MenuBar;
+	if (HasFlag(flags, UI::UI_PanelOption::NoDocking))			windowFlag |= ImGuiWindowFlags_NoDocking;
+	if (HasFlag(flags, UI::UI_PanelOption::NoInput))			windowFlag |= ImGuiWindowFlags_NoInputs;
+	if (HasFlag(flags, UI::UI_PanelOption::NoMove))				windowFlag |= ImGuiWindowFlags_NoMove;
+	if (HasFlag(flags, UI::UI_PanelOption::NoScrollBar))		windowFlag |= ImGuiWindowFlags_NoScrollbar;
+	if (HasFlag(flags, UI::UI_PanelOption::NoTitleBar))			windowFlag |= ImGuiWindowFlags_NoTitleBar;
+	if (HasFlag(flags, UI::UI_PanelOption::NoCollapse))			windowFlag |= ImGuiWindowFlags_NoCollapse;
+	if (HasFlag(flags, UI::UI_PanelOption::NoFocusOnAppearing)) windowFlag |= ImGuiWindowFlags_NoFocusOnAppearing;
+	if (HasFlag(flags, UI::UI_PanelOption::NoNav))				windowFlag |= ImGuiWindowFlags_NoNav;
+	if (HasFlag(flags, UI::UI_PanelOption::NoSavedSettings))	windowFlag |= ImGuiWindowFlags_NoSavedSettings;
+	if (HasFlag(flags, UI::UI_PanelOption::NoDecoration))		windowFlag |= ImGuiWindowFlags_NoDecoration;
+	if (HasFlag(flags, UI::UI_PanelOption::NoBackground))		windowFlag |= ImGuiWindowFlags_NoBackground;
+
+	return windowFlag;
 }
 

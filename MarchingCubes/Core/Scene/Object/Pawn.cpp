@@ -3,6 +3,7 @@
 #include "Core/Scene/Scene.h"
 #include "Core/Scene/Object/GameMode/GameMode.h"
 #include "Core/Scene/Object/Controller/PlayerController.h"
+#include "Core/Scene/Component/CameraComponent.h"
 
 BEGIN_ENUM_REFLECTION(EAutoPossessTarget)
     REFLECT_ENUM(EAutoPossessTarget::Disabled)
@@ -30,6 +31,17 @@ void Pawn::BeginPlay()
                 pc->Possess(this);
             }
         }
+    }
+}
+
+void Pawn::OnPossess()
+{
+    CameraComponent* targetCamera = GetComponent<CameraComponent>();
+    // 카메라가 없으면 자체적으로 카메라 생성
+    if (!targetCamera)
+    {
+        targetCamera = AddComponent<CameraComponent>(EObjectFlags::Transient | EObjectFlags::EditorOnly);
+        Log::Print("Pawn", "카메라가 없어 임시 CameraComponent를 생성했습니다.");
     }
 }
 

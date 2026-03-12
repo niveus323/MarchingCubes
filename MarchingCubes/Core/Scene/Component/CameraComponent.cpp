@@ -13,6 +13,7 @@ END_REFLECTION()
 void CameraComponent::Init()
 {
 	TransformableComponent::Init();
+
 	auto billboard = GetOwner()->GetComponent<BillboardComponent>();
 	if (!billboard) billboard = GetOwner()->AddComponent<BillboardComponent>(EObjectFlags::Transient | EObjectFlags::EditorOnly);
 
@@ -20,7 +21,7 @@ void CameraComponent::Init()
 	billboard->SetIcon(icon, 1);
 }
 
-CameraConstants CameraComponent::GetCameraConstants() const
+CameraConstants CameraComponent::GetCameraConstants(float rtWidth, float rtHeight) const
 {
 	CameraConstants cb{};
 	XMMATRIX vp = GetViewProjMatrix();

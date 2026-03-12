@@ -45,8 +45,6 @@ void TerraformTool::OnActivated(EditorController* controller)
 void TerraformTool::OnDeactivated()
 {
 	IEditorTool::OnDeactivated();
-
-	// 저장하지 않은 지형 오브젝트가 존재할 경우 저장을 유도해주는것이 좋아보임.
 }
 
 void TerraformTool::Update(float deltaTime)
@@ -64,12 +62,7 @@ bool TerraformTool::ProcessInput(const InputState* input, float deltaTime)
 
 	if (input->IsPressed(ActionKey::LeftClick))
 	{
-		auto* camera = m_controller->GetScene()->GetMainCamera();
-		MousePos mouse = input->GetMousePos();
-		float mouseX = static_cast<float>(mouse.x);
-		float mouseY = static_cast<float>(mouse.y);
-		auto ray = PhysicsUtil::MakeRay(mouseX, mouseY, camera->GetViewportWidth(), camera->GetViewportHeight(), camera->GetViewProjMatrix());
-
+		auto ray = m_controller->GetViewportMouseRay();
 		XMMATRIX worldMat = m_selectedTerrain->GetWorldMatrix();
 		GridDesc setting = m_selectedTerrain->GetSetting();
 		auto target = PhysicsUtil::RaymarchingTarget{
@@ -244,7 +237,7 @@ void TerraformTool::ManageTabUI(IUIBuilder* ui)
 
 			ui->Separator();
 			std::string info = "--- Estimated Terrain Info ---";
-			ui->AlignNextItem(UI::UI_Alignment::AlignCenter, ui->CalcTextSize(info.c_str()).x);
+			ui->AlignNextItem(ui->CalcTextSize(info.c_str()), UI::UI_AlignmentX::Align_Center);
 			ui->Text(info);
 			XMUINT3 totalResolution = XMUINT3(m_targetChunkCount.x * m_targetCellsPerChunk, m_targetChunkCount.y * m_targetCellsPerChunk, m_targetChunkCount.z * m_targetCellsPerChunk);
 			ui->TextFormatted("Overall Resolution: %lu x %lu x %lu", totalResolution.x, totalResolution.y, totalResolution.z);
