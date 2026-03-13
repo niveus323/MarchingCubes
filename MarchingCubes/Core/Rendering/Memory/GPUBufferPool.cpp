@@ -83,7 +83,7 @@ void GPUBufferPool::FreeLater(const BufferHandle& r, uint64_t fence)
 		if (fb.offset == r.offset && fb.size == r.size)
 		{
 			// 이미 free에 등록되어 있다면 중복 free 의심 — 무시
-			Log::Print("GPUBufferPool", "FreeLater: double-free ignored (offset=%llu size=%llu)", (unsigned long long)r.offset, (unsigned long long)r.size);
+			Log::Print(ELogVerbosity::Warning, "GPUBufferPool", "FreeLater: double-free ignored (offset={} size={})", r.offset, r.size);
 			return;
 		}
 	}
@@ -95,7 +95,7 @@ void GPUBufferPool::FreeLater(const BufferHandle& r, uint64_t fence)
 		{
 			// 이미 retired에 존재하면 fence를 최신으로 갱신(더 큰 fence 사용)
 			if (rb.fence < fence) rb.fence = fence;
-			Log::Print("GPUBufferPool", "FreeLater: same retired block found, updated fence (offset=%llu size=%llu fence=%llu)", (unsigned long long)r.offset, (unsigned long long)r.size, (unsigned long long)rb.fence);
+			Log::Print(ELogVerbosity::Verbose, "GPUBufferPool", "FreeLater: same retired block found, updated fence (offset={} size={} fence={})", r.offset, r.size, rb.fence);
 			return;
 		}
 	}

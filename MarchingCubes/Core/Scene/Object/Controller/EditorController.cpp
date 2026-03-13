@@ -24,7 +24,7 @@ void EditorController::Update(float deltaTime)
     {
         XMUINT4 pixel = EngineCore::GetRenderSystem()->GetHitProxyPixel();
         uint32_t resultID = DecodeHitProxyID(pixel);
-        Log::Print("EditorController", "Picked Pixel RGB(%u, %u, %u) -> ObjectID : %u", pixel.x, pixel.y, pixel.z, resultID);
+        Log::Print(ELogVerbosity::Message, "EditorController", "Picked Pixel RGB({}, {}, {}) -> ObjectID : {}", pixel.x, pixel.y, pixel.z, resultID);
         SelectObject(GetScene()->FindObject(resultID));
         m_pickingFenceValue = 0;
     }
@@ -247,7 +247,7 @@ void EditorController::ProcessInput(float deltaTime)
             MousePos clientMouse = input->GetMousePos();
             uint32_t viewportMouseX = clientMouse.x - static_cast<uint32_t>(m_viewportX);
             uint32_t viewportMouseY = clientMouse.y - static_cast<uint32_t>(m_viewportY);
-            Log::Print("EditorController", "Trying Pick Objet ViewportPos(%u, %u)", viewportMouseX, viewportMouseY);
+            Log::Print(ELogVerbosity::Message, "EditorController", "Trying Pick Objet ViewportPos({}, {})", viewportMouseX, viewportMouseY);
             m_pickingFenceValue = EngineCore::GetRenderSystem()->RequestPicking(viewportMouseX, viewportMouseY);
             // 여기서 Fence값을 발급 받아야한다
         }
@@ -309,67 +309,6 @@ void EditorController::AddPitchInput(float val)
     float amount = val * m_mouseSensitivity;
     m_possessed->AddControllerPitchInput(amount);
 }
-
-//GameObject* EditorController::PerformMousePicking(float mouseX, float mouseY)
-//{
-//    auto scene = GetScene();
-//    if (!scene || !m_targetCam) return nullptr;
-//
-//    DirectX::XMMATRIX viewProj = m_targetCam->GetViewProjMatrix();
-//    auto ray = GetViewportMouseRay();
-//    GameObject* pickedObject = nullptr;
-//    PhysicsUtil::HitResult closestHit;
-//    closestHit.distance = FLT_MAX;
-//    std::vector<PhysicsUtil::RaycastTarget> meshTargets;
-//    for (const auto& obj : scene->GetObjects())
-//    {
-//        if (obj->HasAnyFlags(EObjectFlags::EditorOnly)) continue; //EditorController, SpectatorPawn 등 에디터 작업을 위한 오브젝트는 제외
-//        if (auto billboard = obj->GetComponent<BillboardComponent>())
-//        {
-//            DirectX::BoundingOrientedBox obb = billboard->GetBoundingBox(m_targetCam);
-//            float distance = 0.0f;
-//            if (obb.Intersects(ray.origin, ray.direction, distance))
-//            {
-//                if (distance < closestHit.distance)
-//                {
-//                    closestHit.distance = distance;
-//                    pickedObject = obj.get();
-//                }
-//            }
-//        }
-//
-//        // Mesh가 존재할 경우 mesh에 대한 마우스 피킹도 고려
-//        if (auto meshComp = obj->GetComponent<MeshComponent>())
-//        {
-//            if (Mesh* mesh = meshComp->GetMesh())
-//            {
-//                meshTargets.push_back(PhysicsUtil::RaycastTarget{
-//                    .data = &mesh->GetGeometryData(), // 에디터 환경에서만 이 함수를 실행하므로 GetGeometryData호출도 안전함.
-//                    .bounds = mesh->GetBounds()[0],
-//                    .worldMatrix = meshComp->GetTransformComp()->GetWorldMatrix(),
-//                    .userData = obj.get()
-//                });
-//            }
-//        }
-//    }
-//
-//    // Mesh 피킹까지 고려하여 가장 가까운 피킹 결과를 리턴
-//    if (!meshTargets.empty())
-//    {
-//        PhysicsUtil::HitResult hitResult;
-//        if (PhysicsUtil::IsHit(meshTargets, ray, hitResult))
-//        {
-//            // 빌보드보다 더 가까운 메쉬를 클릭했다면 결과 갱신
-//            if (hitResult.distance < closestHit.distance)
-//            {
-//                closestHit = hitResult;
-//                pickedObject = static_cast<GameObject*>(hitResult.userData);
-//            }
-//        }
-//    }
-//    Log::Print("EditorController", "PickingResult : %s", pickedObject? pickedObject->GetName().c_str() : "Null");
-//    return pickedObject;
-//}
 
 uint32_t EditorController::DecodeHitProxyID(const DirectX::XMUINT4& pixel)
 {

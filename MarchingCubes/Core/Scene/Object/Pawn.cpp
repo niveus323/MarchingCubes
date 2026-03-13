@@ -41,7 +41,7 @@ void Pawn::OnPossess()
     if (!targetCamera)
     {
         targetCamera = AddComponent<CameraComponent>(EObjectFlags::Transient | EObjectFlags::EditorOnly);
-        Log::Print("Pawn", "카메라가 없어 임시 CameraComponent를 생성했습니다.");
+        Log::Print(ELogVerbosity::Warning, "Pawn", "카메라가 없어 임시 CameraComponent를 생성했습니다.");
     }
 }
 

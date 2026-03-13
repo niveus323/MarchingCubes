@@ -23,7 +23,7 @@ void MeshComponent::Submit()
     Mesh* mesh = GetMesh();
     if (!mesh)
     {
-        Log::Print("MeshComponent", "Sumitted Invalid Mesh");
+        Log::Print(ELogVerbosity::Fatal, "MeshComponent", "Sumitted Invalid Mesh");
         return;
     }
     

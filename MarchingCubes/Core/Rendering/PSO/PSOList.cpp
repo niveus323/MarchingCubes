@@ -174,7 +174,7 @@ void PSOList::CreateRootSignature(ID3D12Device* device, const std::vector<RootSi
 						{
 							if ((iter + 1) != rootParam.ranges.end())
 							{
-								Log::Print("PSO", "Unbounded Range Should be Last!!!");
+								Log::Print(ELogVerbosity::Fatal, "PSO", "Unbounded Range Should be Last!!!");
 								bParseFailed = true;
 								break;
 							}

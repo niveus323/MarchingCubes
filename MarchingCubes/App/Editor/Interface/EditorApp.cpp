@@ -462,7 +462,7 @@ void EditorApp::SetDebugViewMode(std::string_view name)
 		}
 	}
 
-	Log::Print("Editor", "Failed to find debug mode: %s", name);
+	Log::Print(ELogVerbosity::Fatal, "Editor", "Failed to find debug mode: {}", name);
 }
 
 void EditorApp::SetDebugViewMode(int index)

@@ -75,11 +75,11 @@ void ContentBrowserPanel::OnRenderUI(IUIBuilder* ui)
                     std::string payloadType = "ITEM_Data";
                     if (extension == ".FBX" || extension == ".obj") payloadType = "ITEM_Mesh";
                     else if (extension == ".png" || extension == ".jpg") payloadType = "ITEM_Texture";
-                    else if (extension == ".json") payloadType = "ITEM_Material"; //TODO : .json이 아닌 .mat파일로 변경
+                    else if (extension == ".json") payloadType = "ITEM_Material";
 
                     ui->SetDragDropPayload(payloadType.c_str(), itemPath.c_str(), itemPath.size() + 1);
                     ui->Text(filenameString); // 드래그 중 마우스 커서에 띄울 텍스트
-                    Log::Print("ContentBrowserPanel", "payloadType : %s", payloadType.c_str());
+                    Log::Print(ELogVerbosity::Verbose, "ContentBrowserPanel", "payloadType : {}", payloadType);
                     ui->EndDragDropSource();
                 }
 

@@ -716,7 +716,7 @@ void TerraformTool::SaveTerrain(std::string_view path)
 
 	if (m_selectedTerrain->SaveDataAsset(path))
 	{
-		Log::Print("Saved terrain to %s", path.data());
+		Log::Print(ELogVerbosity::Message, "TerraformTool", "Saved terrain to {}", path);
 	}
 }
 
@@ -749,7 +749,7 @@ void TerraformTool::LoadTerrain()
 		}
 		else
 		{
-			Log::Print("Failed to load terrain data from %s", m_importDestPath.c_str());
+			Log::Print(ELogVerbosity::Fatal, "TerraformTool", "Failed to load terrain data from {}", m_importDestPath);
 		}
 		
 	}

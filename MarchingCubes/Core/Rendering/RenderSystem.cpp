@@ -138,7 +138,7 @@ void RenderSystem::RenderFrame(ID3D12GraphicsCommandList* cmd)
 			D3D12_BOX srcBox = { m_pickX, m_pickY, 0, m_pickX + 1, m_pickY + 1, 1 };
 			cmd->CopyTextureRegion(&dest, 0, 0, 0, &src, &srcBox);
 			cmd->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(m_hitProxyRT.Get(), D3D12_RESOURCE_STATE_COPY_SOURCE, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE));
-			Log::Print("RenderSystem", "Pick Area(%u, %u)", m_pickX, m_pickY);
+			Log::Print(ELogVerbosity::Message, "RenderSystem", "Pick Area({}, {})", m_pickX, m_pickY);
 			
 			m_bPickingRequested = false;
 		}
@@ -210,7 +210,7 @@ void RenderSystem::SetViewport(float x, float y, float width, float height)
 	m_scissorRect.right = static_cast<LONG>(x + width);
 	m_scissorRect.bottom = static_cast<LONG>(y + height);
 
-	Log::Print("RenderSystem", "Viewport : %f, %f.    ScissorRect : (%ld, %ld, %ld, %ld)", m_viewport.Width, m_viewport.Height, m_scissorRect.left, m_scissorRect.top, m_scissorRect.right, m_scissorRect.bottom);
+	Log::Print(ELogVerbosity::Message, "RenderSystem", "Viewport : {}, {}.    ScissorRect : ({}, {}, {}, {})", m_viewport.Width, m_viewport.Height, m_scissorRect.left, m_scissorRect.top, m_scissorRect.right, m_scissorRect.bottom);
 }
 
 void RenderSystem::SetOutputTarget(ID3D12Resource* renderTarget, D3D12_CPU_DESCRIPTOR_HANDLE rtv, D3D12_CPU_DESCRIPTOR_HANDLE dsv)
@@ -304,7 +304,7 @@ RenderItem* RenderSystem::AllocateRenderItem()
 {
 	if (m_allocatedItemCount >= m_renderItems.size())
 	{
-		Log::Print("RenderSystem", "RenderItem Capacity Exceeded");
+		Log::Print(ELogVerbosity::Fatal, "RenderSystem", "RenderItem Capacity Exceeded");
 		return nullptr;
 	}
 	RenderItem* item = &m_renderItems[m_allocatedItemCount++];
@@ -397,7 +397,7 @@ void RenderSystem::ExecuteQueue(ID3D12GraphicsCommandList* cmd, bool bIDPass)
 			UINT rootParamIndex = m_psoList->GetRootParameterIndex(currentRSIndex, binding.rootParamKey);
 			if (rootParamIndex == UINT32_MAX)
 			{
-				Log::Print("ExecuteQueue", "Invalid ResourceBinding : %s", binding.rootParamKey);
+				Log::Print(ELogVerbosity::Fatal, "ExecuteQueue", "Invalid ResourceBinding : {}", binding.rootParamKey);
 				continue; // 잘못된 바인딩요청일 경우 무시
 			}
 
@@ -419,7 +419,7 @@ void RenderSystem::ExecuteQueue(ID3D12GraphicsCommandList* cmd, bool bIDPass)
 					cmd->SetGraphicsRootDescriptorTable(rootParamIndex, binding.gpuDescriptorHandle);
 					break;
 				default:
-					Log::Print("RenderItem", "Invalid Binding Type!!!!\n Check For: %s", entry.item->debugName.c_str());
+					Log::Print(ELogVerbosity::Fatal, "RenderItem", "Invalid Binding Type!!!!\n Check For: {}", entry.item->debugName);
 					break;
 			}
 		}

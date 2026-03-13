@@ -200,7 +200,7 @@ RegistryIndex MaterialRegistry::FindMaterialHandle(std::string_view path)
 {
 	if (m_pathCache.find(path.data()) == m_pathCache.end())
 	{
-		Log::Print("MaterialRegistry", "%s not Loaded.", std::string(path).c_str());
+		Log::Print(ELogVerbosity::Warning, "MaterialRegistry", "{} not Loaded.", path);
 		return UINT32_MAX;
 	}
 	return m_pathCache[path.data()];

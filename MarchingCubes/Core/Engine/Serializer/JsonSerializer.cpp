@@ -34,7 +34,7 @@ void ProcessValue(bool isSaving, std::vector<json*>& nodes, std::vector<size_t>&
 				}
 				else
 				{
-					Log::Print("JsonSerializer", "Serialized Index Out of Range!!!!");
+					Log::Print(ELogVerbosity::Fatal, "JsonSerializer", "Serialized Index Out of Range!!!!");
 				}
 			}
 		}
@@ -70,7 +70,7 @@ void JsonSerializer::WriteToFile(const std::string& filepath)
 {
 	if (!FileUtils::WriteJSON(filepath, m_root, 4))
     {
-        Log::Print("JsonSerializer", "Failed to write file: %s", filepath.c_str());
+        Log::Print(ELogVerbosity::Fatal, "JsonSerializer", "Failed to write file: {}", filepath);
     }
 }
 
@@ -84,7 +84,7 @@ void JsonSerializer::LoadFromFile(const std::string& filepath)
 	}
 	else
 	{
-		Log::Print("JsonSerializer", "Failed to load file: %s", filepath.c_str());
+		Log::Print(ELogVerbosity::Fatal, "JsonSerializer", "Failed to load file: {}", filepath);
 	}
 }
 
