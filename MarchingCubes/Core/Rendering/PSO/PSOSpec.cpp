@@ -202,6 +202,7 @@ static ERootParamType ParseRootParamType(const std::string& s)
 static RootParamSpec ParseRootParam(const nlohmann::json& j) 
 {
     RootParamSpec spec;
+    spec.name = j.value("name", "");
     spec.type = ParseRootParamType(j.value("type", ""));
     spec.baseRegister = j.value("register", 0);
     spec.registerSpace = j.value("space", 0);
@@ -218,6 +219,7 @@ static RootParamSpec ParseRootParam(const nlohmann::json& j)
             for (const auto& r : j["ranges"]) 
             {
                 DescriptorRangeSpec range;
+                range.name = r.value("name", "");
                 range.type = ParseRootParamType(r.value("type", ""));
                 range.baseRegister = r.value("register", 0);
                 range.registerSpace = r.value("space", 0);

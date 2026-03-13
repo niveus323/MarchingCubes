@@ -87,19 +87,20 @@ void MeshComponent::Submit()
     for (size_t i = 0; i < submeshes.size(); ++i)
     {
         const auto& subMesh = submeshes[i];
-        RenderItem item{
-            .meshBuffer = gpuBuffer,
-            .topology = topology,
-            .indexCount = subMesh.indexCount,
-            .indexOffset = subMesh.indexOffset,
-            .baseVertexLocation = subMesh.baseVertexLocation,
-            .materialIndex = materialIndices[subMesh.materialslot],
-            .objectID = GetOwner()->GetObjectID(),
-            .debugName = m_name
-        };
-        item.resourceBindings.push_back(ShaderBinding{
+        RenderItem* item = renderSystem->AllocateRenderItem();
+        if (!item) return;
+
+        item->meshBuffer = gpuBuffer;
+        item->topology = topology;
+        item->indexCount = subMesh.indexCount;
+        item->indexOffset = subMesh.indexOffset;
+        item->baseVertexLocation = subMesh.baseVertexLocation;
+        item->materialIndex = materialIndices[subMesh.materialslot];
+        item->objectID = GetOwner()->GetObjectID();
+        item->debugName = m_name;
+        item->resourceBindings.push_back(ShaderBinding{
             .type = EBindingType::CBV,
-            .rootParameterIndex = 1,
+            .rootParamKey = "ObjectBuffer",
             .gpuAddress = m_objectCBList[i].gpuVA
         });
         renderSystem->SubmitRenderItem(item, m_materialInstnaces[subMesh.materialslot].GetPSO());
@@ -108,11 +109,15 @@ void MeshComponent::Submit()
         for (auto& pass : m_overlayPasses)
         {
             if (!pass.bActive) continue;
-            item.resourceBindings.reserve(item.resourceBindings.size() + pass.resourceBindings.size());
-            item.resourceBindings.insert(item.resourceBindings.end(), pass.resourceBindings.begin(), pass.resourceBindings.end());
+            RenderItem* overlayItem = renderSystem->AllocateRenderItem();
+            if (!overlayItem) continue;
 
-            item.debugName = m_name + "_" + pass.name;
-            renderSystem->SubmitRenderItem(item, pass.psoName);
+            *overlayItem = *item; //บนป็
+            overlayItem->debugName = m_name + "_" + pass.name;
+            overlayItem->resourceBindings.reserve(overlayItem->resourceBindings.size() + pass.resourceBindings.size());
+            overlayItem->resourceBindings.insert(overlayItem->resourceBindings.end(), pass.resourceBindings.begin(), pass.resourceBindings.end());
+
+            renderSystem->SubmitRenderItem(overlayItem, pass.psoName);
         }
     }
 }

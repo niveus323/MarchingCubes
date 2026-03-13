@@ -5,8 +5,7 @@
 #include "Core/Rendering/UploadContext.h"
 #include "Core/Rendering/PSO/DescriptorAllocator.h"
 
-TextureRegistry::TextureRegistry(uint32_t rootSlot) :
-	m_rootSlot(rootSlot)
+TextureRegistry::TextureRegistry()
 {
 	auto descriptorAllocator = EngineCore::GetDescriptorAllocator();
 	assert(descriptorAllocator);
@@ -32,13 +31,6 @@ void TextureRegistry::SyncGpu(ID3D12GraphicsCommandList* cmd)
 	}
 
 	m_pendingTextures.clear();
-}
-
-void TextureRegistry::BindDescriptorTable(ID3D12GraphicsCommandList* cmd)
-{
-	if (m_descriptorBaseSlot == UINT32_MAX) return;
-
-	cmd->SetGraphicsRootDescriptorTable(m_rootSlot, EngineCore::GetDescriptorAllocator()->GetStaticGpu(m_descriptorBaseSlot));
 }
 
 RegistryIndex TextureRegistry::FindTextureHandle(const std::string& path)

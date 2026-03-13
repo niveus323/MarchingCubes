@@ -60,6 +60,8 @@ RenderSystem::RenderSystem(const std::vector<D3D12_INPUT_ELEMENT_DESC>& inputEle
 		nullptr,
 		IID_PPV_ARGS(&m_hitProxyReadback)
 	);
+
+	m_renderItems.resize(100000);
 }
 
 RenderSystem::~RenderSystem()
@@ -145,13 +147,17 @@ void RenderSystem::RenderFrame(ID3D12GraphicsCommandList* cmd)
 	// [패스 2] 메인 렌더링
 	cmd->OMSetRenderTargets(1, &m_currentRTV, FALSE, &m_currentDSV);
 
-	// 메인 렌더링을 위해 다시 Clear
+	// 메인 렌더링을 위해 Clear
+	const float clearColor[] = { 0.0f, 0.0f, 0.2f, 1.0f };
+	cmd->ClearRenderTargetView(m_currentRTV, clearColor, 0, nullptr);
 	cmd->ClearDepthStencilView(m_currentDSV, D3D12_CLEAR_FLAG_DEPTH, 1.0f, 0, 0, nullptr);
+
 	ExecuteQueue(cmd, false);
 	m_renderQueue.clear();
+	m_allocatedItemCount = 0;
 }
 
-bool RenderSystem::SubmitRenderItem(const RenderItem& item, std::string_view psoName)
+void RenderSystem::SubmitRenderItem(const RenderItem* item, std::string_view psoName)
 {
 	std::string finalPSO(psoName);
 	if (!m_psoOverrides.empty()) // PSO 덮어쓰기 기능을 사용하는 경우 PSO 변경
@@ -162,7 +168,8 @@ bool RenderSystem::SubmitRenderItem(const RenderItem& item, std::string_view pso
 			finalPSO = it->second;
 		}
 	}
-	SubmitToQueue(finalPSO, item);
+	bool result = SubmitToQueue(finalPSO, item);
+	if (!result) return; // 이미 제출에 실패했으므로 추가 PSO도 작업할 필요 없음
 
 	// 추가 PSO 사용 여부 확인
 	if (!m_psoExtensions.empty())
@@ -174,8 +181,6 @@ bool RenderSystem::SubmitRenderItem(const RenderItem& item, std::string_view pso
 			SubmitToQueue(extPSO, item);
 		}
 	}
-
-	return true;
 }
 
 void RenderSystem::RemovePSOExtension(const std::string& from, const std::string& to)
@@ -295,8 +300,22 @@ DirectX::XMUINT4 RenderSystem::GetHitProxyPixel()
 	return result;
 }
 
-bool RenderSystem::SubmitToQueue(std::string_view psoName, const RenderItem& item)
+RenderItem* RenderSystem::AllocateRenderItem()
 {
+	if (m_allocatedItemCount >= m_renderItems.size())
+	{
+		Log::Print("RenderSystem", "RenderItem Capacity Exceeded");
+		return nullptr;
+	}
+	RenderItem* item = &m_renderItems[m_allocatedItemCount++];
+	item->Reset();
+	return item;
+}
+
+bool RenderSystem::SubmitToQueue(std::string_view psoName, const RenderItem* item)
+{
+	if (item->instanceCount == 0 || item->indexCount == 0 || !item->meshBuffer) return false;
+
 	int psoIndexInt = m_psoList->IndexOf(psoName);
 	if (psoIndexInt == -1) return false;
 	uint16_t psoIndex = static_cast<uint16_t>(psoIndexInt);
@@ -311,7 +330,7 @@ bool RenderSystem::SubmitToQueue(std::string_view psoName, const RenderItem& ite
 	return true;
 }
 
-uint64_t RenderSystem::GenerateSortKey(uint16_t rsIndex, uint16_t psoIndex, const RenderItem& item)
+uint64_t RenderSystem::GenerateSortKey(uint16_t rsIndex, uint16_t psoIndex, const RenderItem* item)
 {
 	uint64_t key = 0;
 
@@ -322,7 +341,7 @@ uint64_t RenderSystem::GenerateSortKey(uint16_t rsIndex, uint16_t psoIndex, cons
 	// RS -> PSO -> Material 정렬
 	key |= ((uint64_t)rsIndex << 48);
 	key |= ((uint64_t)psoIndex << 32);
-	key |= ((uint64_t)item.materialIndex);
+	key |= ((uint64_t)item->materialIndex);
 	return key;
 }
 
@@ -354,10 +373,14 @@ void RenderSystem::ExecuteQueue(ID3D12GraphicsCommandList* cmd, bool bIDPass)
 				cmd->SetGraphicsRootSignature(pipelineData.rs);
 				currentRSIndex = nextRSIndex;
 
-				cmd->SetGraphicsRootConstantBufferView(0, m_cameraBuf.gpuVA);
-				cmd->SetGraphicsRootConstantBufferView(2, m_lightsBuf.gpuVA);
-				m_materialRegistry->BindDescriptorTable(cmd);
-				m_textureRegistry->BindDescriptorTable(cmd);
+				// 카메라 버퍼
+				cmd->SetGraphicsRootConstantBufferView(m_psoList->GetRootParameterIndex(currentRSIndex, "CameraBuffer"), m_cameraBuf.gpuVA);
+				// 라이팅 버퍼
+				cmd->SetGraphicsRootConstantBufferView(m_psoList->GetRootParameterIndex(currentRSIndex, "LightBuffer"), m_lightsBuf.gpuVA);
+				// Material Table
+				cmd->SetGraphicsRootDescriptorTable(m_psoList->GetRootParameterIndex(currentRSIndex, "MaterialTable"), m_materialRegistry->GetGpuDescriptorHandle());
+				//Textrue Table
+				cmd->SetGraphicsRootDescriptorTable(m_psoList->GetRootParameterIndex(currentRSIndex, "TextureTable"), m_textureRegistry->GetGpuDescriptorHandle(0));//Table의 시작 지점(0번 텍스쳐 위치)을 넘겨준다
 			}
 			cmd->SetPipelineState(pipelineData.pso);
 			currentPSOIndex = nextPSOIndex;
@@ -365,21 +388,42 @@ void RenderSystem::ExecuteQueue(ID3D12GraphicsCommandList* cmd, bool bIDPass)
 
 		if (bIDPass)
 		{
-			// IDPass일 경우 ResourceBinding을 다르게 가져가야함
-			RenderItem idPassItem = entry.item;
-			// TODO : 
-			// (1) PSO 파일을 보고 '몇번 rootParameterIndex이겠구나'를 유추하여 작성하도록 하지말고, '어떤 레지스터의 몇번 슬롯'으로 바인딩 정보를 넣도록 수정
-			// (2) PSO에 따라 동일한 슬롯을 다른 타입으로 사용하는 케이스에 유연하게 적용할 수 있도록 수정
-			idPassItem.resourceBindings.push_back(ShaderBinding{
-				.rootParameterIndex = 6,
-				.constantData = idPassItem.objectID
-			});
-			DrawItem(cmd, idPassItem);
-			//cmd->SetGraphicsRoot32BitConstant(3, entry.item.objectID, 0);
+			// IDPass일 경우 ObjectID를 추가 바인딩
+			cmd->SetGraphicsRoot32BitConstant(m_psoList->GetRootParameterIndex(currentRSIndex, "ObjectID"), entry.item->objectID, 0);
 		}
-		else
+
+		for (const auto& binding : entry.item->resourceBindings)
 		{
-			DrawItem(cmd, entry.item);
+			UINT rootParamIndex = m_psoList->GetRootParameterIndex(currentRSIndex, binding.rootParamKey);
+			if (rootParamIndex == UINT32_MAX)
+			{
+				Log::Print("ExecuteQueue", "Invalid ResourceBinding : %s", binding.rootParamKey);
+				continue; // 잘못된 바인딩요청일 경우 무시
+			}
+
+			switch (binding.type)
+			{
+				case EBindingType::CONSTANTS:
+					cmd->SetGraphicsRoot32BitConstant(rootParamIndex, binding.constantData, 0);
+					break;
+				case EBindingType::CBV:
+					cmd->SetGraphicsRootConstantBufferView(rootParamIndex, binding.gpuAddress);
+					break;
+				case EBindingType::SRV:
+					cmd->SetGraphicsRootShaderResourceView(rootParamIndex, binding.gpuAddress);
+					break;
+				case EBindingType::UAV:
+					cmd->SetGraphicsRootUnorderedAccessView(rootParamIndex, binding.gpuAddress);
+					break;
+				case EBindingType::TABLE:
+					cmd->SetGraphicsRootDescriptorTable(rootParamIndex, binding.gpuDescriptorHandle);
+					break;
+				default:
+					Log::Print("RenderItem", "Invalid Binding Type!!!!\n Check For: %s", entry.item->debugName.c_str());
+					break;
+			}
 		}
+
+		DrawItem(cmd, entry.item);
 	}
 }

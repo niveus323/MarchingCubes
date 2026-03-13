@@ -23,22 +23,24 @@
           "register": 2
         },
         {
+          "name" : "MaterialTable",
           "type": "Table",
           "ranges": [
             {
-              "name" :  "MaterialBuffer",
+              "name": "MaterialBuffer",
               "type": "SRV",
               "count": 1,
               "register": 0,
-              "flags" : "Volatile"
+              "flags": "Volatile"
             }
           ]
         },
         {
+          "name": "EnvTable",
           "type": "Table",
           "ranges": [
             {
-              "name" :  "EnvMap",
+              "name": "EnvMap",
               "type": "SRV",
               "count": 1,
               "register": 1
@@ -46,10 +48,11 @@
           ]
         },
         {
+          "name" : "TextureTable",
           "type": "Table",
           "ranges": [
             {
-              "name" :  "MaterialTextures",
+              "name": "MaterialTextures",
               "type": "SRV",
               "count": -1,
               "register": 2,

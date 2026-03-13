@@ -61,6 +61,7 @@ enum class ERootParamType
 // Descriptor Range
 struct DescriptorRangeSpec 
 {
+    std::string name = "";
     ERootParamType type = ERootParamType::Table;
     uint32_t baseRegister = 0;
     uint32_t registerSpace = 0;
@@ -71,6 +72,7 @@ struct DescriptorRangeSpec
 // Root Parameter
 struct RootParamSpec 
 {
+    std::string name = "";
     ERootParamType type = ERootParamType::Table;
     uint32_t baseRegister = 0;
     uint32_t registerSpace = 0;

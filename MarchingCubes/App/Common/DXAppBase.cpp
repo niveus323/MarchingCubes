@@ -344,15 +344,6 @@ void DXAppBase::RenderScene(ID3D12GraphicsCommandList* cmd)
 	};
 	cmd->SetDescriptorHeaps(_countof(ppHeaps), ppHeaps);
 
-	auto rtvHandle = m_renderSystem->GetOutputRTV();
-	auto dsvHandle = m_renderSystem->GetOutputDSV();
-	cmd->OMSetRenderTargets(1, &rtvHandle, FALSE, &dsvHandle);
-
-	// RTV Clear 명령 추가.
-	const float clearColor[] = { 0.0f, 0.0f, 0.2f, 1.0f };
-	cmd->ClearRenderTargetView(rtvHandle, clearColor, 0, nullptr);
-	cmd->ClearDepthStencilView(dsvHandle, D3D12_CLEAR_FLAG_DEPTH, 1.0f, 0, 0, nullptr);
-
 	float renderWidth = m_renderSystem->GetViewport().Width;
 	float renderHeight = m_renderSystem->GetViewport().Height;
 	if (m_currentScene)

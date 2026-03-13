@@ -336,7 +336,7 @@ void TerrainObject::OnSettingUpdated()
 	std::vector<ShaderBinding> newBinding;
 	newBinding.push_back(ShaderBinding{ 
 		.type = EBindingType::CBV, 
-		.rootParameterIndex = 6, // b3
+		.rootParamKey = "ChunkBoundaryBuffer",
 		.gpuAddress = m_chunkBorderCB.gpuVA
 	});
 	

@@ -8,9 +8,8 @@
 #include "MaterialAsset.h"
 #include <ranges>
 
-MaterialRegistry::MaterialRegistry(TextureRegistry* textureRegistry, uint32_t rootSlot) :
-	m_textureRegistry(textureRegistry),
-	m_rootSlot(rootSlot)
+MaterialRegistry::MaterialRegistry(TextureRegistry* textureRegistry) :
+	m_textureRegistry(textureRegistry)
 {
 	auto descriptorAllocator = EngineCore::GetDescriptorAllocator();
 	assert(descriptorAllocator);
@@ -63,12 +62,10 @@ void MaterialRegistry::SyncGpu(ID3D12GraphicsCommandList* cmd)
 
 }
 
-void MaterialRegistry::BindDescriptorTable(ID3D12GraphicsCommandList* cmd) const
+D3D12_GPU_DESCRIPTOR_HANDLE MaterialRegistry::GetGpuDescriptorHandle() const
 {
-	if (!m_materialBuffer) return;
-
 	DescriptorAllocator* descriptorAllocator = EngineCore::GetDescriptorAllocator();
-	cmd->SetGraphicsRootDescriptorTable(m_rootSlot, descriptorAllocator->GetStaticGpu(m_descriptorSlot));
+	return descriptorAllocator->GetStaticGpu(m_descriptorSlot);
 }
 
 RegistryIndex MaterialRegistry::RegisterMaterialInstance(const MaterialInstance& matInstance, const std::string& instanceKey)

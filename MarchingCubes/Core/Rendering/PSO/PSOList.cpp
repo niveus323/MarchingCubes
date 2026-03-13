@@ -44,13 +44,9 @@ PSOList::PSOList(const BuildContext& ctx, const std::vector<PSOSpec>& specs, con
 	CreateRootSignature(ctx.device, rsSpecs);
 
 	// PSO
-	m_pipelineStates.clear();
-	m_psoLookUp.clear();
-	m_psoToRSIndex.clear();
+	m_psos.clear();
+	m_psos.reserve(specs.size());
 	
-	m_pipelineStates.reserve(specs.size());
-	m_psoToRSIndex.reserve(specs.size());
-
 	for (const auto& spec : specs)
 	{
 		std::vector<ComPtr<ID3DBlob>> aliveBlobs;
@@ -58,18 +54,17 @@ PSOList::PSOList(const BuildContext& ctx, const std::vector<PSOSpec>& specs, con
 			.InputLayout = ctx.inputLayout
 		};
 
-		uint16_t rsIndex = 0;
-		auto iter = m_rsLookUp.find(spec.rootSignature);
-		if (iter != m_rsLookUp.end())
+		PipelineStateMeta psoMeta{ .name = spec.id };
+
+		for (UINT i = 0; i < m_rootSignatures.size(); ++i)
 		{
-			rsIndex = iter->second;
+			if (m_rootSignatures[i].name == spec.rootSignature)
+			{
+				psoMeta.rootSignatureIndex = static_cast<uint16_t>(i);
+				psoDesc.pRootSignature = m_rootSignatures[i].rootSignature.Get();
+			}
 		}
-		else
-		{
-			rsIndex = m_rsLookUp.at("Default");
-		}
-		psoDesc.pRootSignature = m_rootSignatures[rsIndex].Get();
-		
+
 		bool result = false;
 		switch (spec.schemaVersion) {
 			case 1:
@@ -82,50 +77,54 @@ PSOList::PSOList(const BuildContext& ctx, const std::vector<PSOSpec>& specs, con
 
 		if (result)
 		{
-			ComPtr<ID3D12PipelineState> pso;
-			ThrowIfFailed(ctx.device->CreateGraphicsPipelineState(&psoDesc, IID_PPV_ARGS(pso.ReleaseAndGetAddressOf())));
-
-			m_psoLookUp[spec.id] = static_cast<uint16_t>(m_pipelineStates.size());
-			m_psoToRSIndex.push_back(rsIndex);
-			m_pipelineStates.push_back(std::move(pso));
+			ThrowIfFailed(ctx.device->CreateGraphicsPipelineState(&psoDesc, IID_PPV_ARGS(psoMeta.pso.ReleaseAndGetAddressOf())));
+			m_psos.push_back(std::move(psoMeta));
 		}
 	}
 }
 
 PSOList::PipelineEntry PSOList::Get(int index) const
 {
-	if (index < 0 || index >= (int)m_pipelineStates.size()) return PSOList::PipelineEntry{};
 	return PSOList::PipelineEntry{
-		.pso = m_pipelineStates[index].Get(),
-		.rs = m_rootSignatures[m_psoToRSIndex[index]].Get()
+		.pso = m_psos[index].pso.Get(),
+		.rs = m_rootSignatures[m_psos[index].rootSignatureIndex].rootSignature.Get()
 	};
 }
 
 PSOList::PipelineEntry PSOList::Get(std::string_view id) const
 {
-	auto it = m_psoLookUp.find(std::string(id));
-	if (it != m_psoLookUp.end()) 
+	for (int i = 0; i < m_psos.size(); ++i)
 	{
-		return Get(it->second);
+		if (m_psos[i].name == id)
+		{
+			return Get(i);
+		}
 	}
 	return PSOList::PipelineEntry{};
 }
 
 int PSOList::IndexOf(std::string_view id) const
 {
-	auto it = m_psoLookUp.find(id.data());
-	return (it == m_psoLookUp.end()) ? -1 : it->second;
+	for (int i = 0; i < m_psos.size(); ++i)
+	{
+		if (m_psos[i].name == id)
+		{
+			return i;
+		}
+	}
+	return -1;
 }
 
 void PSOList::CreateRootSignature(ID3D12Device* device, const std::vector<RootSignatureSpec>& specs)
 {
+	bool bParseFailed = false;
 	for (const auto& spec : specs)
 	{
-		if (m_rsLookUp.find(spec.id) != m_rsLookUp.end()) continue; // 중복된 이름일 경우 패스
-
 		std::vector<CD3DX12_ROOT_PARAMETER1> rootParams;
 		std::list<std::vector<CD3DX12_DESCRIPTOR_RANGE1>> rangesStore;
-
+		RootSignatureMeta rsMeta{
+			.name = spec.id
+		};
 #ifdef _DEBUG
 		std::string debugLog = "\n=== RootSignature Layout: " + spec.id + " ===\n";
 #endif // _DEBUG
@@ -133,10 +132,13 @@ void PSOList::CreateRootSignature(ID3D12Device* device, const std::vector<RootSi
 		for (size_t i = 0; i < spec.params.size(); ++i)
 		{
 			const auto& rootParam = spec.params[i];
+			rsMeta.parameterMap.push_back(RootSignatureMeta::ParamMap{
+				.key = rootParam.name,
+				.rootParameterIndex = static_cast<uint32_t>(i)
+			});
 #ifdef _DEBUG
 			debugLog += GetRootParamInfo((int)i, rootParam) + "\n";
 #endif // _DEBUG
-
 
 			CD3DX12_ROOT_PARAMETER1 param{};
 			switch (rootParam.type)
@@ -164,18 +166,47 @@ void PSOList::CreateRootSignature(ID3D12Device* device, const std::vector<RootSi
 				case ERootParamType::Table:
 				{
 					auto& d3dRanges = rangesStore.emplace_back();
-					for (const auto& r : rootParam.ranges)
+					uint32_t countSum = 0;
+					for (auto iter = rootParam.ranges.begin(); iter != rootParam.ranges.end(); ++iter)
 					{
-						uint32_t count = (r.count == -1) ? UINT_MAX : (uint32_t)r.count; //-1은 UINT_MAX (Unbounded)
+						uint32_t count = 0;
+						if (iter->count == -1)
+						{
+							if ((iter + 1) != rootParam.ranges.end())
+							{
+								Log::Print("PSO", "Unbounded Range Should be Last!!!");
+								bParseFailed = true;
+								break;
+							}
+							count = UINT32_MAX;
+						}
+						else
+						{
+							count = static_cast<uint32_t>(iter->count);
+						}
 
 						D3D12_DESCRIPTOR_RANGE_TYPE type;
-						if (r.type == ERootParamType::CBV) type = D3D12_DESCRIPTOR_RANGE_TYPE_CBV;
-						else if (r.type == ERootParamType::UAV) type = D3D12_DESCRIPTOR_RANGE_TYPE_UAV;
-						else if (r.type == ERootParamType::SRV) type = D3D12_DESCRIPTOR_RANGE_TYPE_SRV;
+						if (iter->type == ERootParamType::CBV) type = D3D12_DESCRIPTOR_RANGE_TYPE_CBV;
+						else if (iter->type == ERootParamType::UAV) type = D3D12_DESCRIPTOR_RANGE_TYPE_UAV;
+						else if (iter->type == ERootParamType::SRV) type = D3D12_DESCRIPTOR_RANGE_TYPE_SRV;
 						else continue;
 
-						d3dRanges.push_back(CD3DX12_DESCRIPTOR_RANGE1(type, count, r.baseRegister, r.registerSpace, ParseRangeFlags(r.flags)));
+						d3dRanges.push_back(CD3DX12_DESCRIPTOR_RANGE1(
+							type,
+							count,
+							iter->baseRegister,
+							iter->registerSpace,
+							ParseRangeFlags(iter->flags)
+						));
+
+						rsMeta.descriptorMap.push_back(RootSignatureMeta::DescriptorMap{
+							.key = iter->name,
+							.offset = countSum
+						});
+
+						if (count != UINT32_MAX) countSum += count;
 					}
+					if (bParseFailed) break;
 					param.InitAsDescriptorTable((UINT)d3dRanges.size(), d3dRanges.data());
 				}
 				break;
@@ -188,6 +219,9 @@ void PSOList::CreateRootSignature(ID3D12Device* device, const std::vector<RootSi
 
 			rootParams.push_back(param);
 		}
+
+		if (bParseFailed) return;
+
 #ifdef _DEBUG
 		OutputDebugStringA(debugLog.c_str());
 #endif
@@ -199,12 +233,10 @@ void PSOList::CreateRootSignature(ID3D12Device* device, const std::vector<RootSi
 		ComPtr<ID3DBlob> signatureBlob;
 		ThrowIfFailed(D3DX12SerializeVersionedRootSignature(&rootSignatureDesc, D3D_ROOT_SIGNATURE_VERSION_1_1, &signatureBlob, nullptr));
 
-		ComPtr<ID3D12RootSignature> rootSignature;
-		ThrowIfFailed(device->CreateRootSignature(0, signatureBlob->GetBufferPointer(), signatureBlob->GetBufferSize(), IID_PPV_ARGS(rootSignature.ReleaseAndGetAddressOf())));
-		NAME_D3D12_OBJECT_ALIAS(rootSignature, std::wstring(spec.id.begin(), spec.id.end()).c_str());
+		ThrowIfFailed(device->CreateRootSignature(0, signatureBlob->GetBufferPointer(), signatureBlob->GetBufferSize(), IID_PPV_ARGS(rsMeta.rootSignature.ReleaseAndGetAddressOf())));
+		NAME_D3D12_OBJECT_ALIAS(rsMeta.rootSignature, std::wstring(spec.id.begin(), spec.id.end()).c_str());
 
-		m_rsLookUp[spec.id] = static_cast<uint16_t>(m_rootSignatures.size());
-		m_rootSignatures.push_back(std::move(rootSignature));
+		m_rootSignatures.push_back(std::move(rsMeta));
 	}
 }
 
@@ -294,7 +326,7 @@ D3D12_COMPARISON_FUNC PSOList::ParseCmpFunc(const std::string& s)
 std::string PSOList::GetRootParamInfo(int index, const RootParamSpec& spec)
 {
 	std::stringstream ss;
-	ss << "  [" << index << "] ";
+	ss << spec.name <<"  [" << index << "] ";
 
 	switch (spec.type)
 	{
@@ -312,7 +344,7 @@ std::string PSOList::GetRootParamInfo(int index, const RootParamSpec& spec)
 			break;
 		case ERootParamType::Table:
 		{
-			ss << "DescriptorTable | Ranges: " << spec.ranges.size();
+			ss << "DescriptorTable | Ranges: " << spec.ranges.size()<<"\n";
 			for (const auto& r : spec.ranges)
 			{
 				std::string typeStr;
@@ -322,7 +354,7 @@ std::string PSOList::GetRootParamInfo(int index, const RootParamSpec& spec)
 					case ERootParamType::SRV: typeStr = "SRV"; regChar = 't'; break;
 					case ERootParamType::UAV: typeStr = "UAV"; regChar = 'u'; break;
 				}
-				ss << " [" << typeStr << "(" << regChar << r.baseRegister << ", cnt : " << r.count << ")]";
+				ss << "\t" << r.name << " [" << typeStr << "(" << regChar << r.baseRegister << ", cnt : " << r.count << ")]";
 			}
 		}
 		break;
