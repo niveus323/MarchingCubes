@@ -9,6 +9,7 @@
 #include "Core/Input/InputState.h"
 #include "Core/Rendering/RenderSystem.h"
 #include "Core/Engine/Serializer/JsonSerializer.h"
+#include "Core/Scene/Component/CameraComponent.h"
 
 using namespace Microsoft::WRL;
 
@@ -25,8 +26,6 @@ DXAppBase::DXAppBase(uint32_t width, uint32_t height, std::wstring name) :
 	m_height(height),
 	m_aspectRatio(static_cast<float>(width) / static_cast<float>(height)),
 	m_userWarpDevice(false),
-	m_viewport(0.0f, 0.0f, static_cast<float>(width), static_cast<float>(height)),
-	m_scissorRect(0, 0, static_cast<LONG>(width), static_cast<LONG>(height)),
 	m_title(name)
 {
 	std::fill(std::begin(m_fenceValues), std::end(m_fenceValues), 0ull);
@@ -88,7 +87,7 @@ void DXAppBase::Render()
 	ThrowIfFailed(m_commandList->Close());
 	ID3D12CommandList* ppCommandLists[] = { m_commandList.Get() };
 	m_commandQueue->ExecuteCommandLists(_countof(ppCommandLists), ppCommandLists);
-
+	
 	uint32_t syncInterval = 1;
 	uint32_t flags = 0;
 	if (m_tearingSupported)
@@ -126,13 +125,11 @@ void DXAppBase::OnResize(uint32_t width, uint32_t height)
 	m_width = width;
 	m_height = height;
 
-	if (m_currentScene) m_currentScene->OnResize(static_cast<float>(m_width), static_cast<float>(m_height));
-
 	DestroyBackbuffersAndDefaultDSV();
 	ThrowIfFailed(m_swapChain->ResizeBuffers( kFrameCount, width, height, m_backbufferFormat, m_tearingSupported ? DXGI_SWAP_CHAIN_FLAG_ALLOW_TEARING : 0));
 	m_frameIndex = m_swapChain->GetCurrentBackBufferIndex();
 	CreateBackbuffersAndDefaultDSV(width, height);
-	OnAfterSwapchainCreated();
+	OnAfterSwapchainCreated(); //최소화로 인해 한번은 크기가 (0,0)으로 요청이 들어온다.
 }
 
 void DXAppBase::StartTimer()
@@ -160,6 +157,7 @@ void DXAppBase::TickAndUpdate()
 	}
 
 	float deltaTime = m_timer.Tick();
+	EngineCore::SetDeltaTime(deltaTime);
 	UpdateInputCaptureState();
 	Update(deltaTime);
 	m_inputState->Update();
@@ -232,7 +230,6 @@ void DXAppBase::OnAfterSwapchainCreated()
 	auto rtvCpu = m_descriptorAllocator->GetRTVCpu(m_rtvHandles[m_frameIndex]);
 	auto dsvCpu = m_descriptorAllocator->GetDSVCpu(m_dsvHandle);
 	m_renderSystem->SetOutputTarget(CurrentBackbuffer(), rtvCpu, dsvCpu);
-
 	// App 화면 전체를 씬 뷰포트로 사용하므로 x,y를 모두 0으로 세팅
 	m_renderSystem->SetViewport(0.0f, 0.0f, static_cast<float>(m_width), static_cast<float>(m_height));
 }
@@ -241,6 +238,9 @@ void DXAppBase::InitSubsystems()
 {
 	HRESULT hr = CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED | COINIT_DISABLE_OLE1DDE);
 	EngineCore::SetDevice(m_device.Get());
+
+	EngineCore::SetSwapChainFence(m_swapChainFence.Get());
+	EngineCore::SetNextFenceValuePtr(&m_nextFenceValue);
 
 	m_gpuAllocator = std::make_unique<GpuAllocator>();
 	EngineCore::SetGpuAllocator(m_gpuAllocator.get());
@@ -276,7 +276,7 @@ void DXAppBase::UpdateInputCaptureState()
 {
 	if (m_uiRenderer)
 	{
-		m_inputState->SetInputCaptured(m_uiRenderer->IsCapturingMouse(), m_uiRenderer->IsCapturingKeyboard());
+		m_inputState->SetInputBlocked(m_uiRenderer->IsCapturingMouse(), m_uiRenderer->IsCapturingKeyboard());
 	}
 }
 
@@ -338,26 +338,48 @@ void DXAppBase::SetCustomWindowText(LPCWSTR text) const
 
 void DXAppBase::RenderScene(ID3D12GraphicsCommandList* cmd)
 {
+	ID3D12DescriptorHeap* ppHeaps[] = {
+		m_descriptorAllocator->GetSamplerHeap(),
+		m_descriptorAllocator->GetCbvSrvUavHeap()
+	};
+	cmd->SetDescriptorHeaps(_countof(ppHeaps), ppHeaps);
+
 	auto rtvHandle = m_renderSystem->GetOutputRTV();
 	auto dsvHandle = m_renderSystem->GetOutputDSV();
 	cmd->OMSetRenderTargets(1, &rtvHandle, FALSE, &dsvHandle);
-
-	cmd->RSSetViewports(1, &m_renderSystem->GetViewport());
-	cmd->RSSetScissorRects(1, &m_renderSystem->GetScissorRect());
 
 	// RTV Clear 명령 추가.
 	const float clearColor[] = { 0.0f, 0.0f, 0.2f, 1.0f };
 	cmd->ClearRenderTargetView(rtvHandle, clearColor, 0, nullptr);
 	cmd->ClearDepthStencilView(dsvHandle, D3D12_CLEAR_FLAG_DEPTH, 1.0f, 0, 0, nullptr);
 
+	float renderWidth = m_renderSystem->GetViewport().Width;
+	float renderHeight = m_renderSystem->GetViewport().Height;
 	if (m_currentScene)
 	{
-		CameraConstants sceneViewData = m_currentScene->GetCameraConstants();
-		LightBlobView lightBlob = m_currentScene->GetLightBlob();
-		m_renderSystem->PrepareRender(sceneViewData, lightBlob, m_frameIndex);
-	}
+		std::vector<CameraComponent*> activeCameras = m_currentScene->GetActiveCameras();
+		for (auto camera : activeCameras)
+		{
+			D3D12_VIEWPORT viewport;
+			viewport.TopLeftX = camera->GetViewportRectX() * renderWidth;
+			viewport.TopLeftY = camera->GetViewportRectY() * renderHeight;
+			viewport.Width = camera->GetViewportRectW() * renderWidth;
+			viewport.Height = camera->GetViewportRectH() * renderHeight;
+			cmd->RSSetViewports(1, &viewport);
 
-	m_renderSystem->RenderFrame(cmd);
+			D3D12_RECT scissorRect;
+			scissorRect.left = static_cast<LONG>(viewport.TopLeftX);
+			scissorRect.top = static_cast<LONG>(viewport.TopLeftY);
+			scissorRect.right = static_cast<LONG>(viewport.TopLeftX + viewport.Width);
+			scissorRect.bottom = static_cast<LONG>(viewport.TopLeftY + viewport.Height);
+			cmd->RSSetScissorRects(1, &scissorRect);
+
+			CameraConstants sceneViewData = camera->GetCameraConstants(renderWidth, renderHeight);
+			LightBlobView lightBlob = m_currentScene->GetLightBlob();
+			m_renderSystem->PrepareRender(sceneViewData, lightBlob, m_frameIndex);
+			m_renderSystem->RenderFrame(cmd);
+		}
+	}
 }
 
 void DXAppBase::WaitForGpu()
@@ -468,8 +490,7 @@ void DXAppBase::InitializeScene()
 	ThrowIfFailed(m_commandAllocators[0]->Reset());
 	ThrowIfFailed(m_commandList->Reset(m_commandAllocators[0].Get(), nullptr));
 	OnBuildInitialScene(m_commandList.Get());
-	// TODO : Scene 클래스 단일화 후 CreateDefaultScene 제거 및 기본 로드할 Scene 파일 적용
-	LoadScene(std::move(CreateDefaultScene())); 
+	LoadScene(std::make_shared<Scene>()); // 빈 씬으로 초기 로드
 
 	// Close CommandList
 	ThrowIfFailed(m_commandList->Close());
@@ -490,7 +511,6 @@ void DXAppBase::LoadScene(std::shared_ptr<Scene> newScene)
 
 	// 새 씬으로 교체
 	m_currentScene = std::move(newScene);
-	m_currentScene->OnResize(static_cast<float>(m_width), static_cast<float>(m_height));
 	m_currentScene->Init();
 	m_currentScene->InitUI(m_uiRenderer.get());
 
@@ -599,7 +619,7 @@ void DXAppBase::MoveToNextFrame()
 		ThrowIfFailed(m_swapChainFence->SetEventOnCompletion(lastFenceValue, m_fenceEvent));
 		WaitForSingleObjectEx(m_fenceEvent, INFINITE, FALSE);
 	}
-	
+
 	OnAfterChainSwaped();
 }
 

@@ -16,5 +16,7 @@ protected:
 
 private:
     std::vector<std::shared_ptr<InputMappingContext>> m_activeContexts;
+
+    bool m_bShowMouseCursor = false;
 };
 

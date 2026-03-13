@@ -28,6 +28,7 @@ public:
 	void SetFpsSampleCount(size_t n);
 	void ResetFps();
 
+	// --- Debugging ---
 	template <typename F, typename... Args>
 	static auto MeasureCall(F&& f, Args&&... args)
 	{

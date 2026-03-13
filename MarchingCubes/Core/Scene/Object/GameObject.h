@@ -19,7 +19,7 @@ class GameObject : public Entity
 {
 	REFLECT_GENERATED_BODY(GameObject)
 public:
-	virtual void Init() {}
+	virtual void Init();
 	virtual void Destroy();
 	virtual void BeginPlay() {}
 	virtual void EndPlay() {}
@@ -54,13 +54,6 @@ public:
 		for (auto& comp : m_components)
 			if (T* typed = dynamic_cast<T*>(comp.get()))
 				result.push_back(typed);
-
-		for (auto& child : m_children)
-		{
-			auto childrenResult = child->GetComponents<T>();
-			result.insert(result.end(), std::move_iterator(childrenResult.begin()), std::move_iterator(childrenResult.end()));
-		}
-
 		return result;
 	}
 
@@ -86,13 +79,14 @@ public:
 		newChild->SetFlags(flags);
 		newChild->Init();
 		T* ptr = newChild.get();
-		m_children.push_back(std::move(newChild));
+		m_children.push_back(newChild);
+
+		if (auto scenePtr = m_scene.lock()) scenePtr->AddObject(std::move(newChild));
 
 		return ptr;
 	}
 
 	void AddChild(std::shared_ptr<GameObject> child);
-
 	void RemoveChild(std::shared_ptr<GameObject> child)
 	{
 		if (!child) return;
@@ -124,6 +118,7 @@ public:
 	void SetScene(std::shared_ptr<Scene> scene) { m_scene = scene; }
 	auto& GetComponents() const { return m_components; }
 	auto& GetChildren() const { return m_children; }
+	uint32_t GetObjectID() const { return m_objectID; }
 
 	void RegisterComponent(std::shared_ptr<Component>&& comp)
 	{
@@ -178,5 +173,6 @@ protected:
 	std::vector<std::shared_ptr<Component>> m_components;
 	std::vector<std::shared_ptr<GameObject>> m_children;
 	bool m_bActive = true;
+	uint32_t m_objectID = 0u;
 };
 

@@ -21,15 +21,16 @@ public:
 
 	// Material Accessor
 	size_t GetMaterialSlotCount() const { return m_materialInstnaces.size(); }
+	std::string GetMaterialPath(size_t index) const
+	{
+		if (index >= m_materialInstnaces.size() || !m_materialInstnaces[index].m_material) return "";
+		return m_materialInstnaces[index].m_material->GetPath().data();
+	}
 	void SetMaterialByPath(int slot, const std::string& matPath);
 	void SetMaterial(int slot, std::shared_ptr<MaterialAsset> matAsset);
 	void SetPSO(int slot, std::string_view psoName);
 	void SetPSO(std::string_view psoName);
 
-	// TODO : 동적 바인딩과 정적 바인딩을 각각 바인딩 할 수 있도록 수정필요
-	void AddOverlayPass(const std::string& name, const std::string& psoName, std::vector<ShaderBinding> extraBindings, bool bInitialState = false);
-	void SetOverlayPassActive(const std::string& name, bool bActive);
-	void RemoveOverlayPass(const std::string& name);
 	const std::vector<DirectX::BoundingBox>& GetBoundingBox() { return GetMesh()->GetBounds(); }
 
 protected:
@@ -38,14 +39,6 @@ protected:
 protected:
 	std::vector<MaterialInstance> m_materialInstnaces = std::vector<MaterialInstance>(1);
 	// 특정 오브젝트에 대해 디버깅(히트 박스 표시 등), 특수 효과(실루엣 등)를 적용하고 싶을 때 사용
-	struct OverlayPass
-	{
-		std::string name;
-		std::string psoName;
-		bool bActive = false;
-		std::vector<ShaderBinding> resourceBindings;
-	};
-	std::vector<OverlayPass> m_overlayPasses;
-	std::vector<BufferHandle> m_objectCBList;//per-Submesh(material 때문에)
+	std::vector<BufferHandle> m_objectCBList; //per-Submesh(material 고려)
 };
 

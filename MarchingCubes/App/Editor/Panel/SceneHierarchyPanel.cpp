@@ -61,8 +61,6 @@ void SceneHierarchyPanel::SetSelection(GameObject* selected)
 
 void SceneHierarchyPanel::DrawNode(IUIBuilder* ui, GameObject* node, const std::string& filterText)
 {
-    // Flag 체크 (굳이 Panel에 보여줄 필요 없는 디버깅 목적 등의 객체는 패스)
-    if (node->HasAnyFlags(EObjectFlags::Invisible)) return;
     // 검색어가 있고 이름에 포함 안 되면 스킵
     if (!filterText.empty() && !ContainsIgnoreCase(node->GetName(), filterText)) return;
 
@@ -89,7 +87,17 @@ void SceneHierarchyPanel::DrawNode(IUIBuilder* ui, GameObject* node, const std::
     }
     else
     {
-        bool isLeaf = node->GetChildren().empty();
+        bool isLeaf = true;
+        for (const auto& child : node->GetChildren())
+        {
+            if (!child->HasAnyFlags(EObjectFlags::Invisible))
+            {
+                isLeaf = false;
+                break;
+            }
+        }
+
+        //bool isLeaf = node->GetChildren().empty();
         bool isSelected = (m_selectedObject == node);
         bool opened = ui->BeginTreeNode(node->GetName().c_str(), isLeaf, isSelected);
 
@@ -117,6 +125,7 @@ void SceneHierarchyPanel::DrawNode(IUIBuilder* ui, GameObject* node, const std::
         {
             for (auto& child : node->GetChildren())
             {
+                if (child->HasAnyFlags(EObjectFlags::Invisible)) continue;
                 DrawNode(ui, child.get(), filterText);
             }
             ui->EndTreeNode();

@@ -24,7 +24,7 @@ void TerrainObject::Init()
 	m_material = EngineCore::GetResourceManager()->LoadMaterialAsset(GetFullPath(AssetType::Default, L"Material/DefaultFilled.json"));
 #ifdef _DEBUG
 	m_entireBoundingCube = CreateChild<SceneObject>("TerrainBound", EObjectFlags::Transient | EObjectFlags::EditorOnly | EObjectFlags::Invisible);
-	auto cubeMeshComp = m_entireBoundingCube->AddComponent<StaticMeshComponent>();
+	auto cubeMeshComp = m_entireBoundingCube->AddComponent<StaticMeshComponent>(EObjectFlags::Transient | EObjectFlags::EditorOnly | EObjectFlags::Invisible);
 	cubeMeshComp->SetName("BoundCube");
 	cubeMeshComp->SetMeshByPath("@WireCube");
 	m_entireBoundingCube->SetActive(false);

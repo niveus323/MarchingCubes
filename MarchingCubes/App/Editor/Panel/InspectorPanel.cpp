@@ -3,6 +3,7 @@
 #include "Core/Scene/Scene.h"
 #include "Core/Scene/Component/Component.h"
 #include "Core/UI/Builder/UIBuilder.h"
+#include "Core/Assets/ResourceManager.h"
 #include <format>
 
 namespace
@@ -173,6 +174,8 @@ void InspectorPanel::RenderComponentProperties(IUIBuilder* ui, void* componentPt
 
 void InspectorPanel::DrawTypeProperties(IUIBuilder* ui, void* componentPtr, TypeDescriptor* typeDesc)
 {
+    if (!typeDesc) return;
+
     if (typeDesc->GetParent())
     {
         DrawTypeProperties(ui, componentPtr, typeDesc->GetParent());
@@ -185,6 +188,12 @@ void InspectorPanel::DrawTypeProperties(IUIBuilder* ui, void* componentPtr, Type
     {
         if (prop.isArray)
         {
+            if (prop.IsIndexedAccessor())
+            {
+                DrawSingleProperty(ui, componentPtr, prop);
+                continue;
+            }
+
             size_t count = prop.getArraySize(componentPtr);
             if (ui->CollapsingHeader(prop.name.c_str()))
             {
@@ -213,8 +222,37 @@ void InspectorPanel::DrawTypeProperties(IUIBuilder* ui, void* componentPtr, Type
 void InspectorPanel::DrawSingleProperty(IUIBuilder* ui, void* instance, const Property& prop)
 {
     if (prop.isVisible && !prop.isVisible(instance)) return;
-
     const char* name = prop.name.c_str();
+
+    if (prop.isArray && prop.IsIndexedAccessor())
+    {
+        size_t arraySize = prop.getArraySize(instance);
+
+        ui->TableNextRow();
+        ui->TableNextColumn();
+
+        bool bOpen = ui->CollapsingHeader(std::format("{} ({} Elements)", name, arraySize).c_str(), true);
+        ui->TableNextColumn();
+
+        if (bOpen)
+        {
+            for (size_t i = 0; i < arraySize; ++i)
+            {
+                Property elementProp = prop;
+                elementProp.name = std::format("[{}]", i); // 라벨 이름: "[0]", "[1]"
+                elementProp.isArray = false; // 더 이상 배열이 아님을 명시
+                elementProp.getter = [prop, i](void* inst, void* outVal) {
+                    prop.indexedGetter(inst, i, outVal);
+                };
+                elementProp.setter = [prop, i](void* inst, const void* inVal) {
+                    prop.indexedSetter(inst, i, inVal);
+                };
+
+                DrawSingleProperty(ui, instance, elementProp);
+            }
+        }
+        return;
+    }
 
     switch (prop.type)
     {
@@ -256,7 +294,7 @@ void InspectorPanel::DrawSingleProperty(IUIBuilder* ui, void* instance, const Pr
         case EPropertyType::Enum:
             // Enum은 HandleProperty를 활용하되 내부에서 메타데이터 검색
             HandleProperty<int>(instance, prop, [&](int* ptr) {
-                EnumDescriptor* enumDesc = ReflectionRegistry::Get().GetEnum(prop.enumName);
+                EnumDescriptor* enumDesc = ReflectionRegistry::Get().GetEnum(prop.metaData);
                 if (!enumDesc) return false;
                 // NOTE : 최적화 필요 시 캐싱 혹은 static 변수로 선언할것.
                 std::vector<std::string> names;
@@ -268,6 +306,91 @@ void InspectorPanel::DrawSingleProperty(IUIBuilder* ui, void* instance, const Pr
                 }
                 return ui->PropertyEnum(name, ptr, names, values);
             });
+            break;
+        case EPropertyType::Class:
+            HandleProperty<std::string>(instance, prop, [&](std::string* ptr) {
+                // 메타데이터(부모 클래스명)를 기반으로 상속된 모든 클래스 조회
+                std::vector<TypeDescriptor*> derivedTypes = ReflectionRegistry::Get().GetTypesDerivedFrom(prop.metaData);
+
+                std::vector<std::string> names;
+                std::vector<int> values;
+                int selectedIndex = 0; // Default: 0번은 None 처리
+
+                names.push_back("None");
+                values.push_back(0);
+
+                if (*ptr == "" || *ptr == "None") selectedIndex = 0;
+
+                // 클래스 이름들을 Enum처럼 인덱스로 매핑하여 출력
+                for (int i = 0; i < derivedTypes.size(); ++i)
+                {
+                    std::string className = derivedTypes[i]->GetName();
+                    names.push_back(className);
+                    values.push_back(i + 1);
+
+                    if (*ptr == className)
+                    {
+                        selectedIndex = i + 1;
+                    }
+                }
+                bool changed = ui->PropertyEnum(name, &selectedIndex, names, values);
+                if (changed && selectedIndex >= 0 && selectedIndex < names.size())
+                {
+                    if (selectedIndex == 0) *ptr = "";
+                    else *ptr = names[selectedIndex];
+                }
+                return changed;
+            });
+            break;
+        case EPropertyType::Asset:
+            HandleProperty<std::string>(instance, prop, [&](std::string* ptr) {
+                bool changed = false;
+                std::string assetType = prop.metaData; // "Mesh", "Texture" 등
+                std::string displayString = ptr->empty() ? "None" : std::filesystem::path(*ptr).filename().string();
+
+                ui->TableNextRow();
+                ui->TableNextColumn();
+                ui->Text(name);
+                ui->TableNextColumn();
+                float totalWidth = ui->GetAvailableWidth();
+                float clearBtnWidth = 24.0f; // 'X' 버튼용 고정 크기
+                float spacing = 4.0f;        // 버튼 사이 여백
+                float assetBtnWidth = totalWidth - clearBtnWidth - spacing;
+                if (assetBtnWidth < 10.0f) assetBtnWidth = 10.0f; // 최소 너비 방어
+
+                if (ui->Button(std::format("{}##{}", displayString, name).c_str(), { 150.0f, 0.0f }))
+                {
+                    // TODO: 나중에 에셋 픽커(Asset Picker) 팝업을 띄우는 로직 추가
+                }
+
+                if (ui->BeginDragDropTarget())
+                {
+                    std::string payloadType = "ITEM_" + assetType;
+                    Log::Print("InspectorPanel", "payloadType : %s", payloadType.c_str());
+                    // 허용된 타입의 데이터가 드롭되었는지 확인
+                    if (const void* payloadData = ui->AcceptDragDropPayload(payloadType.c_str()))
+                    {
+                        const char* droppedPath = static_cast<const char*>(payloadData);
+                        *ptr = droppedPath;
+                        changed = true;
+                    }
+                    ui->EndDragDropTarget();
+                }
+
+                ui->SameLine(0.0f, spacing);
+
+                if (ui->Button(std::format("X##Clear{}", name).c_str()))
+                {
+                    // 경로 초기화
+                    if (!ptr->empty())
+                    {
+                        *ptr = "";
+                        changed = true;
+                    }
+                }
+
+                return changed;
+                });
             break;
     }
 

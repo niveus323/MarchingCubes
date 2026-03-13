@@ -163,16 +163,21 @@ std::vector<PSOSpec> LoadPSOJsonResolved(_In_ nlohmann::json& root, int schema)
     }
 
     // resolve
-    std::vector<PSOSpec> out;
-    out.reserve(raws.size());
     std::unordered_map<std::string, Visit> state;
     std::unordered_map<std::string, PSOSpec> memo;
 
     for (auto& kv : raws) state[kv.first] = Visit::Not;
     for (auto& kv : raws) 
     {
-        if (state[kv.first] == Visit::Done) continue;
-        out.push_back(ResolvePSOSpec(kv.first, raws, state, memo));
+        if (state[kv.first] == Visit::Done) continue; //중복 로드를 방지
+        ResolvePSOSpec(kv.first, raws, state, memo);
+    }
+
+    std::vector<PSOSpec> out;
+    out.reserve(raws.size());
+    for (const auto& [id, spec] : memo)
+    {
+        out.push_back(spec);
     }
 
     // order sort

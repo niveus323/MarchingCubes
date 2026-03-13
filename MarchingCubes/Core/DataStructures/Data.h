@@ -36,9 +36,11 @@ struct LightBlobView
 
 enum class EBindingType
 {
-	CBV, // Constant Buffer View
-	SRV, // Shader Resource View (Texture/Buffer)
-	UAV  // Unordered Access View
+	CONSTANTS, // Root Constants
+	CBV,	   // Root Constant Buffer View
+	SRV,	   // Root Shader Resource View (Texture/Buffer)
+	UAV,	   // Root Unordered Access View
+	TABLE
 };
 
 struct ShaderBinding
@@ -46,7 +48,8 @@ struct ShaderBinding
 	EBindingType type;
 	uint32_t rootParameterIndex;
 	union {
-		D3D12_GPU_VIRTUAL_ADDRESS gpuAddress;
-		D3D12_GPU_DESCRIPTOR_HANDLE gpuDescriptorHandle;
+		uint32_t constantData;							 // Root Constants 사용 시 해당 필드
+		D3D12_GPU_VIRTUAL_ADDRESS gpuAddress;			 // Root Descriptor 사용 시 해당 필드
+		D3D12_GPU_DESCRIPTOR_HANDLE gpuDescriptorHandle; // Decriptor Table 사용 시 해당 필드
 	};
 };

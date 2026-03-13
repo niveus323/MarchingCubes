@@ -1,5 +1,5 @@
 {
-  "PSO" :  "Filled",
+  "PSO" :  "EditorBillboard",
   "MaterialConstants": {
     "Albedo": [ 1.0, 1.0, 1.0 ],
     "Opacity": 1.0,

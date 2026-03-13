@@ -15,7 +15,17 @@
 
 void Scene::Init()
 {
-    if (!m_gameMode) m_gameMode = CreateObject<GameMode>("GameMode");
+    if (!m_gameMode)
+    {
+        if (auto gameMode = FindObject<GameMode>())
+        {
+            m_gameMode = gameMode;
+        }
+        else
+        {
+            m_gameMode = CreateObject<GameMode>("GameMode");
+        }
+    }
     m_lightCache.clear();
 }
 
@@ -39,7 +49,7 @@ void Scene::InitUI(IUIRenderer* ui)
 void Scene::BeginPlay()
 {
     m_bPlaying = true;
-    for (auto& obj : m_objects)
+    for (auto obj : m_objects)
     {
         obj->BeginPlay();
     }
@@ -47,10 +57,10 @@ void Scene::BeginPlay()
 
 void Scene::BeginEditor()
 {
-    m_editorController = CreateObject<EditorController>("EditorController", EObjectFlags::EditorOnly);
-    auto spectator = CreateObject<SpectatorPawn>("SpectatorPawn", EObjectFlags::EditorOnly);
+    m_editorController = CreateObject<EditorController>("EditorController", EObjectFlags::EditorOnly | EObjectFlags::Invisible | EObjectFlags::Transient);
+    m_editorController->SetInputEnabled(true);
+    auto spectator = CreateObject<SpectatorPawn>("SpectatorPawn", EObjectFlags::EditorOnly | EObjectFlags::Invisible | EObjectFlags::Transient);
     m_editorController->Possess(spectator);
-    SetMainCamera(spectator->GetComponent<CameraComponent>());
     Pawn* pawn = m_editorController->GetPawn();
     pawn->SetPosition({ 0.0f, 0.0f, -120.0f }); //TODO : 에디터 설정으로 변경
 }
@@ -63,26 +73,8 @@ void Scene::EndPlay()
     {
         obj->EndPlay();
     }
-    // GameMode, PlayerController 제거 및 동적 생성된 게임 용 오브젝트 제거
-    if (m_gameMode)
-    {
-        if (auto pc = m_gameMode->GetController())
-        {
-            if (auto pawn = pc->GetPawn()) pawn->MarkForDestroy();
-            pc->MarkForDestroy();
-        }
-    }
-}
 
-void Scene::EndEditor()
-{
-    // EditorController, SpectatorPawn, Gizmo 등 에디터 용 오브젝트 제거
-    if (m_editorController)
-    {
-        if (auto pawn = m_editorController->GetPawn()) pawn->MarkForDestroy();
-        m_editorController->MarkForDestroy();
-        m_editorController = nullptr;
-    }
+    // NOTE : 에디터에서 EndPlay 호출 이후에는 임시 파일 기반 새 Scene 로드가 이루어지므로 객체 자동 파괴가 이루어짐
 }
 
 void Scene::OnExit(IUIRenderer* ui)
@@ -97,7 +89,6 @@ void Scene::OnExit(IUIRenderer* ui)
     }
 
     if (m_bPlaying) EndPlay();
-    else EndEditor();
 
     ClearSubsystems();
 
@@ -106,29 +97,34 @@ void Scene::OnExit(IUIRenderer* ui)
     m_objects.clear();
 }
 
-void Scene::OnResize(float width, float height)
-{
-    m_viewportWidth = width;
-    m_viewportHeight = height;
-    if (m_mainCamera)
-    {
-        m_mainCamera->SetViewport(m_viewportWidth, m_viewportHeight);
-    }
-}
-
 void Scene::Update(float deltaTime)
 {
+    // Lazy-Spawn
+    if (!m_spawnedObjects.empty())
+    {
+        for (auto& pendingObj : m_spawnedObjects)
+        {
+            // 게임 실행 중 동적 추가 시 BeginPlay 호출
+            if (m_bPlaying) pendingObj->BeginPlay();
+            m_objects.push_back(std::move(pendingObj));
+        }
+        m_spawnedObjects.clear();
+    }
+
     for (auto& [type, subsys] : m_sceneSubsystems)
     {
         subsys->Update(deltaTime);
     }
 
-    for (auto& obj : m_objects)
+    for (auto obj : m_objects)
     {
-        if (obj->IsPendingDestroy()) continue;
-        obj->Update(deltaTime);
+        if (obj)
+        {
+            if (obj->IsPendingDestroy()) continue;
+            obj->Update(deltaTime);
+        }
     }
-
+    
     std::erase_if(m_objects, [this](const std::shared_ptr<GameObject>& obj) {
         if (obj->IsPendingDestroy())
         {
@@ -139,6 +135,7 @@ void Scene::Update(float deltaTime)
             }
 
             obj->Destroy();
+            m_idToObjectMap.erase(obj->GetObjectID());
             m_uuidMap.erase(obj->GetUUID());
             if (m_editorController && m_editorController->GetSelectedObject() == obj.get())
             {
@@ -155,7 +152,7 @@ void Scene::Render()
 	for (const auto rendererComp : m_rendererCache)
 	{
         // 게임 실행 중에는 EditorOnly인 컴포넌트들을 패스
-        if (rendererComp->HasAnyFlags(EObjectFlags::EditorOnly) && m_bPlaying) continue; 
+        if (rendererComp->HasAnyFlags(EObjectFlags::EditorOnly) && m_bPlaying && !m_bEjected) continue; 
         if (rendererComp->IsActive()) rendererComp->Submit();
 	}
 }
@@ -258,28 +255,14 @@ void Scene::Serialize(Serializer& ar)
 
             ar.EndObject();
         }
-
-        // GameMode 로드 실패 시 디폴트 GameMode 생성
-        m_gameMode = FindObject<GameMode>();
-        if (!m_gameMode) m_gameMode = CreateObject<GameMode>("GameMode");
     }
     ar.EndArray();
-
-    m_bLoadedFromFile = true;
 }
 
 void Scene::AddObject(std::shared_ptr<GameObject> obj)
 {
 	obj->SetScene(this->GetSharedPtr<Scene>());
-    m_uuidMap[obj->GetUUID()] = obj.get();
-	m_objects.push_back(std::move(obj));
-}
-
-GameObject* Scene::FindObject(uint64_t uuid)
-{
-    auto it = m_uuidMap.find(uuid);
-    if (it != m_uuidMap.end()) return it->second;
-    return nullptr;
+	m_spawnedObjects.push_back(std::move(obj));
 }
 
 std::string Scene::MakeUniqueName(const std::string& name)
@@ -329,9 +312,48 @@ void Scene::RemoveSubsystem(std::type_index typeIndex)
     }
 }
 
-CameraConstants Scene::GetCameraConstants()
+// NOTE : Editor Only
+void Scene::ToggleEject()
 {
-    return GetMainCamera()->GetCameraConstants();
+    if (!m_bPlaying) return;
+    m_bEjected = !m_bEjected;
+    // 입력 주도권 스위칭
+    auto editorController = GetEditorController();
+    auto primaryPlayerController = GetPlayerController(0);
+    if (m_bEjected)
+    {
+        if (editorController) editorController->SetInputEnabled(true);
+        if (primaryPlayerController) primaryPlayerController->SetInputEnabled(false);
+    }
+    else
+    {
+        if (editorController) editorController->SetInputEnabled(false);
+        if (primaryPlayerController) primaryPlayerController->SetInputEnabled(true);
+    }
+}
+
+std::vector<CameraComponent*> Scene::GetActiveCameras()
+{
+    std::vector<CameraComponent*> activeCameras;
+    if (m_bEjected || !m_bPlaying)
+    {
+        // 에디터 모드
+        if (m_editorController)
+        {
+            auto camera = m_editorController->GetPossessdCamera();
+            activeCameras.push_back(camera);
+        }
+        return activeCameras;
+    }
+    
+    // 플레이 모드
+    for (uint8_t i = 0; i < m_localPlayers; ++i)
+    {
+        auto pc = GetPlayerController(i);
+        activeCameras.push_back(pc->GetPossessdCamera());
+    }
+
+    return activeCameras;
 }
 
 LightBlobView Scene::GetLightBlob()
@@ -354,15 +376,6 @@ LightBlobView Scene::GetLightBlob()
         .data = m_lightUploadBuffer.data(),
         .size = (uint32_t)totalBytes
     };
-}
-
-void Scene::SetMainCamera(CameraComponent* cameraComp)
-{
-    m_mainCamera = cameraComp;
-    if (m_mainCamera && m_viewportWidth > 0 && m_viewportHeight > 0)
-    {
-        m_mainCamera->SetViewport(m_viewportWidth, m_viewportHeight);
-    }
 }
 
 Controller* Scene::GetPlayerController(int playerIndex) const

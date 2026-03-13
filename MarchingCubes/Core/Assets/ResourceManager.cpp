@@ -3,6 +3,7 @@
 #include "Core/Utils/FileUtils.h"
 #include "Core/Geometry/MeshGenerator.h"
 #include "Core/Engine/Serializer/JsonSerializer.h"
+#include <ranges>
 
 ResourceManager::ResourceManager()
 {
@@ -25,8 +26,14 @@ std::shared_ptr<TextureAsset> ResourceManager::LoadTextureAsset(const std::files
 	{
 		return m_textureAssetCache[key];
 	}
-	auto sourcePath = folderDir / fileDir;
-	auto texAsset = std::make_shared<TextureAsset>(sourcePath); 
+
+	std::filesystem::path fullPath = fileDir;
+	if (!fullPath.is_absolute())
+	{
+		fullPath = folderDir / fileDir;
+	}
+
+	auto texAsset = std::make_shared<TextureAsset>(fullPath); 
 	m_textureAssetCache.insert_or_assign(key, texAsset);
 	return texAsset;
 }
@@ -38,9 +45,15 @@ std::shared_ptr<MaterialAsset> ResourceManager::LoadMaterialAsset(const std::fil
 	{
 		return m_materialAssetCache[key];
 	}
+	
+	std::filesystem::path fullPath = path;
+	if (!fullPath.is_absolute())
+	{
+		fullPath = std::filesystem::path(ASSETS_ROOT) / path;
+	}
 
 	JsonSerializer ar(false);
-	ar.LoadFromFile(path.string());
+	ar.LoadFromFile(fullPath.string());
 	auto asset = SerializeMaterialAsset(ar);
 	asset->m_assetPath = path.string();
 	m_materialAssetCache.insert_or_assign(key, asset);
@@ -56,12 +69,19 @@ std::shared_ptr<MeshAsset> ResourceManager::LoadMeshAsset(const std::filesystem:
 	{
 		return m_meshAssetCache[key];
 	}
+
+	std::filesystem::path fullPath = path;
+	if (!fullPath.is_absolute())
+	{
+		fullPath = std::filesystem::path(ASSETS_ROOT) / path;
+	}
+
 	// .meta 파일이 있으면 해당 옵션을 우선적하고, 없을 때 option값을 적용 (TODO : 리임포트 대응하기)
 	MeshImportOptions finalOptions = options;
-	if (std::filesystem::exists(path.string() + ".meta")) finalOptions = LoadMetaOptions(path);
-	else SaveMetaOptions(path, options);
+	if (std::filesystem::exists(fullPath.string() + ".meta")) finalOptions = LoadMetaOptions(fullPath);
+	else SaveMetaOptions(fullPath, options);
 
-	auto importData = m_fbxImporter->LoadFile(path, finalOptions);
+	auto importData = m_fbxImporter->LoadFile(fullPath, finalOptions);
 	if (!importData.success)
 	{
 		Log::Print("ResourceManager", "Failed to load mesh file: %s", key.c_str());
@@ -136,6 +156,41 @@ bool ResourceManager::SaveDataAsset(const std::filesystem::path& path, std::shar
 {
 	m_dataAssetCache[path.string()] = asset;
 	return asset->Save(path);
+}
+
+std::vector<std::string> ResourceManager::GetCachedList(EAssetType type) const
+{
+	switch (type)
+	{
+		case EAssetType::DataAsset:
+		{
+			auto keys_view = m_dataAssetCache | std::views::keys;
+			return std::vector<std::string>(keys_view.begin(), keys_view.end());
+		}
+		break;
+		case EAssetType::MeshAsset:
+		{
+			auto keys_view = m_meshAssetCache | std::views::keys;
+			return std::vector<std::string>(keys_view.begin(), keys_view.end());
+		}
+		break;
+		case EAssetType::TextureAsset:
+		{
+			auto keys_view = m_textureAssetCache | std::views::keys;
+			return std::vector<std::string>(keys_view.begin(), keys_view.end());
+		}
+		break;
+		case EAssetType::MaterialAsset:
+		{
+			auto keys_view = m_materialAssetCache | std::views::keys;
+			return std::vector<std::string>(keys_view.begin(), keys_view.end());
+		}
+		break;
+		default:
+		break;
+	}
+
+	return std::vector<std::string>();
 }
 
 std::filesystem::path ResourceManager::ResolveTexturePath(const std::filesystem::path& fbxPath, const std::filesystem::path& texRelativePath)

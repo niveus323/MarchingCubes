@@ -10,7 +10,8 @@
 #include "Core/Assets/Material/MaterialAsset.h"
 
 BEGIN_REFLECTION(StaticMeshComponent, MeshComponent)
-	REFLECT_PROPERTY(m_path, EPropertyType::String, "Path")
+	REFLECT_PROPERTY_ASSET(m_path, MeshAsset, "Mesh")
+	//REFLECT_PROPERTY_FN("Mesh", EPropertyType::Asset, MeshAsset, )
 END_REFLECTION()
 
 void StaticMeshComponent::Serialize(Serializer& ar)

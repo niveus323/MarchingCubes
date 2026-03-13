@@ -110,8 +110,6 @@ void ImGUIRenderer::ShutDown()
 
 LRESULT ImGUIRenderer::WndMsgProc(HWND hWnd, uint32_t msg, WPARAM wParam, LPARAM lParam)
 {
-	if (ImGui_ImplWin32_WndProcHandler(hWnd, msg, wParam, lParam))
-		return true;
-
+	if (ImGui_ImplWin32_WndProcHandler(hWnd, msg, wParam, lParam)) return true;
 	return false;
 }

@@ -26,6 +26,7 @@ namespace UI
             struct { T u, v; };  
         };
 
+        Vector(T _v) : x(_v), y(_v) {}
         Vector(T _x, T _y) : x(_x), y(_y) {}
         Vector() : x(0), y(0) {}
 
@@ -41,6 +42,7 @@ namespace UI
             struct { T r, g, b; }; 
         };
 
+        Vector(T _v) : x(_v), y(_v), z(_v) {}
         Vector(T _x, T _y, T _z) : x(_x), y(_y), z(_z) {}
         Vector() : x(0), y(0), z(0) {}
 
@@ -56,6 +58,7 @@ namespace UI
             struct { T r, g, b, a; };
         };
 
+        Vector(T _v) : x(_v), y(_v), z(_v), w(_v) {}
         Vector(T _x, T _y, T _z, T _w) : x(_x), y(_y), z(_z),w(_w) {}
         Vector() : x(0), y(0), z(0), w(0) {}
 
@@ -120,17 +123,17 @@ namespace UI
         static Color FromRGBA(unsigned int hex)
         {
             return Color(
-                ((hex >> 16) & 0xFF) / 255.0f,
-                ((hex >> 8) & 0xFF) / 255.0f,
-                ((hex) & 0xFF) / 255.0f, 
-                ((hex >> 24) & 0xFF) / 255.0f
+                ((hex >> 24) & 0xFF) / 255.0f, // R
+                ((hex >> 16) & 0xFF) / 255.0f, // G
+                ((hex >> 8) & 0xFF) / 255.0f,  // B
+                ((hex) & 0xFF) / 255.0f        // A
             );
         }
 
         // -> UINT 유틸리티
         unsigned int ToUInt() const {
             auto c = [](float v) { return static_cast<unsigned int>(std::clamp(v, 0.f, 1.f) * 255.f); };
-            return (c(a) << 24) | (c(r) << 16) | (c(g) << 8) | c(b);
+            return (c(a) << 24) | (c(b) << 16) | (c(g) << 8) | c(r);
         }
     };
 
@@ -234,14 +237,21 @@ namespace UI
         return 1; // Int, Float, Bool 등
     }
 
-    enum class UI_Alignment
+    enum class UI_AlignmentX
     {
-        AlignLeft,
-        AlignCenter,
-        AlignRight
+        Align_Left = 0,
+        Align_Center,
+        Align_Right,
     };
 
-    enum class UI_Condition : uint32_t
+    enum class UI_AlignmentY
+    {
+        Align_Top = 0,
+        Align_Center,
+        Align_Bottom
+    };
+
+    enum class UI_Condition : uint8_t
     {
         FirstUseEver = 0,   // .ini 캐시가 없을 경우
         Always,             // 항상
@@ -249,7 +259,7 @@ namespace UI
         Appearing           // 창이 보여질 때 마다
     };
 
-    enum class UI_PanelOption : uint32_t
+    enum class UI_PanelOption : uint16_t
     {
         None = 0,
         MenuBar = 1 << 0,
@@ -259,15 +269,21 @@ namespace UI
         NoScrollBar = 1 << 4,
         NoTitleBar = 1 << 5,
         NoCollapse = 1 << 6,
+        NoFocusOnAppearing = 1 << 7,
+        NoNav = 1 << 8,
+        NoSavedSettings = 1 << 9,
+        NoDecoration = 1 << 10,
+        NoBackground = 1 << 11,
+        AutoResize = 1 << 12
     };
 
-    enum class UI_DockingOption : uint32_t
+    enum class UI_DockingOption : uint8_t
     {
         None = 0,
         NoTabBar = 1 << 0,
-        NoUndocking = 1 << 2,
-        NoSplit = 1 << 3,
-        NoResize = 1 << 4,
+        NoUndocking = 1 << 1,
+        NoSplit = 1 << 2,
+        NoResize = 1 << 3,
     };
 
     enum class EGizmoOperation : uint8_t
@@ -311,6 +327,8 @@ public:
     virtual void EndTabBar() = 0;
     virtual bool BeginTabItem(const char* id, bool* pOpen = nullptr) = 0;
     virtual void EndTabItem() = 0;
+    virtual bool BeginToolBar(const char* id, float size = 30.0f) = 0;
+    virtual void EndToolBar() = 0;
 
     // --- Menu ---
     virtual void BeginMainMenuBar() = 0;
@@ -333,6 +351,7 @@ public:
     virtual void EndDisabled() = 0;
     virtual void Label(const char* text) = 0;
     virtual bool Button(const char* label, const UI::Vector<float, 2>& size = { 0,0 }) = 0;
+    virtual void InvisibleButton(const char* str_id, const UI::Vector<float, 2>& size) = 0;
     virtual bool Checkbox(const char* label, bool* v) = 0;
     virtual void Text(const char* text) = 0;
     virtual void Text(const std::string& text) = 0;
@@ -343,19 +362,39 @@ public:
 
     // --- 입력 컨트롤 ---
     template<typename T>
-    bool Input(const char* label, T* v)
+    bool Input(const char* label, T* v, float width = 50.0f)
     {
+        PushID(label);
+        Text(label);
+        SameLine();
+        SetNextItemWidth(width);
         UI::UI_DataType type = UI::GetUIType<T>();
-        return InputInternal(label, type, static_cast<void*>(v));
+        std::string hiddenLabel = std::format("##%s", label);
+        bool result = InputInternal(hiddenLabel.c_str(), type, static_cast<void*>(v));
+        PopID();
+        return result;
     }
     template<typename T>
-    bool Drag(const char* label, T* v, float speed = 1.0f)
+    bool Drag(const char* label, T* v, float width = 50.0f, float speed = 1.0f)
     {
+        PushID(label);
+        Text(label);
+        SameLine();
+        SetNextItemWidth(width);
         UI::UI_DataType type = UI::GetUIType<T>();
-        return DragInternal(label, type, static_cast<void*>(v), speed);
+        std::string hiddenLabel = std::format("##%s", label).c_str();
+        bool result = DragInternal(hiddenLabel.c_str(), type, static_cast<void*>(v), speed);
+        PopID();
+        return result;
     }
     virtual bool InputText(const char* label, std::string& text) = 0;
     virtual bool InputEnum(const char* label, int* currentValue, const std::vector<std::string>& names, const std::vector<int>& values) = 0;
+    virtual bool BeginDragDropSource() = 0;
+    virtual void SetDragDropPayload(const char* type, const void* data, size_t size) = 0;
+    virtual void EndDragDropSource() = 0;
+    virtual bool BeginDragDropTarget() = 0;
+    virtual const void* AcceptDragDropPayload(const char* type) = 0;
+    virtual void EndDragDropTarget() = 0;
 
     // --- 테이블 컨트롤 ---
     virtual void TableHeadersRow() = 0;
@@ -378,10 +417,14 @@ public:
     virtual void SameLine(float offset_from_start_x = 0.0f, float spacing = -1.0f) = 0;
     virtual void Indent(float width = 0) = 0;
     virtual void Unindent(float width = 0) = 0;
-    virtual void AlignNextItem(UI::UI_Alignment align, float itemWidth = 0.0f) = 0;
+    virtual void AlignNextItem(const UI::Vector<float, 2> size, UI::UI_AlignmentX alignX = UI::UI_AlignmentX::Align_Left, UI::UI_AlignmentY alignY = UI::UI_AlignmentY::Align_Top) = 0;
+    virtual void SetNextWindowAligned(UI::Vector<float, 2> pos, UI::UI_AlignmentX alignX = UI::UI_AlignmentX::Align_Left, UI::UI_AlignmentY alignY = UI::UI_AlignmentY::Align_Top) = 0;
     virtual void PushStyle_Padding(const UI::Vector<float, 2>& padding) = 0;
-    virtual void PopStyle(int count = 1) = 0;
+    virtual void PushStyle_Button(const UI::Color& defaultColor, const UI::Color& hoverColor, const UI::Color& activeColor) = 0; // NOTE : Style 3개
+    virtual void PopStyle_Var(int count = 1) = 0;
+    virtual void PopStyle_Color(int count = 1) = 0;
     virtual void SetNextItemWidth(float width) = 0;
+    virtual UI::Vector<float, 2> CalcTextSize(const char* text) = 0;
 
     // --- ID 관리 ---
     virtual void PushID(const char* str_id) = 0;
@@ -390,6 +433,7 @@ public:
 
     // --- 상태 체크 ---
     virtual bool IsItemClicked() = 0;
+    virtual bool IsItemDoubleClicked() = 0;
     virtual bool IsItemHovered() = 0;
     virtual bool IsItemActive() = 0;
     virtual bool IsMouseHoveringRect(const UI::Vector<float, 2>& pMin, const UI::Vector<float,2>& pMax, bool clip = true) = 0;
@@ -436,23 +480,23 @@ public:
     virtual void EndTooltip() = 0;
 
     // --- Window/Overlay ---
-    virtual bool BeginOverlay(const char* name, const UI::Vector<float, 2>& pos, const UI::Vector<float, 2>& size) = 0;
+    virtual bool BeginOverlay(const char* name, const UI::Vector<float, 2>& pos, const UI::Vector<float, 2>& size, float alpha = 0.0f, UI::UI_PanelOption flags = UI::UI_PanelOption::None, UI::UI_AlignmentX alignX = UI::UI_AlignmentX::Align_Left, UI::UI_AlignmentY alignY = UI::UI_AlignmentY::Align_Top) = 0;
     virtual void EndOverlay() = 0;
     virtual UI::Vector<float, 2> GetMainViewportPos() = 0;
+    virtual UI::Vector<float, 2> GetMainViewportSize() = 0;
     virtual void DockSpaceOverViewport(const char* id, const void* viewport = nullptr) = 0;
     virtual void SetNextWindowDocking(const char* dockspaceId, UI::UI_Condition cond = UI::UI_Condition::FirstUseEver, UI::UI_DockingOption option = UI::UI_DockingOption::None) = 0;
 
-    // --- Primitive ---
+    //  --- Primitive---
+    // NOTE : 절대 좌표계로 위치를 입력할 것
     virtual void DrawLine(const UI::Vector<float, 2>& p1, const UI::Vector<float, 2>& p2, const UI::Color& color, float thickness = 1.0f) = 0;
     virtual void DrawCircleFilled(const UI::Vector<float, 2>& center, float radius, const UI::Color& color) = 0;
     virtual void DrawTextAt(const UI::Vector<float, 2>& pos, const UI::Color& color, const char* text) = 0;
-    virtual UI::Vector<float, 2> CalcTextSize(const char* text) = 0;
-    virtual void InvisibleButton(const char* str_id, const UI::Vector<float, 2>& size) = 0;
 
     // --- Gizmo ---
     virtual bool IsGizmoHovered() = 0;
     _Success_(return)
-    virtual bool DrawTransformGizmo(const DirectX::XMFLOAT4X4& view, const DirectX::XMFLOAT4X4& proj, UI::EGizmoOperation op, UI::EGizmoMode mode, _Inout_ DirectX::XMFLOAT4X4& world, _Out_ DirectX::XMFLOAT3& translation, _Out_ DirectX::XMFLOAT3& rotation, _Out_ DirectX::XMFLOAT3& scale, float gizmoSize = 0.1f) = 0;
+    virtual bool DrawTransformGizmo(const DirectX::XMFLOAT4X4& view, const DirectX::XMFLOAT4X4& proj, UI::EGizmoOperation op, UI::EGizmoMode mode, _Inout_ DirectX::XMFLOAT4X4& world, _Out_ DirectX::XMFLOAT3& translation, _Out_ DirectX::XMFLOAT3& rotation, _Out_ DirectX::XMFLOAT3& scale, const float* snap, float gizmoSize = 0.1f) = 0;
 
 protected:
     virtual bool InputInternal(const char* label, UI::UI_DataType type, void* pValue) = 0;

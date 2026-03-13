@@ -26,7 +26,8 @@ public:
 	bool IsCapturingUI() override { return IsCapturingMouse() || IsCapturingKeyboard(); }
 	bool IsCapturingMouse() override { return ImGui::GetCurrentContext() && ImGui::GetIO().WantCaptureMouse; }
 	bool IsCapturingKeyboard() override { return ImGui::GetCurrentContext() && ImGui::GetIO().WantCaptureKeyboard; }
-
+	bool IsMouseInteracting() override { return ImGui::GetCurrentContext() && (ImGui::IsAnyItemHovered() || ImGui::IsAnyItemActive()); }
+	bool IsKeyboardInteracting() override { return ImGui::GetCurrentContext() && ImGui::GetIO().WantTextInput; }
 private:
 	ComPtr<ID3D12DescriptorHeap> m_srvHeap;
 };

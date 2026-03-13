@@ -38,9 +38,7 @@ public:
 	virtual void BeginPlay(); // TODO : 프리뷰/게임 시작 연결
 	virtual void BeginEditor();
 	virtual void EndPlay();
-	virtual void EndEditor();
 	virtual void OnExit(IUIRenderer* ui);
-	virtual void OnResize(float width, float height);
 	virtual void Update(float deltaTime);
 	virtual void Render();
 	virtual void Serialize(Serializer& ar) override;
@@ -50,18 +48,15 @@ public:
 	T* CreateObject(std::string_view name = "", EObjectFlags flags = EObjectFlags::None)
 	{
 		auto newObj = std::make_shared<T>();
-		newObj->SetFlags(flags);
-		newObj->SetScene(std::static_pointer_cast<Scene>(this->shared_from_this()));
-		
+		newObj->SetFlags(flags); // Flags 설정
 		// 고유 이름 발급
 		std::string baseName = name.empty() ? StringUtils::GetCleanClassName(typeid(T).name()) : std::string(name);
 		std::string uniqueName = MakeUniqueName(baseName);
 		newObj->SetName(uniqueName);
 		m_activeNames.insert(uniqueName);
 		
+		AddObject(newObj);
 		T* ptr = newObj.get();
-		m_uuidMap[newObj->GetUUID()] = newObj.get();
-		m_objects.push_back(std::move(newObj));
 		ptr->Init();
 		return ptr;
 	}
@@ -75,6 +70,12 @@ public:
 			if (T* typed = dynamic_cast<T*>(object.get()))
 				return typed;
 		}
+
+		for (auto& obj : m_spawnedObjects)
+		{
+			if (T* typed = dynamic_cast<T*>(obj.get())) return typed;
+		}
+
 		return nullptr;
 	}
 
@@ -89,16 +90,48 @@ public:
 				result.push_back(typed);
 			}
 		}
+		
+		for (auto& object : m_spawnedObjects)
+		{
+			if (T* typed = dynamic_cast<T*>(object.get()))
+			{
+				result.push_back(typed);
+			}
+		}
 		return std::move(result);
 	}
-	GameObject* FindObject(uint64_t uuid);
+
+	// --- ObjectID  ---
+	GameObject* FindObject(uint32_t objectID)
+	{
+		auto iter = m_idToObjectMap.find(objectID);
+		if (iter != m_idToObjectMap.end()) return iter->second;
+		return nullptr;
+	}
+
+	uint32_t AllocateObjectID(GameObject* object)
+	{
+		uint32_t newID = ++m_nextObjectID;
+		m_idToObjectMap[newID] = object;
+		return newID;
+	}
+
+	// --- Entity ---
+	Entity* FindEntity(uint64_t uuid)
+	{
+		auto iter = m_uuidMap.find(uuid);
+		if (iter != m_uuidMap.end()) return iter->second;
+		return nullptr;
+	}
+
 	// Scene에 배치된 오브젝트의 이름 중복 여부를 체크하여 넘버링 부여
 	std::string MakeUniqueName(const std::string& name);
 
+	// --- Light ---
 	void RegisterLight(LightComponent* light) { m_lightCache.push_back(light); }
 	void UnregisterLight(LightComponent* light) { if (!m_lightCache.empty())  std::erase(m_lightCache, light); }
 
-	//--- Subsystem ---
+	// --- Subsystem ---
 	template <std::derived_from<ISceneSubsystem> T>
 	T* AddSubsystem()
 	{
@@ -130,21 +163,23 @@ public:
 	}
 	const std::unordered_map<std::type_index, std::shared_ptr<ISceneSubsystem>>& GetSubsystems() const { return m_sceneSubsystems; }
 
-	// --- Object Getter & Setter ---
-	CameraConstants GetCameraConstants();
-	LightBlobView GetLightBlob();
-	CameraComponent* GetMainCamera() { return m_mainCamera; }
-	void SetMainCamera(CameraComponent* cameraComp);
-
+	// --- GameMode ---
 	GameMode* GetGameMode() { return m_gameMode; }
 	void SetGameMode(GameMode* gameMode) { m_gameMode = gameMode; }
 
+	// Scene Flags Getter
+	bool IsPlaying() const { return m_bPlaying; }
+	bool IsEjected() const { return m_bEjected; }
+
+	// --- Editor Only ---
+	void ToggleEject();
+
+	// --- Getter & Setter ---
+	std::vector<CameraComponent*> GetActiveCameras();
+	LightBlobView GetLightBlob();
 	EditorController* GetEditorController() const { return m_editorController; }
 	Controller* GetPlayerController(int playerIndex = 0) const;
 	const auto& GetObjects() const { return m_objects; }
-
-	// Scene Flags Getter
-	bool IsPlaying() const { return m_bPlaying; }
 
 protected:
 	void ClearSubsystems()
@@ -162,19 +197,18 @@ private:
 	void UnregisterRenderable(RendererComponent* rendererComp) { 
 		std::erase_if(m_rendererCache, [rendererComp](const RendererComponent* target) { return target == rendererComp; }); 
 	}
-protected:
-	CameraComponent* m_mainCamera = nullptr;
-	float m_viewportWidth = 0.0f;
-	float m_viewportHeight = 0.0f;
-
-	bool m_bLoadedFromFile = false; // TODO : 씬 관리는 Data-Driven으로 변경(씬 클래스 상속 불가로)
 private:
+	// Flags
 	bool m_bPlaying = false;
+	bool m_bEjected = false;
 
-	std::unordered_map<uint64_t, GameObject*> m_uuidMap;
-	std::vector<std::shared_ptr<GameObject>> m_objects; //소유용
+	// Entities
+	std::vector<std::shared_ptr<GameObject>> m_objects;
+	std::vector<std::shared_ptr<GameObject>> m_spawnedObjects; // 지연 스폰을 위한 임시 저장소
+	std::unordered_map<std::type_index, std::shared_ptr<ISceneSubsystem>> m_sceneSubsystems;
 
 	// Cache
+	std::unordered_map<uint64_t, Entity*> m_uuidMap;
 	std::unordered_set<std::string> m_activeNames;
 	std::unordered_map<std::string, uint32_t> m_nameCounters;
 	std::vector<RendererComponent*> m_rendererCache;
@@ -183,8 +217,14 @@ private:
 	GameMode* m_gameMode = nullptr;
 	EditorController* m_editorController = nullptr;
 
-	std::unordered_map<std::type_index, std::shared_ptr<ISceneSubsystem>> m_sceneSubsystems;
-
+	// UI
 	std::vector<size_t> m_uiTokens;
+
+	// Scene Settings
+	uint8_t m_localPlayers = 1;
+
+	// Object ID
+	uint32_t m_nextObjectID = 0;
+	std::unordered_map<uint32_t, GameObject*> m_idToObjectMap;
 };
 

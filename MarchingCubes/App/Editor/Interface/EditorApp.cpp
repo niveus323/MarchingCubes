@@ -10,8 +10,8 @@
 #include "Core/Rendering/PSO/DescriptorAllocator.h"
 #include "Core/Engine/Serializer/JsonSerializer.h"
 #include "Core/Utils/FileUtils.h"
-#include "Contents/Scene/Terraform/Scene_Terraform.h"
 #include "Core/Scene/Object/Pawn.h"
+#include "App/Editor/Panel/ContentBrowserPanel.h"
 constexpr uint32_t kEditorMenuBarHeight = 19u;
 using namespace std::placeholders;
 
@@ -47,25 +47,37 @@ void EditorApp::Update(float deltaTime)
 	}
 	else if (m_inputState->GetKeyState(ActionKey::ToggleWireFrame) == ActionKeyState::JustReleased)
 	{
-		if (m_renderSystem->IsOverrideActive("Filled", "Wire"))
-		{
-			SetDebugViewMode(m_hDefaultView);
-		}
-		else
-		{
-			SetDebugViewMode(m_hWireView);
-		}
+		if (m_renderSystem->IsOverrideActive("Filled", "Wire")) SetDebugViewMode(m_hDefaultView);
+		else SetDebugViewMode(m_hWireView);
 	}
 	else if (m_inputState->GetKeyState(ActionKey::ToggleDebugNormal) == ActionKeyState::JustReleased)
 	{
 		SetDebugViewMode(m_hNormalView); // Just Toggle
 	}
 #endif // _DEBUG
+
+	if (m_currentScene && m_currentScene->IsPlaying())
+	{
+		if (m_inputState->IsPressedOnce(ActionKey::Eject))
+		{
+			m_currentScene->ToggleEject();
+			bool currentEject = m_currentScene->IsEjected();
+			if (m_viewportPanel)
+			{
+				m_viewportPanel->SetEditorController(currentEject ? m_currentScene->GetEditorController() : nullptr);
+				if (currentEject) m_viewportPanel->AddOnScreenDebugMessage("Ejected");
+			}
+		}
+	}
 }
 
 void EditorApp::UpdateUI(float deltaTime)
 {
-#ifdef _DEBUG
+	for (auto& panel : m_editorPanels)
+	{
+		panel->OnUpdate(deltaTime);
+	}
+
 	GpuAllocator* gpuAllocator = GetGpuAllocator();
 	if (gpuAllocator)
 	{
@@ -76,7 +88,6 @@ void EditorApp::UpdateUI(float deltaTime)
 			p->UpdateFrame(GetTimer().GetTimeMs());
 		}
 	}
-#endif
 }
 
 D3D12_GPU_DESCRIPTOR_HANDLE EditorApp::GetOffscreenSRVGpuHandle()
@@ -122,7 +133,7 @@ void EditorApp::InitUI(ID3D12GraphicsCommandList* cmd)
 		.enabled = true,
 		.id = "Fps"
 		});
-	
+
 	// Main Menu Bar 등록 (화면 최상단)
 	m_uiToken_MainMenuBar = m_uiRenderer->AddFrameRenderCallbackToken(
 		std::bind(&EditorApp::RenderMainMenuBarUI, this, _1),
@@ -174,10 +185,10 @@ void EditorApp::InitUI(ID3D12GraphicsCommandList* cmd)
 			if (auto controller = scene->GetEditorController()) controller->SelectObject(selected);
 		}
 		if (inspector) inspector->SetTarget(selected);
-	});
+		});
 
 	m_uiToken_Hierarchy = m_uiRenderer->AddFrameRenderCallbackToken(
-		[&scene = m_currentScene, &panel = m_hierarchyPanel](IUIBuilder* ui){
+		[&scene = m_currentScene, &panel = m_hierarchyPanel](IUIBuilder* ui) {
 			if (!scene || !panel) return;
 			panel->OnRenderUI(ui);
 		},
@@ -201,6 +212,16 @@ void EditorApp::InitUI(ID3D12GraphicsCommandList* cmd)
 		}
 	);
 
+	auto conentBrowserPanel = AddPanel<ContentBrowserPanel>();
+	m_uiRenderer->AddFrameRenderCallbackToken([&](IUIBuilder* ui) {
+			if (auto panel = GetPanel<ContentBrowserPanel>()) panel->OnRenderUI(ui);
+		},
+		UI::UICallbackOptions{
+			.layer = UI::EUILayer::Editor_Window,
+			.enabled = true,
+			.id = "Content_Browser"
+		}
+	);
 	m_uiToken_Profiler = m_uiRenderer->AddFrameRenderCallbackToken(std::bind(&EditorApp::RenderProfilingUI, this, _1), UI::UICallbackOptions{
 		.layer = UI::EUILayer::Global_Debug,
 		.rateHz = 0,
@@ -284,10 +305,10 @@ void EditorApp::OnSceneLoaded(Scene* scene)
 		if(m_hierarchyPanel) m_hierarchyPanel->SetCurrentScene(scene);
 		if(m_inspectorPanel) m_inspectorPanel->SetTarget(nullptr);
 
-		if (auto controller = dynamic_cast<EditorController*>(scene->GetEditorController()))
+		if (auto editorController = scene->GetEditorController())
 		{
-			if (m_viewportPanel) m_viewportPanel->SetEditorController(controller);
-			controller->SetSelectionChangedCallback([this](GameObject* newSelection) {
+			if (m_viewportPanel) m_viewportPanel->SetEditorController(editorController);
+			editorController->SetSelectionChangedCallback([this](GameObject* newSelection) {
 				if (m_hierarchyPanel) m_hierarchyPanel->SetSelection(newSelection);
 				if (m_inspectorPanel) m_inspectorPanel->SetTarget(newSelection);
 			});
@@ -297,25 +318,81 @@ void EditorApp::OnSceneLoaded(Scene* scene)
 
 void EditorApp::UpdateInputCaptureState()
 {
-	bool bMouseCaptured = false;
-	bool bKeyboardCaptured = false;
+	if (!m_currentScene) return;
+	bool bPrevInputCaptured = m_bInputCaptured;
 
-	if (m_uiRenderer)
+	// 게임 플레이 중 eject를 하면 캡쳐 해제
+	if (m_currentScene->IsEjected())
 	{
-		bMouseCaptured = m_uiRenderer->IsCapturingMouse();
-		bKeyboardCaptured = m_uiRenderer->IsCapturingKeyboard();
-		// NOTE : 뷰포트 UI에 대한 캡쳐였다면 이를 무시
-		if (m_viewportPanel)
+		m_bInputCaptured = false;
+	}
+
+	// 플레이 중 Shift + F1을 누르면 마우스 캡쳐 해제
+	if (m_bInputCaptured)
+	{
+		bool bShiftPressed = m_inputState->IsPressed(ActionKey::Shift);
+		bool bF1Pressed = m_inputState->IsPressed(ActionKey::ToggleDebugView);
+		if (bShiftPressed && bF1Pressed)
 		{
-			if (m_viewportPanel->IsViewportHovered()) bMouseCaptured = false;
-			if (m_viewportPanel->IsViewportFocused()) bKeyboardCaptured = false;
+			m_bInputCaptured = false;
+			m_inputState->SetGameInputActive(false);
 		}
 	}
-	
-	m_inputState->SetInputCaptured(bMouseCaptured, bKeyboardCaptured);
+
+	// 캡처 재진입 로직 (플레이 모드 중 뷰포트 클릭)
+	if (m_currentScene->IsPlaying() && !m_bInputCaptured)
+	{
+		if (m_viewportPanel && m_viewportPanel->IsHovered() && m_inputState->IsPressedOnce(ActionKey::LeftClick))
+		{
+			m_bInputCaptured = true;
+			m_inputState->SetGameInputActive(true);
+			// Eject상태에서 재진입 시 Eject 해제
+			if (m_currentScene->IsEjected())
+			{
+				m_currentScene->ToggleEject();
+				m_viewportPanel->SetEditorController(nullptr);
+			}
+		}
+	}
+
+	if (m_bInputCaptured != bPrevInputCaptured)
+	{
+		Win32Application::CaptureMouseInScreen(m_bInputCaptured);
+	}
+
+	bool bBlockMouse = false;
+	bool bBlockKeyboard = false;
+
+	if (m_viewportPanel && m_uiRenderer)
+	{
+		if (m_viewportPanel->IsHovered() && !m_uiRenderer->IsMouseInteracting())
+		{
+			bBlockMouse = false;
+		}
+		else
+		{
+			bBlockMouse = m_uiRenderer->IsCapturingMouse();
+		}
+
+		if (m_viewportPanel->IsFocused() && !m_uiRenderer->IsKeyboardInteracting())
+		{
+			bBlockKeyboard = false;
+		}
+		else
+		{
+			bBlockKeyboard = m_uiRenderer->IsCapturingKeyboard();
+		}
+	}
+
+	if (m_bInputCaptured)
+	{
+		bBlockMouse = false;
+		bBlockKeyboard = false;
+	}
+
+	m_inputState->SetInputBlocked(bBlockMouse, bBlockKeyboard);
 }
 
-//TODO : PSO파일로 이동
 void EditorApp::CreateInputElements()
 {
 	m_inputElements.push_back(D3D12_INPUT_ELEMENT_DESC{
@@ -357,11 +434,6 @@ void EditorApp::CreateInputElements()
 		.InputSlotClass = D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA,
 		.InstanceDataStepRate = 0
 	});
-}
-
-std::shared_ptr<Scene> EditorApp::CreateDefaultScene()
-{
-	return std::make_shared<Scene_Terraform>();
 }
 
 DebugViewModeHandle EditorApp::RegisterDebugViewMode(std::string_view name, std::function<void(RenderSystem*)> func)
@@ -563,7 +635,7 @@ void EditorApp::RenderProfilingUI(IUIBuilder* ui)
 void EditorApp::RenderMainMenuBarUI(IUIBuilder* ui)
 {
 	ui->BeginMainMenuBar();
-	ui->BeginDisabled(m_bIsPlayMode);
+	ui->BeginDisabled(m_currentScene->IsPlaying());
 
 	// 파일 로드/세이브
 	if (ui->BeginMenu("File"))
@@ -598,13 +670,11 @@ void EditorApp::RenderMainMenuBarUI(IUIBuilder* ui)
 		if (ui->BeginMenu("Viewport Options"))
 		{
 			EditorController* editorController = m_currentScene->GetEditorController();
-			ui->SetNextItemWidth(100.0f);
 			float camSpeed = editorController->GetCameraSpeed();
-			if (ui->Drag("Camera Speed", &camSpeed, 1.0f)) editorController->SetCameraSpeed(camSpeed);
+			if (ui->Drag("Camera Speed", &camSpeed, 100.0f, 1.0f)) editorController->SetCameraSpeed(camSpeed);
 
-			ui->SetNextItemWidth(100.0f);
 			float gizmoSize = editorController->GetGizmoSize();
-			if (ui->Drag("Gizmo Size", &gizmoSize, 0.01f)) editorController->SetGizmoSize(gizmoSize);
+			if (ui->Drag("Gizmo Size", &gizmoSize, 100.0f, 0.01f)) editorController->SetGizmoSize(gizmoSize);
 
 			ui->EndMenu();
 		}
@@ -640,6 +710,16 @@ void EditorApp::RenderMainMenuBarUI(IUIBuilder* ui)
 		{
 			if (m_inspectorPanel) m_inspectorPanel->SetPanelVisible(!bInspectorVisible);
 		}
+
+		if (auto contentBrowser = GetPanel<ContentBrowserPanel>())
+		{
+			bool bIsVisible = contentBrowser->IsPanelVisible();
+			if (ui->MenuItem("Content Browser", nullptr, bIsVisible))
+			{
+				contentBrowser->SetPanelVisible(!bIsVisible);
+			}
+		}
+
 		ui->Separator();
 		
 		// Editor Tools
@@ -688,6 +768,7 @@ void EditorApp::RenderMainMenuBarUI(IUIBuilder* ui)
 		}
 		ui->EndMenu();
 	}
+
 	ui->EndDisabled();
 	ui->EndMainMenuBar();
 }
@@ -803,21 +884,32 @@ void EditorApp::OnPlayButtonClicked()
 {
 	if (m_currentScene)
 	{
-		m_bIsPlayMode = true;
-		m_currentScene->EndEditor();
+		m_bInputCaptured = true;
+		m_inputState->SetGameInputActive(true);
+		ImGui::SetWindowFocus(nullptr);
+
+		JsonSerializer ar(true);
+		m_currentScene->Serialize(ar);
+		ar.WriteToFile("TempPIE_Backup.json"); //TODO : 임시 파일 폴더에 저장
+
+		m_viewportPanel->SetEditorController(nullptr);
 		m_currentScene->BeginPlay();
-		if (m_viewportPanel) RequestResizeViewport(UI::Vector<float, 2>(1280.0f, 720.0f));
+
+		// 마우스 캡쳐
+		Win32Application::CaptureMouseInScreen(m_bInputCaptured);
 	}
 }
 
-void EditorApp::OnCloseButtonClicked()
+void EditorApp::OnStopButtonClicked()
 {
 	if (m_currentScene)
 	{
-		m_bIsPlayMode = false;
+		m_bInputCaptured = false;
+		m_inputState->SetGameInputActive(false);
 		m_currentScene->EndPlay();
-		m_currentScene->BeginEditor();
-		if (m_viewportPanel) RequestResizeViewport(m_viewportPanel->GetViewportSize());
+		RequestLoadScene("TempPIE_Backup.json"); //OnSceneLoaded를 통해 에디터 실행 등 초기 설정 실행됨
+
+		// NOTE : Stop 버튼을 눌른 상황은 이미 Play 모드에서 마우스 캡쳐를 해제한 상황이므로 CaptureMouseInScreen을 중복 호출하지 않음
 	}
 }
 
@@ -915,6 +1007,5 @@ void EditorApp::OnResizeViewport(UI::Vector<float, 2> viewportSize)
 	// 변경된 타겟을 RenderSystem에 주입
 	m_renderSystem->SetOutputTarget(m_offscreenResource.Get(), offscreenRTV, offscreenDSV);
 	m_renderSystem->SetViewport(0.0f, 0.0f, renderWidth, renderHeight);
-	
-	if (m_currentScene) m_currentScene->OnResize(renderWidth, renderHeight);
+	m_renderSystem->CreateHitProxyTarget(static_cast<uint32_t>(renderWidth), static_cast<uint32_t>(renderHeight));
 }

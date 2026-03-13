@@ -16,7 +16,7 @@ public:
 	void PrepareRender(const CameraConstants& cameraData, const LightBlobView& lightData, uint32_t frameIndex);
 	void RenderFrame(ID3D12GraphicsCommandList* cmd);
 	bool SubmitRenderItem(const RenderItem& item, std::string_view psoName);
-
+	
 	PSOList* GetPSOList() { return m_psoList.get(); }
 	BundleRecorder* GetBundleRecorder() { return m_bundleRecorder.get(); }
 	
@@ -63,10 +63,17 @@ public:
 	D3D12_CPU_DESCRIPTOR_HANDLE GetOutputDSV() const { return m_currentDSV; }
 	D3D12_CPU_DESCRIPTOR_HANDLE GetOutputRTV() const { return m_currentRTV; }
 	void SetOutputTarget(ID3D12Resource* renderTarget, D3D12_CPU_DESCRIPTOR_HANDLE rtv, D3D12_CPU_DESCRIPTOR_HANDLE dsv);
+	void RegisterIDPsoMapping(const std::string& basePsoName, const std::string& idPsoName);
+
+	void CreateHitProxyTarget(uint32_t width, uint32_t height);
+	D3D12_GPU_DESCRIPTOR_HANDLE GetHitProxySRV() const; // Viewport 디버깅에 사용됨
+	uint64_t RequestPicking(uint32_t x, uint32_t y);
+	DirectX::XMUINT4 GetHitProxyPixel();
 
 private:
 	bool SubmitToQueue(std::string_view psoName, const RenderItem& item);
 	uint64_t GenerateSortKey(uint16_t rsIndex, uint16_t psoIndex, const RenderItem& item);
+	void ExecuteQueue(ID3D12GraphicsCommandList* cmd, bool bIDPass = false);
 
 private:
 	std::vector<D3D12_INPUT_ELEMENT_DESC> m_inputElements;
@@ -85,6 +92,7 @@ private:
 
 	std::unordered_map<std::string, std::string> m_psoOverrides;
 	std::unordered_multimap< std::string, std::string> m_psoExtensions;
+	std::unordered_map<uint16_t, uint16_t> m_psoToIDPsoMap; // 해당하는 PSO에 대해 어떤 ID Pass용 PSO를 사용할 것인지를 명시 
 
 	BufferHandle m_cameraBuf{};
 	BufferHandle m_lightsBuf{};
@@ -101,5 +109,16 @@ private:
 	ID3D12Resource* m_currentRenderTarget = nullptr;
 	D3D12_CPU_DESCRIPTOR_HANDLE m_currentRTV;
 	D3D12_CPU_DESCRIPTOR_HANDLE m_currentDSV;
-};
 
+	// Mouse Picking
+	bool m_bPickingRequested = false;
+	uint32_t m_pickX = 0, m_pickY = 0;
+
+	ComPtr<ID3D12Resource> m_hitProxyRT;
+	ComPtr<ID3D12Resource> m_hitProxyReadback;
+	uint32_t m_hitProxyRTV = UINT32_MAX;
+	uint32_t m_hitProxySRV = UINT32_MAX;
+	uint32_t m_hitProxyWidth = 1280;
+	uint32_t m_hitProxyHeight = 720;
+
+};

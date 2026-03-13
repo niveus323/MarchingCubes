@@ -17,6 +17,10 @@ public:
 	virtual void UpdateUI(float deltaTime) override;
 
 	D3D12_GPU_DESCRIPTOR_HANDLE GetOffscreenSRVGpuHandle();
+
+	bool IsPlayMode() const { return m_currentScene? m_currentScene->IsPlaying() : false; }
+	void OnPlayButtonClicked();
+	void OnStopButtonClicked();
 protected:
 	virtual void InitUI(ID3D12GraphicsCommandList* cmd) override;
 	virtual void RenderFrame(ID3D12GraphicsCommandList* cmd) override;
@@ -26,7 +30,6 @@ protected:
 	virtual void UpdateInputCaptureState() override;
 
 	virtual void CreateInputElements() override;
-	virtual std::shared_ptr<Scene> CreateDefaultScene() override; // TODO : Scene 클래스 단일화 후 제거
 	virtual std::vector<std::wstring> GetPSOFiles() const override { return { L"EditorCommon.json" }; }
 
 	// Debug View Mode
@@ -40,8 +43,6 @@ private:
 	void RenderProfilingUI(IUIBuilder* ui);
 	void RenderMainMenuBarUI(IUIBuilder* ui);
 	void RenderSubsystemManagerUI(IUIBuilder* ui);
-	void OnPlayButtonClicked();
-	void OnCloseButtonClicked();
 	void RequestResizeViewport(UI::Vector<float, 2> viewportSize);
 	void OnResizeViewport(UI::Vector<float, 2> viewportSize);
 	
@@ -78,7 +79,8 @@ protected:
 	DebugViewModeHandle m_hNormalView = -1;
 
 private:
-	bool m_bIsPlayMode = false;
+	bool m_bInputCaptured = false;
+
 	// Viewport
 	ComPtr<ID3D12Resource> m_offscreenResource;
 	ComPtr<ID3D12Resource> m_offscreenDepth;

@@ -80,6 +80,8 @@ public:
 	virtual bool IsCapturingUI() = 0;
 	virtual bool IsCapturingMouse() = 0;
 	virtual bool IsCapturingKeyboard() = 0;
+	virtual bool IsMouseInteracting() = 0;
+	virtual bool IsKeyboardInteracting() = 0;
 	std::wstring GetLastErrorMsg() const { return m_lastErrorMessage; };
 
 	UI::FrameCallbackToken AddFrameRenderCallbackToken(UI::FrameRenderCallback callback, UI::UICallbackOptions options = {});
