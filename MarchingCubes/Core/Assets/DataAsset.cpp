@@ -25,7 +25,7 @@ std::shared_ptr<DataAsset> DataAsset::Load(const std::filesystem::path& path)
 
     if (buffer.size() < sizeof(AssetHeader))
     {
-        Log::Print("DataAsset", "Invalid Header. DataAsset file : %s", path.string().c_str());
+        Log::Print(ELogVerbosity::Fatal, "DataAsset", "Invalid Header. DataAsset file : {}", path.string());
         return nullptr;
     }
 
@@ -36,7 +36,7 @@ std::shared_ptr<DataAsset> DataAsset::Load(const std::filesystem::path& path)
     // 실제 데이터 크기가 헤더에 기록된 크기와 일치하는지(혹은 충분한지) 확인
     if (buffer.size() < sizeof(AssetHeader) + asset->m_header.dataSize)
     {
-        Log::Print("DataAsset", "DataAsset corruption detected (size mismatch): %s", path.string().c_str());
+        Log::Print(ELogVerbosity::Fatal, "DataAsset", "DataAsset corruption detected (size mismatch): {}", path.string());
         return nullptr;
     }
 

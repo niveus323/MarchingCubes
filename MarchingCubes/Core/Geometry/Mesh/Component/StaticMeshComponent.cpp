@@ -82,6 +82,6 @@ void StaticMeshComponent::SetMeshByPath(const std::string& path)
 	}
 	else
 	{
-		Log::Print("StaticMeshComponent", "Failed to load mesh: %s", path.c_str());
+		Log::Print(ELogVerbosity::Fatal, "StaticMeshComponent", "Failed to load mesh: {}", path);
 	}
 }

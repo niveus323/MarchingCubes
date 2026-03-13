@@ -46,7 +46,7 @@ enum class EBindingType
 struct ShaderBinding
 {
 	EBindingType type;
-	uint32_t rootParameterIndex;
+	std::string rootParamKey;
 	union {
 		uint32_t constantData;							 // Root Constants 사용 시 해당 필드
 		D3D12_GPU_VIRTUAL_ADDRESS gpuAddress;			 // Root Descriptor 사용 시 해당 필드

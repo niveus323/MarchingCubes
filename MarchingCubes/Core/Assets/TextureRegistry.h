@@ -50,11 +50,10 @@ struct TextureResource
 class TextureRegistry
 {
 public:
-	TextureRegistry(uint32_t rootSlot = 5);
+	TextureRegistry();
 	~TextureRegistry();
 
 	void SyncGpu(ID3D12GraphicsCommandList* cmd);
-	void BindDescriptorTable(ID3D12GraphicsCommandList* cmd);
 
     RegistryIndex FindTextureHandle(const std::string& path);
     RegistryIndex LoadTexture(const std::shared_ptr<TextureAsset>& texAsset);
@@ -67,7 +66,6 @@ private:
     TextureMeta FinalizeMeta(const D3D12_RESOURCE_DESC& desc);
 
 private:
-    uint32_t m_rootSlot = 5;
     uint32_t m_descriptorBaseSlot = UINT32_MAX;
 
 	std::vector<TextureResource> m_textures;

@@ -366,7 +366,7 @@ void InspectorPanel::DrawSingleProperty(IUIBuilder* ui, void* instance, const Pr
                 if (ui->BeginDragDropTarget())
                 {
                     std::string payloadType = "ITEM_" + assetType;
-                    Log::Print("InspectorPanel", "payloadType : %s", payloadType.c_str());
+                    Log::Print(ELogVerbosity::Verbose, "InspectorPanel", "payloadType : {}", payloadType);
                     // 허용된 타입의 데이터가 드롭되었는지 확인
                     if (const void* payloadData = ui->AcceptDragDropPayload(payloadType.c_str()))
                     {

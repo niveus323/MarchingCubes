@@ -89,7 +89,7 @@ double Timer::EndKey(std::string_view key)
 		auto& vec = m_storedKey.stackMap[std::string(key)];
 		if (vec.empty())
 		{
-			Log::Print("Timer", "Timer::EndKey : key '%.*s' has no active begin", (int)key.size(), key.data());
+			Log::Print(ELogVerbosity::Warning, "Timer", "Timer::EndKey : key '{}' has no active begin", key);
 			return -1.0f;
 		}
 		t0 = vec.back();

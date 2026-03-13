@@ -181,7 +181,7 @@ bool GpuAllocator::AllocFromRing(ID3D12Device* device, const AllocDesc& desc, Bu
 
 bool GpuAllocator::AllocFromFallback(ID3D12Device* device, const AllocDesc& desc, BufferHandle& outHandle)
 {
-	Log::Print("GpuAllocator", "AllocFromFallback triggered");
+	Log::Print(ELogVerbosity::Warning, "GpuAllocator", "AllocFromFallback triggered");
 
 	// 이미 생성되어 있는 Fallback 슬롯에서 할당 가능 여부 확인
 	int slotIndex = -1;
@@ -220,7 +220,7 @@ bool GpuAllocator::AllocFromFallback(ID3D12Device* device, const AllocDesc& desc
 		}
 		m_fallbackUploads.push_back(std::move(result));
 		slotIndex = static_cast<int>(m_fallbackUploads.size() - 1);
-		Log::Print("GpuAllocator", "New Fallback Slot Allocated slot = %d", slotIndex);
+		Log::Print(ELogVerbosity::Message, "GpuAllocator", "New Fallback Slot Allocated slot = {}", slotIndex);
 	}
 
 	// 할당

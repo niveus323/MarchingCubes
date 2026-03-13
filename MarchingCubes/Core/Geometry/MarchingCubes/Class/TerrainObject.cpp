@@ -109,11 +109,11 @@ bool TerrainObject::SaveDataAsset(std::string_view path)
 			return true;
 		}
 
-		Log::Print("TerrainObject", "Failed To Save Data Asset!!!!\n Desired Path : %s", path.data());
+		Log::Print(ELogVerbosity::Fatal, "TerrainObject", "Failed To Save Data Asset!!!!\n Desired Path : {}", path);
 		return false;
 	}
 
-	Log::Print("TerrainObject", "Failed To Create Data Asset!!!!");
+	Log::Print(ELogVerbosity::Fatal, "TerrainObject", "Failed To Create Data Asset!!!!");
 	return false;
 }
 
@@ -126,7 +126,7 @@ bool TerrainObject::LoadDataAsset(std::string_view path)
 	{
 		if (asset->GetType() != EDataAssetType::TerrainSDF)
 		{
-			Log::Print("TerrainSystem", "Invalid Asset Type!!!! file : %s", m_dataPath);
+			Log::Print(ELogVerbosity::Fatal, "TerrainSystem", "Invalid Asset Type!!!! file : {}", m_dataPath);
 			return false;
 		}
 
@@ -142,7 +142,7 @@ bool TerrainObject::LoadDataAsset(std::string_view path)
 			size_t expectedSize = voxelCount * sizeof(float);
 			if (asset->GetSize() < sizeof(TerrainDataLayout) + expectedSize)
 			{
-				Log::Print("TerrainSystem", "Mismatched DataAsset!!!!");
+				Log::Print(ELogVerbosity::Fatal, "TerrainSystem", "Mismatched DataAsset!!!!");
 				return false;
 			}
 
@@ -336,7 +336,7 @@ void TerrainObject::OnSettingUpdated()
 	std::vector<ShaderBinding> newBinding;
 	newBinding.push_back(ShaderBinding{ 
 		.type = EBindingType::CBV, 
-		.rootParameterIndex = 6, // b3
+		.rootParamKey = "ChunkBoundaryBuffer",
 		.gpuAddress = m_chunkBorderCB.gpuVA
 	});
 	

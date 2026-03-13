@@ -191,12 +191,12 @@ void Scene::Serialize(Serializer& ar)
                 }
                 else
                 {
-                    Log::Print("Invalid SceneSubsystem Type : %s", className.c_str());
+                    Log::Print(ELogVerbosity::Fatal, "Serialize", "Invalid SceneSubsystem Type : {}", className);
                 }
             }
             else
             {
-                Log::Print("Unknown SceneSubsystem Type: %s", className.c_str());
+                Log::Print(ELogVerbosity::Fatal, "Serialize", "Unknown SceneSubsystem Type: {}", className);
             }
             ar.EndObject();
         }
@@ -245,12 +245,12 @@ void Scene::Serialize(Serializer& ar)
                 }
                 else
                 {
-                    Log::Print("Invalid GameObject Type : %s", className.c_str());
+                    Log::Print(ELogVerbosity::Fatal, "Serialize", "Invalid GameObject Type : {}", className);
                 }
             }
             else
             {
-                Log::Print("Unknown Object Type: %s", className.c_str());
+                Log::Print(ELogVerbosity::Fatal, "Serialize", "Unknown Object Type: {}", className);
             }
 
             ar.EndObject();
@@ -292,12 +292,12 @@ ISceneSubsystem* Scene::AddSubsystemByName(const std::string& className)
         }
         else
         {
-            Log::Print("Invalid SceneSubsystem Type : %s", className.c_str());
+            Log::Print(ELogVerbosity::Fatal, "Serialize", "Invalid SceneSubsystem Type : {}", className);
         }
     }
     else
     {
-        Log::Print("Unknown SceneSubsystem Type: %s", className.c_str());
+        Log::Print(ELogVerbosity::Fatal, "Serialize", "Unknown SceneSubsystem Type: {}", className);
     }
     return nullptr;
 }

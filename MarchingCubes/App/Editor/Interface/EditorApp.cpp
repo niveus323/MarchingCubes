@@ -393,49 +393,6 @@ void EditorApp::UpdateInputCaptureState()
 	m_inputState->SetInputBlocked(bBlockMouse, bBlockKeyboard);
 }
 
-void EditorApp::CreateInputElements()
-{
-	m_inputElements.push_back(D3D12_INPUT_ELEMENT_DESC{
-		.SemanticName = "POSITION",
-		.SemanticIndex = 0,
-		.Format = DXGI_FORMAT_R32G32B32_FLOAT,
-		.InputSlot = 0,
-		.AlignedByteOffset = 0,
-		.InputSlotClass = D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA,
-		.InstanceDataStepRate = 0
-	});
-
-	m_inputElements.push_back(D3D12_INPUT_ELEMENT_DESC{ 
-		.SemanticName = "NORMAL",   
-		.SemanticIndex = 0, 
-		.Format = DXGI_FORMAT_R32G32B32_FLOAT,    
-		.InputSlot = 0, 
-		.AlignedByteOffset= 12, 
-		.InputSlotClass = D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 
-		.InstanceDataStepRate= 0 
-	});
-	
-	m_inputElements.push_back(D3D12_INPUT_ELEMENT_DESC{
-		.SemanticName = "TANGENT",
-		.SemanticIndex = 0,
-		.Format = DXGI_FORMAT_R32G32B32A32_FLOAT,
-		.InputSlot = 0,
-		.AlignedByteOffset = 24,
-		.InputSlotClass = D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA,
-		.InstanceDataStepRate = 0
-	});
-
-	m_inputElements.push_back(D3D12_INPUT_ELEMENT_DESC{
-		.SemanticName = "TEXCOORD",
-		.SemanticIndex = 0,
-		.Format = DXGI_FORMAT_R32G32_FLOAT,
-		.InputSlot = 0,
-		.AlignedByteOffset = 40,
-		.InputSlotClass = D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA,
-		.InstanceDataStepRate = 0
-	});
-}
-
 DebugViewModeHandle EditorApp::RegisterDebugViewMode(std::string_view name, std::function<void(RenderSystem*)> func)
 {
 	for (int i = 0; i < m_debugViewModes.size(); ++i)
@@ -462,7 +419,7 @@ void EditorApp::SetDebugViewMode(std::string_view name)
 		}
 	}
 
-	Log::Print("Editor", "Failed to find debug mode: %s", name);
+	Log::Print(ELogVerbosity::Fatal, "Editor", "Failed to find debug mode: {}", name);
 }
 
 void EditorApp::SetDebugViewMode(int index)

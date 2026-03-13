@@ -43,8 +43,7 @@ FBXImporter::ImportSceneData FBXImporter::LoadFile(const std::filesystem::path& 
 
 	if (!importer->Initialize(pathStr.c_str(), -1, m_manager->GetIOSettings()))
 	{
-		Log::Print("FBXImporter", "Call to FbxImporter::Initialize() failed.\n");
-		Log::Print("FBXImporter", "Error returned: %s\n", importer->GetStatus().GetErrorString());
+		Log::Print(ELogVerbosity::Fatal, "FBXImporter", "Call to FbxImporter::Initialize() failed.\n Error returned: {}", importer->GetStatus().GetErrorString());
 		importer->Destroy();
 		return result;
 	}
@@ -354,42 +353,43 @@ void FBXImporter::PrintLayerInfo(FbxMesh* pMeshNode)
 #ifdef _DEBUG
 	assert(pMeshNode);
 	int layerCount = pMeshNode->GetLayerCount();
-	Log::Print("FbxImporter", "Layer Count = %d", layerCount);
+	Log::Print(ELogVerbosity::Verbose, "FbxImporter", "Layer Count = {}", layerCount);
 	for (int i = 0; i < layerCount; ++i)
 	{
 		FbxLayer* layer = pMeshNode->GetLayer(i);
-		if (const FbxLayerElementTemplate<int>* polygons = layer->GetPolygonGroups())			Log::Print("FbxImporter", "Layer %d has Polygons", i);
-		if (const FbxLayerElementTemplate<FbxVector4>* normal = layer->GetNormals())			Log::Print("FbxImporter", "Layer %d has normals", i);
-		if (const FbxLayerElementTemplate<FbxVector4>* tangent = layer->GetTangents())			Log::Print("FbxImporter", "Layer %d has tangents", i);
-		if (const FbxLayerElementTemplate<FbxVector4>* binormal = layer->GetBinormals())		Log::Print("FbxImporter", "Layer %d has binormals", i);
-		if (const FbxLayerElementTemplate<FbxColor>* vertexColors = layer->GetVertexColors())	Log::Print("FbxImporter", "Layer %d has vertexColors", i);
+		if (const FbxLayerElementTemplate<int>* polygons = layer->GetPolygonGroups())			Log::Print(ELogVerbosity::Verbose, "FbxImporter", "Layer {} has Polygons", i);
+		if (const FbxLayerElementTemplate<FbxVector4>* normal = layer->GetNormals())			Log::Print(ELogVerbosity::Verbose, "FbxImporter", "Layer {} has normals", i);
+		if (const FbxLayerElementTemplate<FbxVector4>* tangent = layer->GetTangents())			Log::Print(ELogVerbosity::Verbose, "FbxImporter", "Layer {} has tangents", i);
+		if (const FbxLayerElementTemplate<FbxVector4>* binormal = layer->GetBinormals())		Log::Print(ELogVerbosity::Verbose, "FbxImporter", "Layer {} has binormals", i);
+		if (const FbxLayerElementTemplate<FbxColor>* vertexColors = layer->GetVertexColors())	Log::Print(ELogVerbosity::Verbose, "FbxImporter", "Layer {} has vertexColors", i);
 		const auto uvset = layer->GetUVSets();
-		if (uvset.Size() > 0) Log::Print("FbxImporter", "Layer %d has UVSets (%d sets)", i, uvset.Size());
+		if (uvset.Size() > 0) Log::Print(ELogVerbosity::Verbose, "FbxImporter", "Layer {} has UVSets ({} sets)", i, uvset.Size());
 
 		if (FbxLayerElementMaterial* materialElement = layer->GetMaterials())
 		{
-			Log::Print("FbxImporter", "Layer %d has materials", i);
+			Log::Print(ELogVerbosity::Verbose, "FbxImporter", "Layer {} has materials", i);
 
 			FbxNode* ownerNode = pMeshNode->GetNode();
-			int materialCount = ownerNode ? ownerNode->GetMaterialCount() : 0;
-			Log::Print("FbxImporter", "  Material count on node: %d", materialCount);
+			if (!ownerNode) break;
+			int materialCount = ownerNode->GetMaterialCount();
+			Log::Print(ELogVerbosity::Verbose, "FbxImporter", "  Material count on node: {}", materialCount);
 
 			for (int j = 0; j < materialCount; ++j)
 			{
 				FbxSurfaceMaterial* mat = ownerNode->GetMaterial(j);
 				if (!mat)	continue;
 
-				Log::Print("FbxImporter", "  [Material %d]", j);
-				Log::Print("FbxImporter", "    Name         : %s", mat->GetName());
-				Log::Print("FbxImporter", "    ShadingModel : %s", mat->ShadingModel.Get().Buffer());
+				Log::Print(ELogVerbosity::Verbose, "FbxImporter", "\t[Material {}]", j);
+				Log::Print(ELogVerbosity::Verbose, "FbxImporter", "\t\tName         : {}", mat->GetName());
+				Log::Print(ELogVerbosity::Verbose, "FbxImporter", "\t\tShadingModel : {}", mat->ShadingModel.Get().Buffer());
 
 				auto LogColorProp = [&](const char* label, const char* propName) {
 					FbxProperty prop = mat->FindProperty(propName);
 					if (!prop.IsValid())return;
 
 					FbxDouble3 c = prop.Get<FbxDouble3>();
-					Log::Print("FbxImporter", "    %-16s: (%f, %f, %f)", label, c[0], c[1], c[2]);
-					};
+					Log::Print(ELogVerbosity::Verbose, "FbxImporter", "\t\t{}: ({}, {}, {})", label, c[0], c[1], c[2]);
+				};
 
 				LogColorProp("Emissive", "Emissive");
 				LogColorProp("Ambient", "Ambient");
@@ -401,7 +401,7 @@ void FBXImporter::PrintLayerInfo(FbxMesh* pMeshNode)
 					const char* propName = prop.GetNameAsCStr();
 					int srcCount = prop.GetSrcObjectCount();
 					if (srcCount <= 0) continue;
-					Log::Print("FbxImporter", "    Prop '%s' has %d src objects", propName, srcCount);
+					Log::Print(ELogVerbosity::Verbose, "FbxImporter", "    Prop '{}' has {} src objects", propName, srcCount);
 
 					for (int t = 0; t < srcCount; ++t)
 					{
@@ -410,7 +410,7 @@ void FBXImporter::PrintLayerInfo(FbxMesh* pMeshNode)
 
 						const char* className = src->GetClassId().GetName();
 						const char* objName = src->GetName();
-						Log::Print("FbxImporter", "        [%d] class=%s name=%s", t, className ? className : "(null)", objName ? objName : "(null)");
+						Log::Print(ELogVerbosity::Verbose, "FbxImporter", "\t\t[{}] class={} name={}", t, className ? className : "(null)", objName ? objName : "(null)");
 					}
 				}
 			}

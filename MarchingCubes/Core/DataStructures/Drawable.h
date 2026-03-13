@@ -68,8 +68,22 @@ struct RenderItem
 	uint32_t objectID = 0;
 	std::string debugName;
 
-	std::vector<ShaderBinding> resourceBindings; // PSO마다 필요한 추가 바인딩 정보에 대한 포인터(per-Object)
+	std::vector<ShaderBinding> resourceBindings; // 리소스 바인딩 정보
+
+	void Reset()
+	{
+		meshBuffer = nullptr;
+		topology = D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST;
+		indexCount = 0;
+		indexOffset = 0;
+		baseVertexLocation = 0;
+		instanceCount = 1;
+		materialIndex = 0;
+		objectID = 0;
+		debugName.clear();
+		resourceBindings.clear();
+	}
 };
 
 void RecordDrawItem(ID3D12GraphicsCommandList* cmdList, const DrawBindingInfo& bi);
-void DrawItem(ID3D12GraphicsCommandList* cmd, const RenderItem& item);
+void DrawItem(ID3D12GraphicsCommandList* cmd, const RenderItem* item);

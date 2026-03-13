@@ -9,13 +9,13 @@ class MaterialRegistry;
 class RenderSystem
 {
 public:
-	RenderSystem(const std::vector<D3D12_INPUT_ELEMENT_DESC>& inputElems, const std::vector<std::wstring>& psoFiles);
+	RenderSystem(const std::vector<std::wstring>& psoFiles);
 	~RenderSystem();
 
 	void SyncGpu(ID3D12GraphicsCommandList* cmd);
 	void PrepareRender(const CameraConstants& cameraData, const LightBlobView& lightData, uint32_t frameIndex);
 	void RenderFrame(ID3D12GraphicsCommandList* cmd);
-	bool SubmitRenderItem(const RenderItem& item, std::string_view psoName);
+	void SubmitRenderItem(const RenderItem* item, std::string_view psoName);
 	
 	PSOList* GetPSOList() { return m_psoList.get(); }
 	BundleRecorder* GetBundleRecorder() { return m_bundleRecorder.get(); }
@@ -70,13 +70,15 @@ public:
 	uint64_t RequestPicking(uint32_t x, uint32_t y);
 	DirectX::XMUINT4 GetHitProxyPixel();
 
+	// RenderItem
+	RenderItem* AllocateRenderItem();
+
 private:
-	bool SubmitToQueue(std::string_view psoName, const RenderItem& item);
-	uint64_t GenerateSortKey(uint16_t rsIndex, uint16_t psoIndex, const RenderItem& item);
+	bool SubmitToQueue(std::string_view psoName, const RenderItem* item);
+	uint64_t GenerateSortKey(uint16_t rsIndex, uint16_t psoIndex, const RenderItem* item);
 	void ExecuteQueue(ID3D12GraphicsCommandList* cmd, bool bIDPass = false);
 
 private:
-	std::vector<D3D12_INPUT_ELEMENT_DESC> m_inputElements;
 	std::vector<std::wstring> m_psoFiles;
 
 	std::unique_ptr<PSOList> m_psoList;
@@ -86,9 +88,11 @@ private:
 	{
 		uint64_t sortKey;
 		uint32_t psoIndex;
-		RenderItem item;
+		const RenderItem* item;
 	};
 	std::vector<DrawCommand> m_renderQueue; //TODO : 투명 오브젝트 적용 시 transparentQueue를 별도로 둘 것(Depth 우선인 별도의 기준 필요)
+	std::vector<RenderItem> m_renderItems;
+	uint32_t m_allocatedItemCount = 0;
 
 	std::unordered_map<std::string, std::string> m_psoOverrides;
 	std::unordered_multimap< std::string, std::string> m_psoExtensions;

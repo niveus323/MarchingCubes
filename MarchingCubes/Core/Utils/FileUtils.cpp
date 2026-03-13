@@ -75,7 +75,7 @@ bool FileUtils::DuplicateFile(const std::filesystem::path& source, const std::fi
 	}
 	catch (const std::filesystem::filesystem_error& e)
 	{
-		Log::Print("FileUtils", "Failed to duplicate file from %s to %s: %s", source.string().c_str(), dest.string().c_str(), e.what());
+		Log::Print(ELogVerbosity::Fatal, "FileUtils", "Failed to duplicate file from {} to {}: {}", source.string(), dest.string(), e.what());
 		return false;
 	}
 }
@@ -85,7 +85,7 @@ bool FileUtils::WriteJSON(const std::filesystem::path& path, const nlohmann::jso
 	std::ofstream out(path);
 	if (!out.is_open())
 	{
-		Log::Print("FileUtils", "Failed to open file for writing: %s", path.string().c_str());
+		Log::Print(ELogVerbosity::Fatal, "FileUtils", "Failed to open file for writing: {}", path.string());
 		return false;
 	}
 
@@ -97,7 +97,7 @@ bool FileUtils::WriteJSON(const std::filesystem::path& path, const nlohmann::jso
 	}
 	catch (const std::exception& e)
 	{
-		Log::Print("FileUtils", "JSON Write Error: %s", e.what());
+		Log::Print(ELogVerbosity::Fatal, "FileUtils", "JSON Write Error: {}", e.what());
 		return false;
 	}
 }
@@ -117,7 +117,7 @@ bool FileUtils::ReadJSON(const std::filesystem::path& path, nlohmann::json& outD
 	}
 	catch (const std::exception& e)
 	{
-		Log::Print("FileUtils", "JSON Parse Error in %s: %s", path.string().c_str(), e.what());
+		Log::Print(ELogVerbosity::Fatal, "FileUtils", "JSON Parse Error in {}: {}", path.string(), e.what());
 		return false;
 	}
 }
@@ -127,7 +127,7 @@ bool FileUtils::BinaryFile::WriteFile(const std::filesystem::path& path, const s
 	std::ofstream out(path, std::ios::binary | std::ios::trunc);
 	if (!out.is_open())
 	{
-		Log::Print("FileUtils", "Failed to save file : %s", path.string().c_str());
+		Log::Print(ELogVerbosity::Fatal, "FileUtils", "Failed to save file : {}", path.string());
 		return false;
 	}
 
@@ -145,7 +145,7 @@ bool FileUtils::BinaryFile::WriteFile(const std::filesystem::path& path, const s
 	std::ofstream out(path, std::ios::binary | std::ios::trunc);
 	if (!out.is_open())
 	{
-		Log::Print("FileUtils", "Failed to save file : %s", path.string().c_str());
+		Log::Print(ELogVerbosity::Fatal, "FileUtils", "Failed to save file : {}", path.string());
 		return false;
 	}
 
@@ -168,7 +168,7 @@ bool FileUtils::BinaryFile::Readfile(const std::filesystem::path& path, std::vec
 	std::ifstream in(path, std::ios::binary | std::ios::ate); // 파일 끝으로 이동해서 열기
 	if (!in.is_open())
 	{
-		Log::Print("FileUtils", "Failed to open file : %s", path.string().c_str());
+		Log::Print(ELogVerbosity::Fatal, "FileUtils", "Failed to open file : {}", path.string());
 		return false;
 	}
 

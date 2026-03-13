@@ -77,13 +77,13 @@ void GameObject::Serialize(Serializer& ar)
                     }
                     else
                     {
-                        Log::Print("Invalid Component Type : %s", className.c_str());
+                        Log::Print(ELogVerbosity::Fatal, "Serialize", "Invalid Component Type : {}", className);
                     }
                 }
             }
             else
             {
-                Log::Print("Unknown Component Type: %s", className.c_str());
+                Log::Print(ELogVerbosity::Fatal, "Serialize", "Unknown Component Type: {}", className);
             }
 
             if (targetComp)
@@ -133,12 +133,12 @@ void GameObject::Serialize(Serializer& ar)
                 }
                 else
                 {
-                    Log::Print("Invalid Child Object Type : Object Type is %s", className.c_str());
+                    Log::Print(ELogVerbosity::Fatal, "Serialize", "Invalid Child Object Type : Object Type is {}", className);
                 }
             }
             else
             {
-                Log::Print("Unknown Object Type: %s", className.c_str());
+                Log::Print(ELogVerbosity::Fatal, "Serialize", "Unknown Object Type: {}", className);
             }
 
             ar.EndObject();

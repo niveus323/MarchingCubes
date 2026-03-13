@@ -84,7 +84,7 @@ std::shared_ptr<MeshAsset> ResourceManager::LoadMeshAsset(const std::filesystem:
 	auto importData = m_fbxImporter->LoadFile(fullPath, finalOptions);
 	if (!importData.success)
 	{
-		Log::Print("ResourceManager", "Failed to load mesh file: %s", key.c_str());
+		Log::Print(ELogVerbosity::Fatal, "ResourceManager", "Failed to load mesh file: {}", key);
 		return nullptr;
 	}
 
@@ -146,7 +146,7 @@ std::shared_ptr<DataAsset> ResourceManager::LoadDataAsset(const std::filesystem:
 	}
 	else
 	{
-		Log::Print("ResourceManager", "Failed to load DataAsset: %s", key.c_str());
+		Log::Print(ELogVerbosity::Fatal, "ResourceManager", "Failed to load DataAsset: {}", key);
 	}
 
 	return asset;

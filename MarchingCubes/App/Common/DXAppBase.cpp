@@ -41,7 +41,6 @@ void DXAppBase::Init()
 	CreateFenceAndEvent();
 	CreateCommandObjects();
 	InitGpuTimeStampResources();
-	InitPipeline();
 	InitSubsystems();
 	CreateBackbuffersAndDefaultDSV(m_width, m_height);  
 	OnAfterSwapchainCreated();                      
@@ -254,7 +253,7 @@ void DXAppBase::InitSubsystems()
 	m_resourceManager = std::make_unique<ResourceManager>();
 	EngineCore::SetResourceManager(m_resourceManager.get());
 
-	m_renderSystem = std::make_unique<RenderSystem>(m_inputElements, GetPSOFiles());
+	m_renderSystem = std::make_unique<RenderSystem>(GetPSOFiles());
 	EngineCore::SetRenderSystem(m_renderSystem.get());
 
 	m_inputState = std::make_unique<InputState>();
@@ -343,15 +342,6 @@ void DXAppBase::RenderScene(ID3D12GraphicsCommandList* cmd)
 		m_descriptorAllocator->GetCbvSrvUavHeap()
 	};
 	cmd->SetDescriptorHeaps(_countof(ppHeaps), ppHeaps);
-
-	auto rtvHandle = m_renderSystem->GetOutputRTV();
-	auto dsvHandle = m_renderSystem->GetOutputDSV();
-	cmd->OMSetRenderTargets(1, &rtvHandle, FALSE, &dsvHandle);
-
-	// RTV Clear 명령 추가.
-	const float clearColor[] = { 0.0f, 0.0f, 0.2f, 1.0f };
-	cmd->ClearRenderTargetView(rtvHandle, clearColor, 0, nullptr);
-	cmd->ClearDepthStencilView(dsvHandle, D3D12_CLEAR_FLAG_DEPTH, 1.0f, 0, 0, nullptr);
 
 	float renderWidth = m_renderSystem->GetViewport().Width;
 	float renderHeight = m_renderSystem->GetViewport().Height;
@@ -478,11 +468,6 @@ void DXAppBase::CreateCommandObjects()
 	ThrowIfFailed(m_device->CreateCommandList(0, D3D12_COMMAND_LIST_TYPE_DIRECT, m_commandAllocators[m_frameIndex].Get(), nullptr, IID_PPV_ARGS(m_commandList.ReleaseAndGetAddressOf())));
 	NAME_D3D12_OBJECT(m_commandList);
 	ThrowIfFailed(m_commandList->Close());
-}
-
-void DXAppBase::InitPipeline()
-{
-	CreateInputElements();
 }
 
 void DXAppBase::InitializeScene()
@@ -636,19 +621,18 @@ void DXAppBase::InitGpuTimeStampResources()
 
 	// Readback owner
 	const uint64_t bufSize = sizeof(uint64_t) * (static_cast<uint64_t>(kFrameCount * 2));
-	D3D12_HEAP_PROPERTIES hp{};
-	hp.Type = D3D12_HEAP_TYPE_READBACK;
-	D3D12_RESOURCE_DESC rb{};
-	rb.Dimension = D3D12_RESOURCE_DIMENSION_BUFFER;
-	rb.Width = bufSize;
-	rb.Height = 1;
-	rb.DepthOrArraySize = 1;
-	rb.MipLevels = 1;
-	rb.Format = DXGI_FORMAT_UNKNOWN;
-	rb.SampleDesc = { 1,0 };
-	rb.Layout = D3D12_TEXTURE_LAYOUT_ROW_MAJOR;
+	D3D12_RESOURCE_DESC rb{
+		.Dimension = D3D12_RESOURCE_DIMENSION_BUFFER,
+		.Width = bufSize,
+		.Height = 1,
+		.DepthOrArraySize = 1,
+		.MipLevels = 1,
+		.Format = DXGI_FORMAT_UNKNOWN,
+		.SampleDesc = { 1,0 },
+		.Layout = D3D12_TEXTURE_LAYOUT_ROW_MAJOR
+	};
 	ThrowIfFailed(m_device->CreateCommittedResource(
-		&hp, D3D12_HEAP_FLAG_NONE, &rb,
+		&CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_READBACK), D3D12_HEAP_FLAG_NONE, &rb,
 		D3D12_RESOURCE_STATE_COPY_DEST, nullptr, IID_PPV_ARGS(&m_tsReadback)));
 
 	// map

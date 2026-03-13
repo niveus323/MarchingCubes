@@ -19,11 +19,11 @@ struct MaterialInstance;
 class MaterialRegistry
 {
 public:
-    MaterialRegistry(TextureRegistry* textureRegistry, uint32_t rootSlot = 3);
+    MaterialRegistry(TextureRegistry* textureRegistry);
     ~MaterialRegistry();
 
     void SyncGpu(ID3D12GraphicsCommandList* cmd);
-    void BindDescriptorTable(ID3D12GraphicsCommandList* cmd) const;
+    D3D12_GPU_DESCRIPTOR_HANDLE GetGpuDescriptorHandle() const;
 
     RegistryIndex RegisterMaterialInstance(const MaterialInstance& matInstance, const std::string& instanceKey);
     RegistryIndex RegisterMaterialAsset(const std::shared_ptr<MaterialAsset> matAsset);
@@ -34,7 +34,6 @@ private:
     
 private:
     TextureRegistry* m_textureRegistry = nullptr;
-    uint32_t m_rootSlot = 4;
     uint32_t m_descriptorSlot = UINT32_MAX;
     bool m_bDirty = false;
 

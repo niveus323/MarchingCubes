@@ -55,8 +55,6 @@ protected:
     virtual void OnAfterChainSwaped();
     virtual void OnSceneLoaded(Scene* scene) {}
     virtual void UpdateInputCaptureState();
-
-    virtual void CreateInputElements() = 0; // TODO : PSO 파일에 정의
     virtual std::vector<std::wstring> GetPSOFiles() const = 0;
 
     std::wstring GetAssetFullPath(LPCWSTR assetName) { return GetFullPath(AssetType::Default, assetName); }
@@ -81,7 +79,6 @@ private:
     void CreateCommandQueue();
     void CreateSwapChain(HWND hwnd, ID3D12CommandQueue* presentQueue);
     void CreateCommandObjects();
-    void InitPipeline();
     void InitializeScene();
     void LoadScene(std::shared_ptr<Scene> newScene);
     void CreateBackbuffersAndDefaultDSV(uint32_t width, uint32_t height);
@@ -126,7 +123,6 @@ protected:
     // Pipeline
     ComPtr<ID3D12Resource> m_renderTargets[kFrameCount];
     ComPtr<ID3D12Resource> m_depthStencil;
-    std::vector<D3D12_INPUT_ELEMENT_DESC> m_inputElements;
     DXGI_FORMAT m_backbufferFormat = DXGI_FORMAT_R8G8B8A8_UNORM;
     DXGI_FORMAT m_depthFormat = DXGI_FORMAT_D32_FLOAT;
     

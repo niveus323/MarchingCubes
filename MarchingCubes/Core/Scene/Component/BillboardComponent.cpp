@@ -78,20 +78,21 @@ void BillboardComponent::Submit()
 	uploadContext->UploadConstants(&objConsts, sizeof(ObjectConstants), m_objectCB);
 
 	const auto& subMesh = m_quadMesh->GetSubmeshes()[0];
-	RenderItem item{
-		.meshBuffer = m_quadMesh->GetGPUBuffer(),
-		.topology = m_quadMesh->GetTopology(),
-		.indexCount = subMesh.indexCount,
-		.indexOffset = subMesh.indexOffset,
-		.baseVertexLocation = subMesh.baseVertexLocation,
-		.materialIndex = materialGPUIndex,
-		.objectID = GetOwner()->GetObjectID(),
-		.debugName = m_name
-	};
 
-	item.resourceBindings.push_back(ShaderBinding{
+	RenderItem* item = renderSystem->AllocateRenderItem();
+	if (!item) return;
+
+	item->meshBuffer = m_quadMesh->GetGPUBuffer();
+	item->topology = m_quadMesh->GetTopology();
+	item->indexCount = subMesh.indexCount;
+	item->indexOffset = subMesh.indexOffset;
+	item->baseVertexLocation = subMesh.baseVertexLocation;
+	item->materialIndex = materialGPUIndex;
+	item->objectID = GetOwner()->GetObjectID();
+	item->debugName = m_name;
+	item->resourceBindings.push_back(ShaderBinding{
 		.type = EBindingType::CBV,
-		.rootParameterIndex = 1,
+		.rootParamKey = "ObjectBuffer",
 		.gpuAddress = m_objectCB.gpuVA
 	});
 	renderSystem->SubmitRenderItem(item, m_iconMat.GetPSO());
@@ -100,11 +101,15 @@ void BillboardComponent::Submit()
 	for (auto& pass : m_overlayPasses)
 	{
 		if (!pass.bActive) continue;
-		item.resourceBindings.reserve(item.resourceBindings.size() + pass.resourceBindings.size());
-		item.resourceBindings.insert(item.resourceBindings.end(), pass.resourceBindings.begin(), pass.resourceBindings.end());
+		RenderItem* overlayItem = renderSystem->AllocateRenderItem();
+		if (!overlayItem) continue;
+		
+		*overlayItem = *item; //บนป็
+		overlayItem->debugName = m_name + "_" + pass.name;
+		overlayItem->resourceBindings.reserve(overlayItem->resourceBindings.size() + pass.resourceBindings.size());
+		overlayItem->resourceBindings.insert(overlayItem->resourceBindings.end(), pass.resourceBindings.begin(), pass.resourceBindings.end());
 
-		item.debugName = m_name + "_" + pass.name;
-		renderSystem->SubmitRenderItem(item, pass.psoName);
+		renderSystem->SubmitRenderItem(overlayItem, pass.psoName);
 	}
 }
 
