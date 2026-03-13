@@ -10,8 +10,7 @@
 #include <numeric>
 #include <algorithm>
 
-RenderSystem::RenderSystem(const std::vector<D3D12_INPUT_ELEMENT_DESC>& inputElems, const std::vector<std::wstring>& psoFiles) :
-	m_inputElements(inputElems),
+RenderSystem::RenderSystem(const std::vector<std::wstring>& psoFiles) :
 	m_psoFiles(psoFiles)
 {
 	ID3D12Device* device = EngineCore::GetDevice();
@@ -21,6 +20,7 @@ RenderSystem::RenderSystem(const std::vector<D3D12_INPUT_ELEMENT_DESC>& inputEle
 	{
 		std::vector<RootSignatureSpec> rsSpecs;
 		std::vector<PSOSpec> psoSpecs;
+		std::vector<InputLayoutSpec> iaSpecs;
 		for (auto& psoFile : m_psoFiles)
 		{
 			int schema = 0;
@@ -28,17 +28,10 @@ RenderSystem::RenderSystem(const std::vector<D3D12_INPUT_ELEMENT_DESC>& inputEle
 			auto data = LoadPipelineBundle(filePath.c_str());
 			rsSpecs.insert(rsSpecs.end(), data.rsSpecs.begin(), data.rsSpecs.end());
 			psoSpecs.insert(psoSpecs.end(), data.psoSpecs.begin(), data.psoSpecs.end());
+			iaSpecs.insert(iaSpecs.end(), data.iaSpecs.begin(), data.iaSpecs.end());
 		}
 
-		PSOList::BuildContext ctx{
-			.device = device,
-			.inputLayout = D3D12_INPUT_LAYOUT_DESC{
-				.pInputElementDescs = m_inputElements.data(),
-				.NumElements = static_cast<UINT>(m_inputElements.size())
-			}
-		};
-
-		m_psoList = std::make_unique<PSOList>(ctx, psoSpecs, rsSpecs);
+		m_psoList = std::make_unique<PSOList>(device, psoSpecs, rsSpecs, iaSpecs);
 	}
 	m_bundleRecorder = std::make_unique<BundleRecorder>(device, m_psoList.get(), 2);
 

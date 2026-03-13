@@ -14,6 +14,7 @@ struct PSOSpecRaw {
     std::optional<int> order;
     std::optional<std::string> inherits;
     std::optional<std::string> rootsignature;
+    std::optional<std::string> inputLayout;
 
     PSOShaderPathsRaw shaders;
     PSORTRaw          rt;
@@ -35,6 +36,7 @@ struct PSOSpec {
     std::string id;
     int         order = 0;
     std::string rootSignature;
+    std::string inputLayout;
 
     PSOShaderPaths shaders;
     PSORT          rt;
@@ -44,9 +46,30 @@ struct PSOSpec {
     std::string    topology = "triangle";
 };
 
-/*
-* RootSignature
-*/
+// --- InputElemnets ---
+struct InputElementDesc
+{
+    std::string name;
+    uint32_t index = 0;
+    std::string format;
+    uint32_t slot = 0;
+    uint32_t byteOffset = 0;
+    bool perInstance = false;
+};
+
+struct InputLayoutSpec
+{
+    std::string name;
+    std::vector<InputElementDesc> descs;
+};
+
+struct InputLayoutSpecRaw {
+    std::string name;
+    std::optional<std::string> inherits;
+    std::vector<InputElementDesc> descs;
+};
+
+// --- RootSignature ---
 // Root Parameter е╦ют
 enum class ERootParamType 
 { 
@@ -98,6 +121,7 @@ struct PipelineBundle
     int schemaVersion = 1;
     std::vector<RootSignatureSpec> rsSpecs;
     std::vector<PSOSpec> psoSpecs;
+    std::vector<InputLayoutSpec> iaSpecs;
 };
 
 PipelineBundle LoadPipelineBundle(LPCWSTR path);

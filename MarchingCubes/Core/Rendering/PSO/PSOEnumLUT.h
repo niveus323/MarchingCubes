@@ -36,11 +36,14 @@ constexpr Enum ParseEnum(std::string_view in, const std::array<std::pair<std::st
 // DXGI_FORMAT
 // 키는 canonical string: "r8g8b8a8_unorm" → "r8g8b8a8_unorm" (언더스코어 유지)
 static constexpr auto kDXGIFormatLUT = std::to_array<std::pair<std::string_view, DXGI_FORMAT>>({
-    std::pair{"r8g8b8a8_unorm",   DXGI_FORMAT_R8G8B8A8_UNORM},
-    std::pair{"r11g11b10_float",  DXGI_FORMAT_R11G11B10_FLOAT},
-    std::pair{"d24_unorm_s8_uint",DXGI_FORMAT_D24_UNORM_S8_UINT},
-    std::pair{"d32_float",        DXGI_FORMAT_D32_FLOAT},
-    std::pair{"unknown",          DXGI_FORMAT_UNKNOWN},
+    std::pair{"r32g32_float",        DXGI_FORMAT_R32G32_FLOAT},
+    std::pair{"r32g32b32_float",     DXGI_FORMAT_R32G32B32_FLOAT},
+    std::pair{"r32g32b32a32_float",  DXGI_FORMAT_R32G32B32A32_FLOAT},
+    std::pair{"r8g8b8a8_unorm",      DXGI_FORMAT_R8G8B8A8_UNORM},
+    std::pair{"r11g11b10_float",     DXGI_FORMAT_R11G11B10_FLOAT},
+    std::pair{"d24_unorm_s8_uint",   DXGI_FORMAT_D24_UNORM_S8_UINT},
+    std::pair{"d32_float",           DXGI_FORMAT_D32_FLOAT},
+    std::pair{"unknown",             DXGI_FORMAT_UNKNOWN},
     });
 
 // Topology

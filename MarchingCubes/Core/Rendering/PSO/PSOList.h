@@ -3,18 +3,13 @@
 
 class PSOList {
 public:
-    struct BuildContext {
-        ID3D12Device* device = nullptr;
-        D3D12_INPUT_LAYOUT_DESC inputLayout{};
-    };
-
     struct PipelineEntry
     {
         ID3D12PipelineState* pso = nullptr;
         ID3D12RootSignature* rs = nullptr;
     };
 
-    PSOList(const BuildContext& ctx, const std::vector<PSOSpec>& specs, const std::vector<RootSignatureSpec>& rsSpecs);
+    PSOList(ID3D12Device* device, const std::vector<PSOSpec>& specs, const std::vector<RootSignatureSpec>& rsSpecs, const std::vector<InputLayoutSpec>& iaSpecs);
 
     int GetCounts() const { return (int)m_psos.size(); }
     PipelineEntry Get(int index) const;
@@ -25,6 +20,7 @@ public:
     
     static ComPtr<ID3DBlob> LoadFileBlob(const std::string& path);
 private:
+    void CreateInputElements(ID3D12Device* device, const std::vector<InputLayoutSpec>& specs);
     void CreateRootSignature(ID3D12Device* device, const std::vector<RootSignatureSpec>& specs);
     bool CreatePSODesc_v1(_In_ const PSOSpec& s, _Inout_ D3D12_GRAPHICS_PIPELINE_STATE_DESC& desc, _Inout_ std::vector<ComPtr<ID3DBlob>>& blobs) const;
 
@@ -81,4 +77,8 @@ private:
     };
     std::vector<RootSignatureMeta> m_rootSignatures;
     std::vector<PipelineStateMeta> m_psos;
+
+    std::list<std::string> m_inputElementNames;
+    std::unordered_map<std::string, std::vector<D3D12_INPUT_ELEMENT_DESC>> m_inputElementDescs;
+    std::unordered_map<std::string, D3D12_INPUT_LAYOUT_DESC> m_inputLayouts;
 };

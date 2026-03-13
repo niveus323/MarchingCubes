@@ -28,8 +28,6 @@ protected:
 	void OnBuildInitialScene(ID3D12GraphicsCommandList* initCommand) override final;
 	virtual void OnSceneLoaded(Scene* scene) override;
 	virtual void UpdateInputCaptureState() override;
-
-	virtual void CreateInputElements() override;
 	virtual std::vector<std::wstring> GetPSOFiles() const override { return { L"EditorCommon.json" }; }
 
 	// Debug View Mode

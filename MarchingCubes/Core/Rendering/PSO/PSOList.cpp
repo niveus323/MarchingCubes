@@ -38,10 +38,13 @@ static D3D12_DESCRIPTOR_RANGE_FLAGS ParseRangeFlags(const std::string& flags)
 	return D3D12_DESCRIPTOR_RANGE_FLAG_NONE;
 }
 
-PSOList::PSOList(const BuildContext& ctx, const std::vector<PSOSpec>& specs, const std::vector<RootSignatureSpec>& rsSpecs)
+PSOList::PSOList(ID3D12Device* device, const std::vector<PSOSpec>& specs, const std::vector<RootSignatureSpec>& rsSpecs, const std::vector<InputLayoutSpec>& iaSpecs)
 {
+	//InputElement
+	CreateInputElements(device, iaSpecs);
+
 	// RootSignature 
-	CreateRootSignature(ctx.device, rsSpecs);
+	CreateRootSignature(device, rsSpecs);
 
 	// PSO
 	m_psos.clear();
@@ -50,14 +53,16 @@ PSOList::PSOList(const BuildContext& ctx, const std::vector<PSOSpec>& specs, con
 	for (const auto& spec : specs)
 	{
 		std::vector<ComPtr<ID3DBlob>> aliveBlobs;
-		D3D12_GRAPHICS_PIPELINE_STATE_DESC psoDesc{
-			.InputLayout = ctx.inputLayout
-		};
-
+		D3D12_GRAPHICS_PIPELINE_STATE_DESC psoDesc{};
 		PipelineStateMeta psoMeta{ .name = spec.id };
 
 		for (UINT i = 0; i < m_rootSignatures.size(); ++i)
 		{
+			if (m_inputLayouts.contains(spec.inputLayout))
+			{
+				psoDesc.InputLayout = m_inputLayouts[spec.inputLayout];
+			}
+
 			if (m_rootSignatures[i].name == spec.rootSignature)
 			{
 				psoMeta.rootSignatureIndex = static_cast<uint16_t>(i);
@@ -77,7 +82,7 @@ PSOList::PSOList(const BuildContext& ctx, const std::vector<PSOSpec>& specs, con
 
 		if (result)
 		{
-			ThrowIfFailed(ctx.device->CreateGraphicsPipelineState(&psoDesc, IID_PPV_ARGS(psoMeta.pso.ReleaseAndGetAddressOf())));
+			ThrowIfFailed(device->CreateGraphicsPipelineState(&psoDesc, IID_PPV_ARGS(psoMeta.pso.ReleaseAndGetAddressOf())));
 			m_psos.push_back(std::move(psoMeta));
 		}
 	}
@@ -113,6 +118,35 @@ int PSOList::IndexOf(std::string_view id) const
 		}
 	}
 	return -1;
+}
+
+void PSOList::CreateInputElements(ID3D12Device* device, const std::vector<InputLayoutSpec>& specs)
+{
+	bool bParseFailed = false;
+	for (const auto& spec : specs)
+	{
+		auto& descs = m_inputElementDescs[spec.name];
+#ifdef _DEBUG
+		std::string debugLog = "\n=== InputElements Layout: " + spec.name + " ===\n";
+#endif // _DEBUG
+		for (const auto& desc : spec.descs)
+		{
+			m_inputElementNames.push_back(desc.name);
+			D3D12_INPUT_ELEMENT_DESC parsedDesc{
+				.SemanticName = desc.name.c_str(),
+				.SemanticIndex = desc.index,
+				.Format = ParseFormat(desc.format),
+				.AlignedByteOffset = desc.byteOffset,
+				.InputSlotClass = desc.perInstance ? D3D12_INPUT_CLASSIFICATION_PER_INSTANCE_DATA : D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA,
+				.InstanceDataStepRate = desc.perInstance ? 1u : 0u
+			};
+			descs.push_back(parsedDesc);
+		}
+		m_inputLayouts[spec.name] = D3D12_INPUT_LAYOUT_DESC{
+			.pInputElementDescs = descs.data(),
+			.NumElements = static_cast<UINT>(descs.size())
+		};
+	}
 }
 
 void PSOList::CreateRootSignature(ID3D12Device* device, const std::vector<RootSignatureSpec>& specs)

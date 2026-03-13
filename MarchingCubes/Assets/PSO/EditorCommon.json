@@ -1,5 +1,44 @@
 {
   "schema": 1,
+  "inputLayouts": [
+    {
+      "name": "IA_Common",
+      "elements": [
+        {
+          "name": "POSITION",
+          "index": 0,
+          "format": "r32g32b32_float",
+          "slot": 0,
+          "byteOffset": 0,
+          "perInstance": false
+        },
+        {
+          "name": "NORMAL",
+          "index": 0,
+          "format": "r32g32b32_float",
+          "slot": 0,
+          "byteOffset": 12,
+          "perInstance": false
+        },
+        {
+          "name": "TANGENT",
+          "index": 0,
+          "format": "r32g32b32a32_float",
+          "slot": 0,
+          "byteOffset": 24,
+          "perInstance": false
+        },
+        {
+          "name": "TEXCOORD",
+          "index": 0,
+          "format": "r32g32_float",
+          "slot": 0,
+          "byteOffset": 40,
+          "perInstance": false
+        }
+      ]
+    }
+  ],
   "rootSignatures": [
     {
       "id": "Default",
@@ -93,6 +132,7 @@
       "id": "Filled",
       "order": 1,
       "rootSignature": "Default",
+      "inputLayout": "IA_Common",
       "shaders": {
         "vs": "MainVS.cso",
         "ps": "MainPS.cso"

@@ -9,7 +9,7 @@ class MaterialRegistry;
 class RenderSystem
 {
 public:
-	RenderSystem(const std::vector<D3D12_INPUT_ELEMENT_DESC>& inputElems, const std::vector<std::wstring>& psoFiles);
+	RenderSystem(const std::vector<std::wstring>& psoFiles);
 	~RenderSystem();
 
 	void SyncGpu(ID3D12GraphicsCommandList* cmd);
@@ -79,7 +79,6 @@ private:
 	void ExecuteQueue(ID3D12GraphicsCommandList* cmd, bool bIDPass = false);
 
 private:
-	std::vector<D3D12_INPUT_ELEMENT_DESC> m_inputElements;
 	std::vector<std::wstring> m_psoFiles;
 
 	std::unique_ptr<PSOList> m_psoList;

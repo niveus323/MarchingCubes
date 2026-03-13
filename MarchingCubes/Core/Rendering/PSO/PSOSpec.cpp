@@ -46,6 +46,7 @@ static PSOSpecRaw parse_raw(const nlohmann::json& jp, int schema)
     s.order = FileUtils::jopt_int(jp, "order");
     s.inherits = FileUtils::jopt_str(jp, "inherits");
     s.rootsignature = FileUtils::jopt_str(jp, "rootSignature");
+    s.inputLayout = FileUtils::jopt_str(jp, "inputLayout");
 
     if (jp.contains("shaders")) 
     {
@@ -119,6 +120,7 @@ static PSOSpec ResolvePSOSpec(
     parent.order = 0;
     parent.shaders = {};
     parent.rootSignature = {};
+    parent.inputLayout = {};
     parent.rt = {};
     parent.raster = {};
     parent.blend = {};
@@ -135,10 +137,8 @@ static PSOSpec ResolvePSOSpec(
     res.schemaVersion = raw.schemaVersion;
     res.id = raw.id;
     if (raw.order) res.order = *raw.order;
-
-    //기존에 쓰던 rootSignature가 명시되어 있지 않고 상속받을 rootSignature가 명시되어 있는 경우 이를 채용
-    if (raw.rootsignature) 
-        res.rootSignature = *raw.rootsignature; 
+    if (raw.rootsignature) res.rootSignature = *raw.rootsignature; 
+    if (raw.inputLayout) res.inputLayout = *raw.inputLayout;
 
     merge(res.shaders, parent.shaders, raw.shaders);
     merge(res.rt, parent.rt, raw.rt);
@@ -188,6 +188,90 @@ std::vector<PSOSpec> LoadPSOJsonResolved(_In_ nlohmann::json& root, int schema)
 
     return out;
 }
+
+static InputElementDesc ParseInputElementDesc(const nlohmann::json& j)
+{
+    InputElementDesc spec{
+        .name = j.value("name", ""),
+        .index = j.value("index", 0u),
+        .format = j.value("format", "Unknown"),
+        .slot = j.value("slot", 0u),
+        .byteOffset = j.value("byteOffset", 0u),
+        .perInstance = j.value("perInstance", false)
+    };
+    return spec;
+}
+
+static InputLayoutSpecRaw ParseInputLayoutRaw(const nlohmann::json& j)
+{
+    InputLayoutSpecRaw raw;
+    raw.name = j.value("name", "");
+    if (j.contains("inherits")) raw.inherits = j["inherits"];
+    if (j.contains("elements"))
+    {
+        for (const auto& elem : j["elements"])
+        {
+            raw.descs.push_back(ParseInputElementDesc(elem));
+        }
+    }
+    return raw;
+}
+
+static InputLayoutSpec ResolveIASpec(const std::string& name,
+    const std::unordered_map<std::string, InputLayoutSpecRaw>& raws,
+    std::unordered_map<std::string, InputLayoutSpec>& memo,
+    std::vector<std::string>& callStack)
+{
+    if (memo.count(name)) return memo[name];
+
+    // 순환 참조 방지
+    for (const auto& s : callStack)
+    {
+        if (s == name) throw std::runtime_error("Circular inheritance detected in InputLayouts: " + name);
+    }
+    callStack.push_back(name);
+
+    auto it = raws.find(name);
+    if (it == raws.end()) throw std::runtime_error("InputLayout name not found: " + name);
+    const auto& raw = it->second;
+
+    InputLayoutSpec res;
+    res.name = name;
+
+    if (raw.inherits)
+    {
+        InputLayoutSpec parent = ResolveIASpec(*raw.inherits, raws, memo, callStack);
+        res.descs = parent.descs;
+    }
+    res.descs.insert(res.descs.end(), raw.descs.begin(), raw.descs.end());
+
+    memo[name] = res;
+    callStack.pop_back();
+    return res;
+}
+
+std::vector<InputLayoutSpec> LoadIAJsonResolved(_In_ nlohmann::json& root, int schema)
+{
+    // Load Raw inputLayoutSpec
+    std::unordered_map<std::string, InputLayoutSpecRaw> iaRaws;
+    if (root.contains("inputLayouts"))
+    {
+        for (const auto& item : root["inputLayouts"])
+        {
+            InputLayoutSpecRaw raw = ParseInputLayoutRaw(item);
+            iaRaws[raw.name] = std::move(raw);
+        }
+    }
+
+    // Resolve inputLayoutSpec
+    std::vector<InputLayoutSpec> out;
+    std::unordered_map<std::string, InputLayoutSpec> iaMemo;
+    std::vector<std::string> iaStack;
+    for (const auto& [id, raw] : iaRaws) out.push_back(ResolveIASpec(id, iaRaws, iaMemo, iaStack));
+
+    return out;
+}
+
 
 static ERootParamType ParseRootParamType(const std::string& s) 
 {
@@ -316,6 +400,7 @@ PipelineBundle LoadPipelineBundle(LPCWSTR path)
     return PipelineBundle{
         .schemaVersion = schemaVersion,
         .rsSpecs = LoadRSJsonResolved(root, schemaVersion),
-        .psoSpecs = LoadPSOJsonResolved(root, schemaVersion)
+        .psoSpecs = LoadPSOJsonResolved(root, schemaVersion),
+        .iaSpecs = LoadIAJsonResolved(root, schemaVersion)
     };
 }
